@@ -17,3 +17,5 @@ uv run pytest              # tests
 ```
 
 Copy `.env.example` to `.env` and fill in the values for local runs.
+
+Database tests need `TEST_DATABASE_URL` pointing at a **throwaway** Postgres, because its schema is dropped and rebuilt on every run. Without it they are skipped. Apply migrations to a real database with `DATABASE_URL=... uv run alembic upgrade head`.
