@@ -82,6 +82,7 @@ class Entry:
     session_id: int | None = None
     batch_id: int | None = None
     transfer_id: int | None = None
+    counterparty_id: int | None = None  # the other member, on transfer entries
     minutes: int | None = None  # time played, on share entries
 
 
@@ -227,6 +228,7 @@ def _transfer_entries(transfer: TransferFact) -> list[Entry]:
             EntryKind.TRANSFER_SENT,
             transfer.amount_cents,
             transfer_id=transfer.id,
+            counterparty_id=transfer.to_id,
         ),
         Entry(
             transfer.to_id,
@@ -234,6 +236,7 @@ def _transfer_entries(transfer: TransferFact) -> list[Entry]:
             EntryKind.TRANSFER_RECEIVED,
             -transfer.amount_cents,
             transfer_id=transfer.id,
+            counterparty_id=transfer.from_id,
         ),
     ]
 
