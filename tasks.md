@@ -44,7 +44,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T05 | Web endpoints and Vercel config | `feat/t05-web-endpoints` | E1 | T03 | ✅ | [#6](https://github.com/matchastack/splitwise-badminton/pull/6) |
 | T06 | Fake Telegram test harness | `test/t06-fake-telegram-harness` | E1 | T04, T05 | ✅ | [#7](https://github.com/matchastack/splitwise-badminton/pull/7) |
 | T07 | Telegram setup and dev scripts | `chore/t07-telegram-scripts` | E1 | T05 | ✅ | [#8](https://github.com/matchastack/splitwise-badminton/pull/8) |
-| T08 | Money and allocation | `feat/t08-money-allocation` | E6 | T01 | ⬜ | |
+| T08 | Money and allocation | `feat/t08-money-allocation` | E6 | T01 | ✅ | [#9](https://github.com/matchastack/splitwise-badminton/pull/9) |
 | T09 | SGT time utilities | `feat/t09-time-utils` | E6 | T01 | ⬜ | |
 | T10 | Ledger: court and transfers | `feat/t10-ledger-court-transfers` | E6 | T08 | ⬜ | |
 | T11 | Ledger: shuttle batches | `feat/t11-ledger-shuttle-batches` | E6 | T10 | ⬜ | |
