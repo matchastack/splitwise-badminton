@@ -73,7 +73,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T34 | Admin: edit attendance | `feat/t34-admin-edit-attendance` | E8 | T14, T16, T17, T25 | ⬜ | |
 | T35 | Admin: edit bookings, cancel session | `feat/t35-admin-edit-booking` | E8 | T24, T34 | ⬜ | |
 | T36 | Admin: manual transfer | `feat/t36-admin-manual-transfer` | E8 | T14, T16, T17 | ⬜ | |
-| T37 | Setup and deployment guide | `docs/t37-setup-guide` | E1 | T07, T33 | ⬜ | |
+| T37 | Setup and deployment guide | `docs/t37-setup-guide` | E1 | T07, T32 | ✅ | [#35](https://github.com/matchastack/splitwise-badminton/pull/35) |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
@@ -407,7 +407,7 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
 ## E1 — Documentation
 
 ### T37 · Setup and deployment guide
-`docs/t37-setup-guide` · Stories US-1.3 · FR-OPS-4 · Depends on T07, T33
+`docs/t37-setup-guide` · Stories US-1.3 · FR-OPS-4 · Depends on T07, T32 (brought forward at the owner's request)
 - **Scope:** README covering:
   - BotFather;
   - adding the bot to the group as an admin with *Delete messages*;

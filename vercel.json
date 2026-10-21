@@ -1,10 +1,23 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": [
+    "sin1"
+  ],
   "functions": {
     "api/index.py": {
       "includeFiles": "badminton/**"
     }
   },
-  "rewrites": [{ "source": "/api/(.*)", "destination": "/api/index" }],
-  "crons": [{ "path": "/api/cron", "schedule": "0 2 * * *" }]
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron",
+      "schedule": "0 2 * * *"
+    }
+  ]
 }
