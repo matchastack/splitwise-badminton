@@ -54,7 +54,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T15 | Member registry and basic commands | `feat/t15-member-registry` | E2 | T06 | ✅ | [#16](https://github.com/matchastack/splitwise-badminton/pull/16) |
 | T16 | Admin guard, audit log, announcements | `feat/t16-admin-guard-audit` | E8 | T15 | ✅ | [#17](https://github.com/matchastack/splitwise-badminton/pull/17) |
 | T17 | Wizard drafts and reply prompts | `feat/t17-drafts-and-prompts` | E3 | T15 | ✅ | [#18](https://github.com/matchastack/splitwise-badminton/pull/18) |
-| T18 | Group message guard | `feat/t18-group-message-guard` | E9 | T17 | ⬜ | |
+| T18 | Group message guard | `feat/t18-group-message-guard` | E9 | T17 | ✅ | [#19](https://github.com/matchastack/splitwise-badminton/pull/19) |
 | T19 | Member admin commands | `feat/t19-member-admin-commands` | E2 | T16, T17 | ⬜ | |
 | T20 | Calendar and hour keyboards | `feat/t20-calendar-hour-keyboards` | E3 | T09 | ⬜ | |
 | T21 | Booking wizard: date, time, duration | `feat/t21-booking-wizard-schedule` | E3 | T17, T20 | ⬜ | |

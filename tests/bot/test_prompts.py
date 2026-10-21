@@ -77,20 +77,21 @@ async def test_invalid_answer_asks_again(bot: BotHarness, asked: dict) -> None:
     assert answers == ["hours=4"]
 
 
-async def test_replies_from_others_are_ignored(bot: BotHarness, asked: dict) -> None:
+async def test_replies_from_others_are_removed(bot: BotHarness, asked: dict) -> None:
     bot.telegram.clear()
+    intruder = message(sender=NIC, text="5", reply_to=asked)
 
-    await bot.send({"update_id": 1, "message": message(sender=NIC, text="5", reply_to=asked)})
+    await bot.send({"update_id": 1, "message": intruder})
 
     assert answers == []
-    assert bot.telegram.calls == []
+    assert [call.params["message_id"] for call in bot.telegram.calls] == [intruder["message_id"]]
 
 
-async def test_replies_to_other_messages_are_ignored(bot: BotHarness, asked: dict) -> None:
+async def test_replies_to_other_messages_are_removed(bot: BotHarness, asked: dict) -> None:
     bot.telegram.clear()
-    unrelated = message(sender=NIC, text="hello")
+    reply = message(sender=SHAWN, text="5", reply_to=message(sender=NIC, text="hello"))
 
-    await bot.send({"update_id": 1, "message": message(sender=SHAWN, text="5", reply_to=unrelated)})
+    await bot.send({"update_id": 1, "message": reply})
 
     assert answers == []
-    assert bot.telegram.calls == []
+    assert [call.params["message_id"] for call in bot.telegram.calls] == [reply["message_id"]]

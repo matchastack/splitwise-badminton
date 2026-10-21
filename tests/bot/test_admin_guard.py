@@ -20,7 +20,7 @@ async def secret_button(update: Update, _context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def test_admin_command_runs_for_admin_only(bot: BotHarness) -> None:
-    bot.application.add_handler(CommandHandler("secret", secret))
+    bot.application.add_handler(CommandHandler("secret", secret), group=-1)
 
     await bot.send(text_update("/secret", sender=ZY))
     await bot.send(text_update("/secret", sender=SHAWN))
@@ -29,7 +29,7 @@ async def test_admin_command_runs_for_admin_only(bot: BotHarness) -> None:
 
 
 async def test_admin_button_alerts_non_admin(bot: BotHarness) -> None:
-    bot.application.add_handler(CallbackQueryHandler(secret_button, pattern="^secret$"))
+    bot.application.add_handler(CallbackQueryHandler(secret_button, pattern="^secret$"), group=-1)
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("x", callback_data="secret")]])
     card = message(sender=ZY, text="card", reply_markup=keyboard.to_dict())
 

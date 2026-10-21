@@ -16,6 +16,7 @@ from telegram import Bot, ForceReply, Update, User
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
 from badminton.bot.context import db_session
+from badminton.bot.handlers import guard
 from badminton.db.models import Draft
 from badminton.domain.timeutil import utc_now
 from badminton.services.drafts import delete_message_quietly, find_by_prompt, update_data
@@ -72,6 +73,7 @@ async def handle_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             now=utc_now(),
         )
         if draft is None or draft.user_id != update.effective_user.id:
+            await guard.delete_unless_exempt(update, context)
             return
         handler = _reply_handlers[draft.kind]
         await delete_message_quietly(context.bot, message.chat_id, message.message_id)

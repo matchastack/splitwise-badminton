@@ -1,4 +1,7 @@
-"""Self-tests for the bot-flow harness, using throwaway handlers."""
+"""Self-tests for the bot-flow harness, using throwaway handlers.
+
+They go in handler group -1 so they run before the real handlers (and the guard).
+"""
 
 import pytest
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -32,8 +35,8 @@ async def on_tap(update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def test_records_sent_messages_and_button_taps(bot: BotHarness) -> None:
-    bot.application.add_handler(CommandHandler("ping", reply_with_button))
-    bot.application.add_handler(CallbackQueryHandler(on_tap, pattern=r"^tap:"))
+    bot.application.add_handler(CommandHandler("ping", reply_with_button), group=-1)
+    bot.application.add_handler(CallbackQueryHandler(on_tap, pattern=r"^tap:"), group=-1)
 
     await bot.send(text_update("/ping", sender=ZY))
     sent = bot.telegram.last("sendMessage")
@@ -71,7 +74,7 @@ async def test_injected_failure_reaches_the_handler(bot: BotHarness) -> None:
     async def dm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await context.bot.send_message(chat_id=update.effective_user.id, text="hi")
 
-    bot.application.add_handler(CommandHandler("dm", dm))
+    bot.application.add_handler(CommandHandler("dm", dm), group=-1)
     bot.telegram.fail("sendMessage", 403, "Forbidden: bot was blocked by the user")
 
     with pytest.raises(Forbidden):
@@ -83,7 +86,7 @@ async def test_unsupported_method_fails_loudly(bot: BotHarness) -> None:
     async def get_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await context.bot.get_chat(update.effective_chat.id)
 
-    bot.application.add_handler(CommandHandler("chat", get_chat))
+    bot.application.add_handler(CommandHandler("chat", get_chat), group=-1)
 
     with pytest.raises(BadRequest, match="does not support getChat"):
         await bot.send(text_update("/chat", sender=ZY))
