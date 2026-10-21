@@ -70,7 +70,9 @@ async def test_invoice_lists_fewest_transfers_with_handles(bot: BotHarness) -> N
         "\n"
         "<b>Settle up</b>\n"
         '• <a href="tg://user?id=222">shawn</a> → @zy_handle $12.50\n'
-        "• nic → @zy_handle $12.50"
+        "• nic → @zy_handle $12.50\n"
+        "\n"
+        "Tap ✅ once you've paid."
     )
     async with bot.sessionmaker() as db:
         stored = await db.get(Invoice, invoice.id)

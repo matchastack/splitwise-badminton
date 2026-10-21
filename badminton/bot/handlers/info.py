@@ -16,7 +16,8 @@ from badminton.db.models import Member, Session
 from badminton.domain.ledger import Ledger
 from badminton.domain.money import fmt_sgd
 from badminton.domain.timeutil import fmt_hours, fmt_session, utc_now
-from badminton.services.members import upsert_from_telegram
+from badminton.services.invoice import LineView, open_lines_for
+from badminton.services.members import mention_html, upsert_from_telegram
 from badminton.services.repo import load_ledger
 
 
@@ -44,7 +45,20 @@ async def show_balance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         member = await upsert_from_telegram(db, update.effective_user)
         await db.commit()
         lines = balance_lines(await load_ledger(db, utc_now()), member)
+        lines += unpaid_lines(member, await open_lines_for(db, member.id))
     await update.effective_message.reply_text("\n".join(lines))
+
+
+def unpaid_lines(member: Member, views: list[LineView]) -> list[str]:
+    """The caller's unpaid lines on the latest invoice (FR-LED-8)."""
+    lines = []
+    for view in views:
+        amount = fmt_sgd(view.line.amount_cents)
+        if view.payer.id == member.id:
+            lines.append(f"🧾 To settle: pay {mention_html(view.payee)} {amount}")
+        else:
+            lines.append(f"🧾 To settle: {mention_html(view.payer)} owes you {amount}")
+    return lines
 
 
 async def upcoming_lines(db: AsyncSession, now: datetime) -> list[str]:
