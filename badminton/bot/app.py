@@ -7,13 +7,13 @@ each request builds an application, processes one update and shuts it down.
 from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from telegram.ext import Application, ApplicationBuilder
+from telegram.constants import ParseMode
+from telegram.ext import Application, ApplicationBuilder, Defaults
 from telegram.request import BaseRequest
 
+from badminton.bot.context import SESSIONMAKER_KEY, SETTINGS_KEY
+from badminton.bot.handlers import register_handlers
 from badminton.config import Settings
-
-SETTINGS_KEY = "settings"
-SESSIONMAKER_KEY = "sessionmaker"
 
 
 def build_application(
@@ -28,7 +28,9 @@ def build_application(
     ``request`` replaces the HTTP transport (tests). ``polling`` keeps the Updater so
     the app can long-poll during local development instead of using the webhook.
     """
-    builder = ApplicationBuilder().token(settings.bot_token)
+    builder = (
+        ApplicationBuilder().token(settings.bot_token).defaults(Defaults(parse_mode=ParseMode.HTML))
+    )
     if not polling:
         builder = builder.updater(None)
     if request is not None:
@@ -36,4 +38,5 @@ def build_application(
     application = builder.build()
     application.bot_data[SETTINGS_KEY] = settings
     application.bot_data[SESSIONMAKER_KEY] = sessionmaker
+    register_handlers(application)
     return application
