@@ -1,0 +1,179 @@
+import json
+from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
+
+import httpx
+import pytest
+from telegram import Update
+from telegram.ext import Application, TypeHandler
+from telegram.request import BaseRequest, RequestData
+
+from badminton.config import Settings
+from badminton.db.engine import create_engine, create_sessionmaker
+from badminton.services import tick
+from badminton.web import Runtime, app, get_runtime
+
+SETTINGS = Settings.from_env(
+    {
+        "BOT_TOKEN": "123:abc",
+        "WEBHOOK_SECRET": "hook-secret",
+        "DATABASE_URL": "postgresql://u:p@localhost/unused",
+        "CRON_SECRET": "cron-secret",
+        "ADMIN_TELEGRAM_IDS": "111",
+    }
+)
+BOT_USER = {"id": 123, "is_bot": True, "first_name": "Badminton", "username": "badminton_bot"}
+UPDATE = {
+    "update_id": 1,
+    "message": {
+        "message_id": 10,
+        "date": 1_790_000_000,
+        "chat": {"id": 111, "type": "private"},
+        "from": {"id": 111, "is_bot": False, "first_name": "zy"},
+        "text": "hello",
+    },
+}
+
+
+class StubTelegram(BaseRequest):
+    """Answers getMe so the application can start; nothing else is needed here."""
+
+    async def initialize(self) -> None:
+        pass
+
+    async def shutdown(self) -> None:
+        pass
+
+    @property
+    def read_timeout(self) -> float | None:
+        return None
+
+    async def do_request(
+        self, url: str, method: str, request_data: RequestData | None = None, **_: object
+    ) -> tuple[int, bytes]:
+        assert url.endswith("/getMe"), url
+        return 200, json.dumps({"ok": True, "result": BOT_USER}).encode()
+
+
+@dataclass(frozen=True)
+class RecordingRuntime(Runtime):
+    """Adds a handler that records every update, optionally failing afterwards."""
+
+    seen: list[Update] = field(default_factory=list)
+    fail: bool = False
+
+    def application(self) -> Application:
+        application = super().application()
+
+        async def record(update: Update, _context: object) -> None:
+            self.seen.append(update)
+            if self.fail:
+                raise RuntimeError("handler failed")
+
+        application.add_handler(TypeHandler(Update, record))
+        return application
+
+
+def make_runtime(*, fail: bool = False) -> RecordingRuntime:
+    sessionmaker = create_sessionmaker(create_engine(SETTINGS.database_url))
+    return RecordingRuntime(SETTINGS, sessionmaker, StubTelegram(), fail=fail)
+
+
+@pytest.fixture
+def runtime() -> RecordingRuntime:
+    return make_runtime()
+
+
+@pytest.fixture
+async def client(runtime: RecordingRuntime) -> AsyncIterator[httpx.AsyncClient]:
+    app.dependency_overrides[get_runtime] = lambda: runtime
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+    app.dependency_overrides.clear()
+
+
+def webhook_headers(secret: str = "hook-secret") -> dict[str, str]:
+    return {"X-Telegram-Bot-Api-Secret-Token": secret}
+
+
+@pytest.mark.parametrize("headers", [{}, webhook_headers("wrong")], ids=["missing", "wrong"])
+async def test_webhook_rejects_bad_secret(
+    client: httpx.AsyncClient, runtime: RecordingRuntime, headers: dict[str, str]
+) -> None:
+    response = await client.post("/api/telegram", json=UPDATE, headers=headers)
+
+    assert response.status_code == 401
+    assert runtime.seen == []
+
+
+async def test_webhook_processes_update(
+    client: httpx.AsyncClient, runtime: RecordingRuntime
+) -> None:
+    response = await client.post("/api/telegram", json=UPDATE, headers=webhook_headers())
+
+    assert response.status_code == 200
+    assert [update.update_id for update in runtime.seen] == [1]
+    assert runtime.seen[0].effective_message.text == "hello"
+
+
+async def test_webhook_returns_200_when_handler_fails(client: httpx.AsyncClient) -> None:
+    app.dependency_overrides[get_runtime] = lambda: make_runtime(fail=True)
+
+    response = await client.post("/api/telegram", json=UPDATE, headers=webhook_headers())
+
+    assert response.status_code == 200
+
+
+@pytest.mark.parametrize("body", [b"not json", b"[1, 2]"], ids=["invalid", "not-object"])
+async def test_webhook_rejects_malformed_body(client: httpx.AsyncClient, body: bytes) -> None:
+    response = await client.post("/api/telegram", content=body, headers=webhook_headers())
+
+    assert response.status_code == 400
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [{}, {"Authorization": "Bearer wrong"}, {"Authorization": "cron-secret"}],
+    ids=["missing", "wrong", "no-bearer-prefix"],
+)
+async def test_cron_rejects_bad_token(client: httpx.AsyncClient, headers: dict[str, str]) -> None:
+    response = await client.get("/api/cron", headers=headers)
+
+    assert response.status_code == 401
+
+
+async def test_cron_runs_steps_and_isolates_failures(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ran: list[str] = []
+
+    async def ok_step(context: tick.TickContext) -> None:
+        assert context.settings is SETTINGS
+        ran.append("ok")
+
+    async def failing_step(context: tick.TickContext) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        tick, "default_steps", lambda: [("broken", failing_step), ("works", ok_step)]
+    )
+
+    response = await client.get("/api/cron", headers={"Authorization": "Bearer cron-secret"})
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": False, "steps": {"broken": "error", "works": "ok"}}
+    assert ran == ["ok"]
+
+
+async def test_cron_with_no_steps(client: httpx.AsyncClient) -> None:
+    response = await client.post("/api/cron", headers={"Authorization": "Bearer cron-secret"})
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "steps": {}}
+
+
+def test_vercel_entry_point_exposes_app() -> None:
+    from api.index import app as entry_app
+
+    assert entry_app is app
