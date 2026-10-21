@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 from telegram import Update
-from telegram.ext import Application, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
+from badminton.bot.admin import admin_only
 from badminton.bot.context import db_session, settings_of
 from badminton.db.models import Invoice, InvoiceLine, Member
+from badminton.domain.timeutil import fmt_period, period_of, utc_now
 from badminton.services import audit
 from badminton.services.invoice import previous_invoice, refresh_invoice_card, toggle_paid
 from badminton.services.members import upsert_from_telegram
+from badminton.services.monthly import run_invoice
 
 REPLACED = "This invoice has been replaced by a newer one."
 
@@ -48,5 +51,23 @@ async def on_paid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await refresh_invoice_card(context.bot, db, invoice)
 
 
+@admin_only
+async def invoice_now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/invoice: post this month's settle-up now (FR-INV-1)."""
+    now = utc_now()
+    period = period_of(now)
+    async with db_session(context) as db:
+        invoice = await run_invoice(context.bot, db, settings_of(context), period=period, now=now)
+    message = update.effective_message
+    if invoice is None:
+        await message.reply_text(
+            f"{fmt_period(period)} already has an invoice. "
+            "New activity goes on next month's invoice."
+        )
+    elif message.chat_id != settings_of(context).group_chat_id:
+        await message.reply_text(f"🧾 Posted the {fmt_period(period)} invoice in the group.")
+
+
 def register(application: Application) -> None:
+    application.add_handler(CommandHandler("invoice", invoice_now))
     application.add_handler(CallbackQueryHandler(on_paid, pattern=r"^inv:\d+$"))

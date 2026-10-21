@@ -69,7 +69,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T30 | Invoice generation and group card | `feat/t30-invoice-generation` | E7 | T12, T13, T14, T16 | ✅ | [#32](https://github.com/matchastack/splitwise-badminton/pull/32) |
 | T31 | Invoice Paid toggle | `feat/t31-invoice-paid-toggle` | E7 | T29, T30 | ✅ | [#33](https://github.com/matchastack/splitwise-badminton/pull/33) |
 | T32 | DM statements | `feat/t32-invoice-dm-statements` | E7 | T30 | ✅ | [#34](https://github.com/matchastack/splitwise-badminton/pull/34) |
-| T33 | Monthly schedule and `/invoice` | `feat/t33-invoice-schedule` | E7 | T32 | ⬜ | |
+| T33 | Monthly schedule and `/invoice` | `feat/t33-invoice-schedule` | E7 | T32 | ✅ | [#36](https://github.com/matchastack/splitwise-badminton/pull/36) |
 | T34 | Admin: edit attendance | `feat/t34-admin-edit-attendance` | E8 | T14, T16, T17, T25 | ⬜ | |
 | T35 | Admin: edit bookings, cancel session | `feat/t35-admin-edit-booking` | E8 | T24, T34 | ⬜ | |
 | T36 | Admin: manual transfer | `feat/t36-admin-manual-transfer` | E8 | T14, T16, T17 | ⬜ | |
