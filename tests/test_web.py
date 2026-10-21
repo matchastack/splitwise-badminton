@@ -1,4 +1,3 @@
-import json
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
@@ -6,12 +5,12 @@ import httpx
 import pytest
 from telegram import Update
 from telegram.ext import Application, TypeHandler
-from telegram.request import BaseRequest, RequestData
 
 from badminton.config import Settings
 from badminton.db.engine import create_engine, create_sessionmaker
 from badminton.services import tick
 from badminton.web import Runtime, app, get_runtime
+from tests.fake_telegram import FakeTelegram
 
 SETTINGS = Settings.from_env(
     {
@@ -22,7 +21,6 @@ SETTINGS = Settings.from_env(
         "ADMIN_TELEGRAM_IDS": "111",
     }
 )
-BOT_USER = {"id": 123, "is_bot": True, "first_name": "Badminton", "username": "badminton_bot"}
 UPDATE = {
     "update_id": 1,
     "message": {
@@ -33,26 +31,6 @@ UPDATE = {
         "text": "hello",
     },
 }
-
-
-class StubTelegram(BaseRequest):
-    """Answers getMe so the application can start; nothing else is needed here."""
-
-    async def initialize(self) -> None:
-        pass
-
-    async def shutdown(self) -> None:
-        pass
-
-    @property
-    def read_timeout(self) -> float | None:
-        return None
-
-    async def do_request(
-        self, url: str, method: str, request_data: RequestData | None = None, **_: object
-    ) -> tuple[int, bytes]:
-        assert url.endswith("/getMe"), url
-        return 200, json.dumps({"ok": True, "result": BOT_USER}).encode()
 
 
 @dataclass(frozen=True)
@@ -76,7 +54,7 @@ class RecordingRuntime(Runtime):
 
 def make_runtime(*, fail: bool = False) -> RecordingRuntime:
     sessionmaker = create_sessionmaker(create_engine(SETTINGS.database_url))
-    return RecordingRuntime(SETTINGS, sessionmaker, StubTelegram(), fail=fail)
+    return RecordingRuntime(SETTINGS, sessionmaker, FakeTelegram(), fail=fail)
 
 
 @pytest.fixture

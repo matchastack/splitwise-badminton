@@ -42,7 +42,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T03 | Settings from environment | `feat/t03-settings` | E1 | T01 | ✅ | [#4](https://github.com/matchastack/splitwise-badminton/pull/4) |
 | T04 | Database schema and migrations | `feat/t04-db-schema` | E1 | T03 | ✅ | [#5](https://github.com/matchastack/splitwise-badminton/pull/5) |
 | T05 | Web endpoints and Vercel config | `feat/t05-web-endpoints` | E1 | T03 | ✅ | [#6](https://github.com/matchastack/splitwise-badminton/pull/6) |
-| T06 | Fake Telegram test harness | `test/t06-fake-telegram-harness` | E1 | T04, T05 | ⬜ | |
+| T06 | Fake Telegram test harness | `test/t06-fake-telegram-harness` | E1 | T04, T05 | ✅ | [#7](https://github.com/matchastack/splitwise-badminton/pull/7) |
 | T07 | Telegram setup and dev scripts | `chore/t07-telegram-scripts` | E1 | T05 | ⬜ | |
 | T08 | Money and allocation | `feat/t08-money-allocation` | E6 | T01 | ⬜ | |
 | T09 | SGT time utilities | `feat/t09-time-utils` | E6 | T01 | ⬜ | |
