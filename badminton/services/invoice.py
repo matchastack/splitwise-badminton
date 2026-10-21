@@ -221,23 +221,6 @@ async def refresh_invoice_card(
         )
 
 
-async def run_invoice(
-    bot: Bot, db: AsyncSession, settings: Settings, *, period: str, now: datetime
-) -> Invoice | None:
-    """Generate, post and commit the invoice for ``period``; mark the previous card's
-    unpaid lines as carried. Returns None if the period was already invoiced."""
-    previous = await previous_invoice(db)
-    invoice = await generate_invoice(db, period=period, now=now)
-    if invoice is None:
-        return None
-    await db.commit()
-    await publish_invoice(bot, db, settings, invoice)
-    await db.commit()
-    if previous is not None:
-        await refresh_invoice_card(bot, db, previous, carried_into=fmt_period(period))
-    return invoice
-
-
 async def toggle_paid(db: AsyncSession, line: InvoiceLine, recorded_by_member_id: int) -> bool:
     """Record the line's transfer, or remove it if already recorded. Returns True if
     the line is now paid."""

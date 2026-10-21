@@ -13,7 +13,7 @@ from badminton.db.models import (
     Transfer,
 )
 from badminton.domain.timeutil import at_sgt
-from badminton.services.invoice import run_invoice
+from badminton.services.monthly import run_invoice
 from tests.conftest import TEST_SETTINGS, BotHarness
 from tests.fake_telegram import GROUP_ID
 

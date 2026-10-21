@@ -51,12 +51,12 @@ class ApiCall:
 class FakeTelegram(BaseRequest):
     """Records Bot API calls and synthesises successful responses.
 
-    ``fail(method, code, description)`` makes the next call to ``method`` fail,
-    e.g. ``fail("sendMessage", 403, "Forbidden: bot was blocked by the user")``.
+    ``fail(method, code, description, chat_id=...)`` makes the next call to ``method``
+    fail, e.g. ``fail("sendMessage", 403, "Forbidden: bot was blocked by the user")``.
     """
 
     calls: list[ApiCall] = field(default_factory=list)
-    _failures: dict[str, list[tuple[int, str]]] = field(default_factory=dict)
+    _failures: dict[str, list[tuple[int, str, int | None]]] = field(default_factory=dict)
     _message_ids: itertools.count[int] = field(default_factory=lambda: itertools.count(1000))
 
     async def initialize(self) -> None:
@@ -77,8 +77,8 @@ class FakeTelegram(BaseRequest):
         if api_method == "getMe":
             return 200, _encode({"ok": True, "result": BOT_USER})
 
-        if queued := self._failures.get(api_method):
-            code, description = queued.pop(0)
+        if failure := self._take_failure(api_method, params.get("chat_id")):
+            code, description = failure
             self.calls.append(ApiCall(api_method, params))
             return code, _encode({"ok": False, "error_code": code, "description": description})
         if api_method not in _TRUE_METHODS | _SEND_METHODS | _EDIT_METHODS:
@@ -89,8 +89,17 @@ class FakeTelegram(BaseRequest):
         self.calls.append(ApiCall(api_method, params, result))
         return 200, _encode({"ok": True, "result": result})
 
-    def fail(self, method: str, code: int, description: str) -> None:
-        self._failures.setdefault(method, []).append((code, description))
+    def fail(self, method: str, code: int, description: str, *, chat_id: int | None = None) -> None:
+        """Make the next call to ``method`` (to ``chat_id``, if given) fail."""
+        self._failures.setdefault(method, []).append((code, description, chat_id))
+
+    def _take_failure(self, method: str, chat_id: object) -> tuple[int, str] | None:
+        queued = self._failures.get(method, [])
+        for index, (code, description, only_chat) in enumerate(queued):
+            if only_chat is None or str(only_chat) == str(chat_id):
+                del queued[index]
+                return code, description
+        return None
 
     # Inspection helpers ---------------------------------------------------
 

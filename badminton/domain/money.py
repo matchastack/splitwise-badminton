@@ -52,6 +52,11 @@ def fmt_sgd(cents: int) -> str:
     return f"{sign}${dollars:,}.{remainder:02d}"
 
 
+def fmt_signed(cents: int) -> str:
+    """``500`` -> ``+$5.00``, ``-500`` -> ``−$5.00`` (with a typographic minus)."""
+    return f"{'+' if cents >= 0 else '−'}{fmt_sgd(abs(cents))}"
+
+
 def parse_amount(text: str, *, max_cents: int = MAX_BOOKING_CENTS) -> int:
     """Parse a typed dollar amount into cents: ``14.8``, ``$14.80`` and ``14`` are accepted."""
     match = _AMOUNT_RE.fullmatch(text.strip())
