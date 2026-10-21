@@ -19,7 +19,12 @@ from badminton.bot.context import db_session
 from badminton.bot.handlers import guard
 from badminton.db.models import Draft
 from badminton.domain.timeutil import utc_now
-from badminton.services.drafts import delete_message_quietly, find_by_prompt, update_data
+from badminton.services.drafts import (
+    delete_message_quietly,
+    find_by_prompt,
+    is_deleted,
+    update_data,
+)
 
 ReplyHandler = Callable[
     [Update, ContextTypes.DEFAULT_TYPE, AsyncSession, Draft, str], Awaitable[None]
@@ -90,8 +95,9 @@ async def handle_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             )
         else:
             await delete_message_quietly(context.bot, draft.chat_id, draft.prompt_message_id)
-            draft.prompt_message_id = None
-            update_data(draft, awaiting=None, question=None)
+            if not is_deleted(db, draft):
+                draft.prompt_message_id = None
+                update_data(draft, awaiting=None, question=None)
         await db.commit()
 
 

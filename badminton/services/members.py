@@ -41,7 +41,7 @@ def clean_name(raw: str) -> str:
 def validate_name(raw: str) -> str:
     name = re.sub(r"\s+", " ", raw).strip()
     if not name:
-        raise ValueError("Usage: /name <your name>")
+        raise ValueError("Enter a name.")
     if len(name) > MAX_NAME_LENGTH:
         raise ValueError(f"Names can be at most {MAX_NAME_LENGTH} characters.")
     return name
@@ -56,3 +56,12 @@ def mention_html(member: Member) -> str:
     if member.telegram_user_id is not None:
         return f'<a href="tg://user?id={member.telegram_user_id}">{name}</a>'
     return name
+
+
+async def active_members(db: AsyncSession) -> list[Member]:
+    """Members to offer in pickers; deactivated ones keep their history but are hidden."""
+    return list(await db.scalars(select(Member).where(Member.active).order_by(Member.id)))
+
+
+async def all_members(db: AsyncSession) -> list[Member]:
+    return list(await db.scalars(select(Member).order_by(Member.id)))

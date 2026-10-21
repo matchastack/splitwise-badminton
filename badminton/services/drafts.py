@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import Bot
 from telegram.error import BadRequest
@@ -72,7 +72,12 @@ def update_data(draft: Draft, **changes: Any) -> None:
 
 
 async def delete_draft(db: AsyncSession, draft: Draft) -> None:
-    await db.execute(delete(Draft).where(Draft.id == draft.id))
+    await db.delete(draft)
+
+
+def is_deleted(db: AsyncSession, draft: Draft) -> bool:
+    """Whether a reply handler finished the wizard by deleting its draft."""
+    return draft in db.deleted or inspect(draft).was_deleted
 
 
 async def delete_message_quietly(bot: Bot, chat_id: int, message_id: int | None) -> None:

@@ -27,8 +27,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def set_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
+    if not context.args:
+        await message.reply_text("Usage: /name &lt;your name&gt;")
+        return
     try:
-        name = validate_name(" ".join(context.args or ()))
+        name = validate_name(" ".join(context.args))
     except ValueError as error:
         await message.reply_text(html.escape(str(error)))
         return
