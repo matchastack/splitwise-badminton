@@ -1,0 +1,120 @@
+from datetime import date, timedelta
+
+from sqlalchemy import select, update
+
+from badminton.db.models import Member, Session, ShuttleBatch
+from badminton.domain.timeutil import at_sgt, fmt_session, utc_now
+from badminton.services.attendance import set_attendance
+from badminton.services.finalize import finalize_ended_sessions
+from badminton.services.tick import TickContext
+from tests.bot.attendance_helpers import make_session, move_session, post
+from tests.conftest import TEST_SETTINGS, BotHarness
+from tests.fake_telegram import ADMIN_ID, GROUP_ID, callback_update, user
+
+DAY = date(2026, 11, 8)
+START = at_sgt(DAY, 11)
+AFTER = START + timedelta(hours=2)
+WHEN = fmt_session(START, AFTER)
+
+
+def tick(bot: BotHarness, when=AFTER) -> TickContext:
+    return TickContext(bot.application.bot, TEST_SETTINGS, bot.sessionmaker, when)
+
+
+async def mark_in(bot: BotHarness, session_id: int, *names: str) -> None:
+    async with bot.sessionmaker() as db:
+        for name in names:
+            member = Member(display_name=name)
+            db.add(member)
+            await db.flush()
+            await set_attendance(db, session_id, member.id, "in")
+        await db.commit()
+
+
+def summaries(bot: BotHarness) -> list[str]:
+    return [t for t in bot.telegram.sent_texts(GROUP_ID) if "is locked." in t]
+
+
+async def test_ended_session_is_locked_with_a_summary(bot: BotHarness) -> None:
+    session_id = await make_session(bot, starts_at=START)
+    card = await post(bot, session_id)
+    await mark_in(bot, session_id, "shawn", "hw", "jy")
+
+    await finalize_ended_sessions(tick(bot))
+
+    locked_card = bot.telegram.last("editMessageText").params
+    assert locked_card["message_id"] == card["message_id"]
+    assert locked_card["text"].endswith("🔒 Attendance is locked.")
+    assert "reply_markup" not in locked_card
+    assert summaries(bot) == [
+        f"🔒 <b>{WHEN}</b> is locked.\n👥 3 played: hw, jy, shawn\n💵 Court $4.93–$4.94 each"
+    ]
+    async with bot.sessionmaker() as db:
+        assert (await db.get(Session, session_id)).locked_at == AFTER
+
+
+async def test_summary_names_the_shuttle_batch(bot: BotHarness) -> None:
+    session_id = await make_session(bot, starts_at=START)
+    await mark_in(bot, session_id, "shawn", "hw")
+    async with bot.sessionmaker() as db:
+        payer = await db.scalar(select(Member.id).where(Member.display_name == "zy"))
+        batch = ShuttleBatch(
+            payer_member_id=payer, amount_cents=8000, starts_at=START - timedelta(days=30)
+        )
+        db.add(batch)
+        await db.commit()
+
+    await finalize_ended_sessions(tick(bot))
+
+    assert summaries(bot)[0].endswith(
+        f"💵 Court $7.40 each\n🏸 +2h each on shuttle batch #{batch.id}"
+    )
+
+
+async def test_only_once_and_only_after_the_end(bot: BotHarness) -> None:
+    session_id = await make_session(bot, starts_at=START)
+    await mark_in(bot, session_id, "shawn")
+
+    await finalize_ended_sessions(tick(bot, AFTER - timedelta(minutes=1)))
+    assert summaries(bot) == []
+
+    await finalize_ended_sessions(tick(bot))
+    await finalize_ended_sessions(tick(bot, AFTER + timedelta(days=1)))
+    assert len(summaries(bot)) == 1
+
+
+async def test_cancelled_sessions_are_not_finalised(bot: BotHarness) -> None:
+    await make_session(bot, starts_at=START)
+    async with bot.sessionmaker() as db:
+        await db.execute(update(Session).values(status="cancelled"))
+        await db.commit()
+
+    await finalize_ended_sessions(tick(bot))
+
+    assert summaries(bot) == []
+
+
+async def test_nobody_in_alerts_the_admin(bot: BotHarness) -> None:
+    await make_session(bot, starts_at=START)
+
+    await finalize_ended_sessions(tick(bot))
+
+    assert summaries(bot) == [
+        f"🔒 <b>{WHEN}</b> is locked.\n"
+        "Nobody was marked in, so the admin has been asked to check it."
+    ]
+    admin_dm = [c for c in bot.telegram.calls_to("sendMessage") if c.params["chat_id"] == ADMIN_ID]
+    assert admin_dm[0].params["text"].startswith(f"⚠️ Nobody was marked in for <b>{WHEN}</b>")
+
+
+async def test_a_late_tap_finalises_straight_away(bot: BotHarness) -> None:
+    session_id = await make_session(bot)
+    card = await post(bot, session_id)
+    await mark_in(bot, session_id, "hw")
+    await move_session(bot, session_id, utc_now() - timedelta(hours=3))  # ended an hour ago
+    button = card["reply_markup"]["inline_keyboard"][0][0]["callback_data"]
+
+    await bot.send(callback_update(button, sender=user(222, "shawn"), on_message=card))
+
+    assert len(summaries(bot)) == 1
+    assert "1 played: hw" in summaries(bot)[0]

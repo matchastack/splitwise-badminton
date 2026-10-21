@@ -8,10 +8,11 @@ from telegram import Update
 from telegram.error import BadRequest
 from telegram.ext import Application, CallbackQueryHandler, ContextTypes
 
-from badminton.bot.context import db_session
+from badminton.bot.context import db_session, settings_of
 from badminton.db.models import Session
 from badminton.domain.timeutil import utc_now
 from badminton.services.attendance import IN, load_card_view, render_card, set_attendance
+from badminton.services.finalize import finalize_session
 from badminton.services.members import upsert_from_telegram
 
 LOCKED = "Attendance is locked: this session has ended."
@@ -25,8 +26,10 @@ async def on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if session is None or session.status == "cancelled":
             await query.answer("This session was cancelled.", show_alert=True)
             return
-        if utc_now() >= session.ends_at:
+        now = utc_now()
+        if now >= session.ends_at:
             await query.answer(LOCKED, show_alert=True)
+            await finalize_session(context.bot, db, session.id, settings_of(context), now)
             return
         member = await upsert_from_telegram(db, update.effective_user)
         await set_attendance(db, session.id, member.id, status)
