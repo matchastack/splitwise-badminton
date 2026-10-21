@@ -47,7 +47,7 @@ class Settings:
         return cls(
             bot_token=values["BOT_TOKEN"],
             webhook_secret=webhook_secret,
-            database_url=_normalise_database_url(values["DATABASE_URL"]),
+            database_url=normalise_database_url(values["DATABASE_URL"]),
             cron_secret=values["CRON_SECRET"],
             admin_ids=_parse_ids("ADMIN_TELEGRAM_IDS", values["ADMIN_TELEGRAM_IDS"]),
             group_chat_id=_parse_int("GROUP_CHAT_ID", group_chat_id) if group_chat_id else None,
@@ -83,7 +83,7 @@ def _parse_ids(name: str, raw: str) -> frozenset[int]:
     return ids
 
 
-def _normalise_database_url(url: str) -> str:
+def normalise_database_url(url: str) -> str:
     """Accept the plain URL Neon shows and select the psycopg 3 driver."""
     for scheme in _DB_SCHEMES:
         if url.startswith(scheme):
