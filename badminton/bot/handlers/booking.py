@@ -7,7 +7,7 @@ duration. Only the submitter can operate it (FR-BK-2); the sender is the payer.
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,7 +22,7 @@ from telegram.ext import (
 )
 
 from badminton.bot import prompts
-from badminton.bot.context import db_session
+from badminton.bot.context import db_session, settings_of
 from badminton.bot.handlers.guard import BOOK_PHOTO
 from badminton.bot.keyboards import (
     BACK,
@@ -38,8 +38,10 @@ from badminton.bot.keyboards import (
     parse_month,
 )
 from badminton.db.models import Draft, Member
+from badminton.domain.money import fmt_sgd, parse_amount
 from badminton.domain.timeutil import (
     at_sgt,
+    card_due_date,
     fmt_date,
     fmt_hours,
     fmt_session,
@@ -49,6 +51,8 @@ from badminton.domain.timeutil import (
 )
 from badminton.services.drafts import create_draft, delete_draft, get_draft, update_data
 from badminton.services.members import mention_html, upsert_from_telegram
+from badminton.services.repo import last_hourly_rate
+from badminton.services.sessions import record_booking
 
 KIND = "booking"
 CALLBACK_KIND = "bk"
@@ -56,12 +60,17 @@ CALLBACK_KIND = "bk"
 PICK_DURATION = "dur"
 OTHER_DURATION = "durx"
 BACK_TO_HOUR = "bkh"
+PICK_PRICE = "p"
+OTHER_PRICE = "px"
+BACK_TO_DURATION = "bkd"
+CONFIRM = "ok"
 CANCEL = "x"
 
 STEP_DATE = "date"
 STEP_HOUR = "hour"
 STEP_DURATION = "duration"
 STEP_PRICE = "price"
+STEP_CONFIRM = "confirm"
 
 EXPIRED = "This booking form has expired. Send your screenshot with /book again."
 
@@ -105,11 +114,47 @@ def render(draft: Draft, payer: Member) -> tuple[str, InlineKeyboardMarkup]:
                 [_button("‹ Change time", draft, BACK_TO_HOUR)],
             ]
         )
-    else:
+    elif step == STEP_PRICE:
         lines.append("How much did you pay?")
-        markup = InlineKeyboardMarkup([])
+        suggested = data["suggested_cents"]
+        markup = InlineKeyboardMarkup(
+            [
+                [
+                    _button(fmt_sgd(suggested), draft, PICK_PRICE, str(suggested)),
+                    _button("Other…", draft, OTHER_PRICE),
+                ],
+                [_button("‹ Change duration", draft, BACK_TO_DURATION)],
+            ]
+        )
+    else:
+        lines.append(f"💵 {fmt_sgd(data['amount_cents'])}, paid by {mention_html(payer)}")
+        lines.append("Is this right?")
+        markup = InlineKeyboardMarkup(
+            [
+                [
+                    _button("✅ Confirm", draft, CONFIRM),
+                    _button("✏️ Change price", draft, BACK_TO_DURATION),
+                ]
+            ]
+        )
     rows = [*markup.inline_keyboard, [_button("✖ Cancel", draft, CANCEL)]]
     return "\n".join(lines), InlineKeyboardMarkup(rows)
+
+
+def render_record(payer: Member, starts_at: datetime, minutes: int, amount_cents: int) -> str:
+    """The permanent booking record the card becomes once confirmed (FR-BK-8)."""
+    ends_at = starts_at + timedelta(minutes=minutes)
+    return (
+        f"✅ <b>Court booked</b> by {mention_html(payer)}\n"
+        f"📅 {fmt_session(starts_at, ends_at)} ({fmt_hours(minutes)}) · {fmt_sgd(amount_cents)}"
+    )
+
+
+def card_note(starts_at: datetime, days_before: int, today: date) -> str:
+    due = card_due_date(starts_at, days_before)
+    if due <= today:
+        return "🗳 The attendance card is going up now."
+    return f"🗳 Attendance card goes up on {fmt_date(due)}."
 
 
 def _button(text: str, draft: Draft, action: str, value: str = "") -> InlineKeyboardButton:
@@ -199,11 +244,28 @@ async def _apply(
     elif action == BACK:
         changes = {"step": STEP_DATE, "hour": None, "minutes": None}
     elif action == PICK_HOUR:
+        if at_sgt(parse_day(draft.data["day"]), int(value)) <= utc_now():
+            return "That time has passed."
         changes = {"hour": int(value), "step": STEP_DURATION}
     elif action == BACK_TO_HOUR:
         changes = {"step": STEP_HOUR, "minutes": None}
     elif action == PICK_DURATION:
-        changes = {"minutes": int(value), "step": STEP_PRICE}
+        changes = await _price_step(context, db, int(value))
+    elif action == BACK_TO_DURATION:
+        changes = {"step": STEP_DURATION, "amount_cents": None}
+    elif action == PICK_PRICE:
+        changes = {"amount_cents": int(value), "step": STEP_CONFIRM}
+    elif action == OTHER_PRICE:
+        await prompts.ask(
+            context.bot,
+            draft,
+            "how much did you pay for the court? (e.g. 14.80)",
+            owner=update.effective_user,
+            field="amount",
+        )
+        return None
+    elif action == CONFIRM:
+        return await _confirm(update, context, db, draft)
     elif action == OTHER_DURATION:
         await prompts.ask(
             context.bot,
@@ -220,16 +282,53 @@ async def _apply(
     return None
 
 
+async def _price_step(
+    context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, minutes: int
+) -> dict[str, Any]:
+    """Move to the price step, suggesting the last hourly rate × hours (FR-BK-6)."""
+    rate = await last_hourly_rate(db, settings_of(context).default_court_rate_cents)
+    suggested = (rate * minutes + 30) // 60
+    return {"minutes": minutes, "suggested_cents": suggested, "step": STEP_PRICE}
+
+
+async def _confirm(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft
+) -> str | None:
+    data = draft.data
+    starts_at = at_sgt(parse_day(data["day"]), data["hour"])
+    now = utc_now()
+    if starts_at <= now:
+        return "That time has passed. Change the date or time first."
+    payer = await db.get(Member, data["payer_member_id"])
+    await record_booking(
+        db,
+        payer_id=payer.id,
+        starts_at=starts_at,
+        minutes=data["minutes"],
+        amount_cents=data["amount_cents"],
+        photo_file_id=data.get("photo_file_id"),
+        record_chat_id=draft.chat_id,
+        record_message_id=draft.message_id,
+    )
+    await delete_draft(db, draft)
+    note = card_note(starts_at, settings_of(context).reminder_days_before, sgt_date(now))
+    record = render_record(payer, starts_at, data["minutes"], data["amount_cents"])
+    await update.callback_query.edit_message_text(f"{record}\n{note}")
+    return None
+
+
 @prompts.on_reply(KIND)
 async def on_typed_answer(
     _update: Update, context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft, text: str
 ) -> None:
-    if draft.data.get("awaiting") == "minutes":
-        try:
-            minutes = parse_hours(text)
-        except ValueError as error:
-            raise prompts.PromptError(str(error)) from None
-        update_data(draft, minutes=minutes, step=STEP_PRICE)
+    awaiting = draft.data.get("awaiting")
+    try:
+        if awaiting == "minutes":
+            update_data(draft, **await _price_step(context, db, parse_hours(text)))
+        elif awaiting == "amount":
+            update_data(draft, amount_cents=parse_amount(text), step=STEP_CONFIRM)
+    except ValueError as error:
+        raise prompts.PromptError(str(error)) from None
     await refresh_card(context, db, draft)
 
 

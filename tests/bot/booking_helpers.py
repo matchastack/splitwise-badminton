@@ -70,3 +70,14 @@ class Wizard:
 
     def last_alert(self) -> str:
         return self.bot.telegram.last("answerCallbackQuery").params.get("text", "")
+
+
+async def book(
+    bot: BotHarness, sender: dict[str, Any], day: date, hour: str = "11:00", hours: str = "2h"
+) -> Wizard:
+    """Run the wizard up to the price step."""
+    wizard = await Wizard(bot, sender).start()
+    await wizard.pick_date(day)
+    await wizard.tap(hour)
+    await wizard.tap(hours)
+    return wizard

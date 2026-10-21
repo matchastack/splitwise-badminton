@@ -58,7 +58,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T19 | Member admin commands | `feat/t19-member-admin-commands` | E2 | T16, T17 | ✅ | [#20](https://github.com/matchastack/splitwise-badminton/pull/20) |
 | T20 | Calendar and hour keyboards | `feat/t20-calendar-hour-keyboards` | E3 | T09 | ✅ | [#21](https://github.com/matchastack/splitwise-badminton/pull/21) |
 | T21 | Booking wizard: date, time, duration | `feat/t21-booking-wizard-schedule` | E3 | T17, T20 | ✅ | [#22](https://github.com/matchastack/splitwise-badminton/pull/22) |
-| T22 | Booking wizard: price and confirm | `feat/t22-booking-wizard-confirm` | E3 | T21 | ⬜ | |
+| T22 | Booking wizard: price and confirm | `feat/t22-booking-wizard-confirm` | E3 | T21 | ✅ | [#23](https://github.com/matchastack/splitwise-badminton/pull/23) |
 | T23 | Same-day session merge | `feat/t23-booking-session-merge` | E3 | T22 | ⬜ | |
 | T24 | Booking cancellation | `feat/t24-booking-cancel` | E3 | T16, T22 | ⬜ | |
 | T25 | Attendance card | `feat/t25-attendance-card` | E4 | T22 | ⬜ | |
