@@ -5,7 +5,15 @@ from __future__ import annotations
 from telegram.ext import Application
 
 from badminton.bot import prompts
-from badminton.bot.handlers import booking, booking_cancel, gate, guard, member_admin, members
+from badminton.bot.handlers import (
+    attendance,
+    booking,
+    booking_cancel,
+    gate,
+    guard,
+    member_admin,
+    members,
+)
 
 
 def register_handlers(application: Application) -> None:
@@ -14,5 +22,6 @@ def register_handlers(application: Application) -> None:
     member_admin.register(application)
     booking.register(application)
     booking_cancel.register(application)
+    attendance.register(application)
     prompts.register(application)  # after commands: typed answers to wizard prompts
     guard.register(application)  # last: removes whatever nothing else handled

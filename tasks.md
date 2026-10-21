@@ -61,7 +61,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T22 | Booking wizard: price and confirm | `feat/t22-booking-wizard-confirm` | E3 | T21 | ✅ | [#23](https://github.com/matchastack/splitwise-badminton/pull/23) |
 | T23 | Same-day session merge | `feat/t23-booking-session-merge` | E3 | T22 | ✅ | [#24](https://github.com/matchastack/splitwise-badminton/pull/24) |
 | T24 | Booking cancellation | `feat/t24-booking-cancel` | E3 | T16, T22 | ✅ | [#25](https://github.com/matchastack/splitwise-badminton/pull/25) |
-| T25 | Attendance card | `feat/t25-attendance-card` | E4 | T22 | ⬜ | |
+| T25 | Attendance card | `feat/t25-attendance-card` | E4 | T22 | ✅ | [#26](https://github.com/matchastack/splitwise-badminton/pull/26) |
 | T26 | Attendance card scheduling | `feat/t26-attendance-scheduling` | E4 | T25 | ⬜ | |
 | T27 | Session finalisation | `feat/t27-session-finalize` | E4 | T14, T16, T25 | ⬜ | |
 | T28 | Shuttle purchase | `feat/t28-shuttle-purchase` | E5 | T14, T16, T17 | ⬜ | |

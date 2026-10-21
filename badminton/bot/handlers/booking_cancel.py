@@ -20,6 +20,7 @@ from badminton.db.models import Booking, Member, Session
 from badminton.domain.money import fmt_sgd
 from badminton.domain.timeutil import fmt_session, utc_now
 from badminton.services import audit
+from badminton.services.attendance import refresh_card
 from badminton.services.members import mention_html, upsert_from_telegram
 from badminton.services.notify import announce
 from badminton.services.sessions import cancel_booking
@@ -90,6 +91,7 @@ async def on_cancel_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             f"🗑 <s>{record}</s>\nCancelled by {html.escape(actor.display_name)}."
         )
         await _close_card_if_cancelled(context, session)
+        await refresh_card(context.bot, db, session.id)
         what = fmt_session(
             booking.starts_at, booking.starts_at + timedelta(minutes=booking.minutes)
         )

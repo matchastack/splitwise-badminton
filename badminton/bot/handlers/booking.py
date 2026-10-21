@@ -49,6 +49,7 @@ from badminton.domain.timeutil import (
     sgt_date,
     utc_now,
 )
+from badminton.services.attendance import refresh_card
 from badminton.services.drafts import create_draft, delete_draft, get_draft, update_data
 from badminton.services.members import mention_html, upsert_from_telegram
 from badminton.services.repo import last_hourly_rate
@@ -183,7 +184,9 @@ def _button(text: str, draft: Draft, action: str, value: str = "") -> InlineKeyb
     return InlineKeyboardButton(text, callback_data=encode(CALLBACK_KIND, draft.id, action, value))
 
 
-async def refresh_card(context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft) -> None:
+async def refresh_wizard(
+    context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft
+) -> None:
     payer = await db.get(Member, draft.data["payer_member_id"])
     session_id = draft.data.get("merge_candidate_id") or draft.data.get("merge_session_id")
     merge_into = await db.get(Session, session_id) if session_id else None
@@ -311,7 +314,7 @@ async def _apply(
     else:
         return None
     update_data(draft, **changes)
-    await refresh_card(context, db, draft)
+    await refresh_wizard(context, db, draft)
     return None
 
 
@@ -366,6 +369,8 @@ async def _confirm(
     )
     await delete_draft(db, draft)
     session = await db.get(Session, booking.session_id)
+    if merge_into is not None:
+        await refresh_card(context.bot, db, session.id)
     lines = [render_record(payer, starts_at, data["minutes"], data["amount_cents"])]
     if merge_into is not None:
         lines.append(f"➕ Added to the {fmt_session(session.starts_at, session.ends_at)} session")
@@ -397,7 +402,7 @@ async def on_typed_answer(
             update_data(draft, **await _after_price(db, draft, parse_amount(text)))
     except ValueError as error:
         raise prompts.PromptError(str(error)) from None
-    await refresh_card(context, db, draft)
+    await refresh_wizard(context, db, draft)
 
 
 def register(application: Application) -> None:
