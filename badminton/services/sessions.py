@@ -89,3 +89,14 @@ async def recompute_span(db: AsyncSession, session_id: int) -> Session:
         )
     await db.flush()
     return session
+
+
+async def cancel_booking(db: AsyncSession, booking: Booking, now: datetime) -> Session:
+    """Cancel a booking (FR-BK-10). A session left with no bookings is cancelled too."""
+    booking.cancelled_at = now
+    await db.flush()
+    session = await recompute_span(db, booking.session_id)
+    if all(b.cancelled_at is not None for b in session.bookings):
+        session.status = "cancelled"
+        await db.flush()
+    return session

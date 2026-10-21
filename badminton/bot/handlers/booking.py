@@ -372,8 +372,17 @@ async def _confirm(
     lines.append(
         card_note(session.starts_at, settings_of(context).reminder_days_before, sgt_date(now))
     )
-    await update.callback_query.edit_message_text("\n".join(lines))
+    await update.callback_query.edit_message_text(
+        "\n".join(lines), reply_markup=cancel_markup(booking.id)
+    )
     return None
+
+
+def cancel_markup(booking_id: int) -> InlineKeyboardMarkup:
+    """The button on a booking record that lets its submitter or the admin cancel it."""
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton("🗑 Cancel booking", callback_data=f"bkc:{booking_id}")]]
+    )
 
 
 @prompts.on_reply(KIND)

@@ -25,25 +25,28 @@ class Wizard:
         self.bot = bot
         self.sender = sender
         self.card: dict[str, Any] = {}
+        self._seen = 0  # how many recorded API calls have been applied to ``card``
 
     async def start(self) -> Wizard:
         await self.bot.send(message_update(photo_message(sender=self.sender, caption="/book")))
         self.card = self.bot.telegram.last("sendMessage").message
+        self._seen = len(self.bot.telegram.calls)
         return self
 
     @property
     def current(self) -> dict[str, Any]:
-        """The card as last sent or edited (remembered across ``telegram.clear()``)."""
-        card_id = self.card["message_id"]
-        for call in reversed(self.bot.telegram.calls):
-            edits_card = call.method in ("sendMessage", "editMessageText")
-            if (
-                edits_card
-                and isinstance(call.result, dict)
-                and call.result["message_id"] == card_id
-            ):
+        """The card after every edit so far (remembered across ``telegram.clear()``)."""
+        calls = self.bot.telegram.calls
+        if self._seen > len(calls):
+            self._seen = 0
+        for call in calls[self._seen :]:
+            if call.params.get("message_id") != self.card["message_id"]:
+                continue
+            if call.method == "editMessageText":
                 self.card = call.result
-                break
+            elif call.method == "editMessageReplyMarkup":
+                self.card = {**self.card, "reply_markup": call.params.get("reply_markup", {})}
+        self._seen = len(calls)
         return self.card
 
     @property

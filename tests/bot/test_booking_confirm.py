@@ -50,7 +50,7 @@ async def test_confirm_stores_session_and_booking(bot: BotHarness) -> None:
         f"📅 {fmt_date(day)}, 11:00–13:00 (2h) · $14.80\n"
         f"🗳 Attendance card goes up on {due}."
     )
-    assert wizard.buttons() == {}
+    assert wizard.buttons() == {"🗑 Cancel booking": f"bkc:{booking.id}"}
 
 
 async def test_suggested_price_follows_the_last_booking(bot: BotHarness) -> None:
