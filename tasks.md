@@ -46,7 +46,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T07 | Telegram setup and dev scripts | `chore/t07-telegram-scripts` | E1 | T05 | ✅ | [#8](https://github.com/matchastack/splitwise-badminton/pull/8) |
 | T08 | Money and allocation | `feat/t08-money-allocation` | E6 | T01 | ✅ | [#9](https://github.com/matchastack/splitwise-badminton/pull/9) |
 | T09 | SGT time utilities | `feat/t09-time-utils` | E6 | T01 | ✅ | [#10](https://github.com/matchastack/splitwise-badminton/pull/10) |
-| T10 | Ledger: court and transfers | `feat/t10-ledger-court-transfers` | E6 | T08 | ⬜ | |
+| T10 | Ledger: court and transfers | `feat/t10-ledger-court-transfers` | E6 | T08 | ✅ | [#11](https://github.com/matchastack/splitwise-badminton/pull/11) |
 | T11 | Ledger: shuttle batches | `feat/t11-ledger-shuttle-batches` | E6 | T10 | ⬜ | |
 | T12 | Debt simplification | `feat/t12-debt-simplification` | E6 | T08 | ⬜ | |
 | T13 | Monthly statement builder | `feat/t13-monthly-statement` | E6 | T09, T11 | ⬜ | |
