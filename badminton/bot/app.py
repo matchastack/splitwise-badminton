@@ -21,9 +21,16 @@ def build_application(
     sessionmaker: async_sessionmaker[AsyncSession],
     *,
     request: BaseRequest | None = None,
+    polling: bool = False,
 ) -> Application:
-    """Build the bot application. ``request`` replaces the HTTP transport (used by tests)."""
-    builder = ApplicationBuilder().token(settings.bot_token).updater(None)
+    """Build the bot application.
+
+    ``request`` replaces the HTTP transport (tests). ``polling`` keeps the Updater so
+    the app can long-poll during local development instead of using the webhook.
+    """
+    builder = ApplicationBuilder().token(settings.bot_token)
+    if not polling:
+        builder = builder.updater(None)
     if request is not None:
         builder = builder.request(request)
     application = builder.build()
