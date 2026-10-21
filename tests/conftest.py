@@ -3,23 +3,31 @@
 Database tests need ``TEST_DATABASE_URL`` pointing at a throwaway Postgres: the
 schema is dropped and rebuilt from the migrations once per run, and every table
 is truncated before each test. Without it those tests are skipped.
+
+The ``bot`` fixture runs the real application against ``FakeTelegram``.
 """
 
 from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import pytest
 import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+from telegram import Update
+from telegram.ext import Application, ContextTypes
 
-from badminton.config import normalise_database_url
+from badminton.bot.app import build_application
+from badminton.config import Settings, normalise_database_url
 from badminton.db.engine import create_engine, create_sessionmaker
 from badminton.db.models import Base
+from tests.fake_telegram import ADMIN_ID, GROUP_ID, FakeTelegram
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -63,3 +71,52 @@ async def engine(migrated_database_url: str) -> AsyncIterator[AsyncEngine]:
 async def db(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
     async with create_sessionmaker(engine)() as session:
         yield session
+
+
+# Bot-flow harness -----------------------------------------------------------------
+
+
+TEST_SETTINGS = Settings.from_env(
+    {
+        "BOT_TOKEN": "123:test-token",
+        "WEBHOOK_SECRET": "test-secret",
+        "DATABASE_URL": "postgresql://unused@localhost/unused",
+        "CRON_SECRET": "test-cron",
+        "ADMIN_TELEGRAM_IDS": str(ADMIN_ID),
+        "GROUP_CHAT_ID": str(GROUP_ID),
+    }
+)
+
+
+@dataclass
+class BotHarness:
+    """The real application wired to a fake Telegram API and the test database."""
+
+    application: Application
+    telegram: FakeTelegram
+    settings: Settings
+    sessionmaker: async_sessionmaker[AsyncSession]
+    errors: list[BaseException] = field(default_factory=list)
+
+    async def send(self, update: dict[str, Any]) -> None:
+        """Process one incoming update. Any handler error is re-raised here."""
+        self.errors.clear()
+        await self.application.process_update(Update.de_json(update, self.application.bot))
+        if self.errors:
+            raise self.errors[0]
+
+
+@pytest.fixture
+async def bot(engine: AsyncEngine) -> AsyncIterator[BotHarness]:
+    telegram = FakeTelegram()
+    sessionmaker = create_sessionmaker(engine)
+    application = build_application(TEST_SETTINGS, sessionmaker, request=telegram)
+    harness = BotHarness(application, telegram, TEST_SETTINGS, sessionmaker)
+
+    async def record_error(_update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if context.error is not None:
+            harness.errors.append(context.error)
+
+    application.add_error_handler(record_error)
+    async with application:
+        yield harness
