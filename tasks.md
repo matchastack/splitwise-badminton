@@ -72,7 +72,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T33 | Monthly schedule and `/invoice` | `feat/t33-invoice-schedule` | E7 | T32 | ✅ | [#36](https://github.com/matchastack/splitwise-badminton/pull/36) |
 | T34 | Admin: edit attendance | `feat/t34-admin-edit-attendance` | E8 | T14, T16, T17, T25 | ✅ | [#38](https://github.com/matchastack/splitwise-badminton/pull/38) |
 | T35 | Admin: edit bookings, cancel session | `feat/t35-admin-edit-booking` | E8 | T24, T34 | ✅ | [#39](https://github.com/matchastack/splitwise-badminton/pull/39) |
-| T36 | Admin: manual transfer | `feat/t36-admin-manual-transfer` | E8 | T14, T16, T17 | ⬜ | |
+| T36 | Admin: manual transfer | `feat/t36-admin-manual-transfer` | E8 | T14, T16, T17 | ✅ | [#40](https://github.com/matchastack/splitwise-badminton/pull/40) |
 | T37 | Setup and deployment guide | `docs/t37-setup-guide` | E1 | T07, T32 | ✅ | [#35](https://github.com/matchastack/splitwise-badminton/pull/35) |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
