@@ -11,16 +11,18 @@ import html
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from telegram.error import BadRequest
 
+from badminton.config import Settings
 from badminton.db.models import Attendance, Member, Session
 from badminton.domain.money import fmt_sgd
-from badminton.domain.timeutil import fmt_hours, fmt_session
+from badminton.domain.timeutil import fmt_hours, fmt_session, is_card_due
+from badminton.services.tick import TickContext
 
 IN = "in"
 OUT = "out"
@@ -133,3 +135,53 @@ async def refresh_card(
             message_id=session.card_message_id,
             reply_markup=markup,
         )
+
+
+async def post_card_if_due(
+    bot: Bot, db: AsyncSession, session: Session, settings: Settings, now: datetime
+) -> bool:
+    """Post the session's card if it is due and not yet posted (FR-ATT-1, FR-BK-11).
+
+    The card is claimed with an atomic update first, so two ticks running at once
+    can't both post it. If sending fails the claim is released for the next run.
+    Commits the session.
+    """
+    if settings.group_chat_id is None or session.status != "scheduled" or session.ends_at <= now:
+        return False
+    if not is_card_due(session.starts_at, now, settings.reminder_days_before):
+        return False
+    session_id = session.id
+    claimed = await db.scalar(
+        update(Session)
+        .where(Session.id == session_id, Session.card_sent_at.is_(None))
+        .values(card_sent_at=now)
+        .returning(Session.id)
+    )
+    await db.commit()
+    if claimed is None:
+        return False
+    try:
+        await post_card(bot, db, session, settings.group_chat_id, now)
+    except Exception:
+        await db.rollback()
+        await db.execute(update(Session).where(Session.id == session_id).values(card_sent_at=None))
+        await db.commit()
+        raise
+    await db.commit()
+    return True
+
+
+async def post_due_cards(context: TickContext) -> None:
+    """Tick step: post every card that is due, catching up on missed days."""
+    async with context.sessionmaker() as db:
+        candidates = await db.scalars(
+            select(Session)
+            .where(
+                Session.status == "scheduled",
+                Session.card_sent_at.is_(None),
+                Session.ends_at > context.now,
+            )
+            .order_by(Session.starts_at, Session.id)
+        )
+        for session in candidates.all():
+            await post_card_if_due(context.bot, db, session, context.settings, context.now)

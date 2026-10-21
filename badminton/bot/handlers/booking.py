@@ -49,7 +49,7 @@ from badminton.domain.timeutil import (
     sgt_date,
     utc_now,
 )
-from badminton.services.attendance import refresh_card
+from badminton.services.attendance import post_card_if_due, refresh_card
 from badminton.services.drafts import create_draft, delete_draft, get_draft, update_data
 from badminton.services.members import mention_html, upsert_from_telegram
 from badminton.services.repo import last_hourly_rate
@@ -380,6 +380,7 @@ async def _confirm(
     await update.callback_query.edit_message_text(
         "\n".join(lines), reply_markup=cancel_markup(booking.id)
     )
+    await post_card_if_due(context.bot, db, session, settings_of(context), now)
     return None
 
 
