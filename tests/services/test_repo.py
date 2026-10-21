@@ -23,9 +23,7 @@ async def seed(db: AsyncSession) -> dict[str, int]:
     await db.flush()
     ids = {member.display_name: member.id for member in members}
 
-    def add_session(
-        day: date, *, ins: list[str], outs: list[str] = (), status: str = "scheduled"
-    ) -> Session:
+    def add_session(day: date, status: str = "scheduled") -> Session:
         start = at_sgt(day, 11)
         session = Session(starts_at=start, ends_at=start + timedelta(hours=2), status=status)
         db.add(session)
