@@ -137,6 +137,18 @@ async def refresh_card(
         )
 
 
+async def close_cancelled_card(bot: Bot, session: Session) -> None:
+    """Close a cancelled session's attendance card, if one was posted."""
+    if session.status != "cancelled" or session.card_message_id is None:
+        return
+    with contextlib.suppress(BadRequest):  # the card was deleted or can't be edited
+        await bot.edit_message_text(
+            f"❌ <b>Session cancelled</b>: {fmt_session(session.starts_at, session.ends_at)}",
+            chat_id=session.card_chat_id,
+            message_id=session.card_message_id,
+        )
+
+
 async def post_card_if_due(
     bot: Bot, db: AsyncSession, session: Session, settings: Settings, now: datetime
 ) -> bool:

@@ -6,21 +6,19 @@ confirms, to avoid accidents. The cancellation is announced and audited.
 
 from __future__ import annotations
 
-import contextlib
 import html
 from datetime import timedelta
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.error import BadRequest
 from telegram.ext import Application, CallbackQueryHandler, ContextTypes
 
 from badminton.bot.context import db_session, settings_of
 from badminton.bot.handlers.booking import cancel_markup, render_record
-from badminton.db.models import Booking, Member, Session
+from badminton.db.models import Booking, Member
 from badminton.domain.money import fmt_sgd
 from badminton.domain.timeutil import fmt_session, utc_now
 from badminton.services import audit
-from badminton.services.attendance import refresh_card
+from badminton.services.attendance import close_cancelled_card, refresh_card
 from badminton.services.members import mention_html, upsert_from_telegram
 from badminton.services.notify import announce
 from badminton.services.sessions import cancel_booking
@@ -90,7 +88,7 @@ async def on_cancel_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await query.edit_message_text(
             f"🗑 <s>{record}</s>\nCancelled by {html.escape(actor.display_name)}."
         )
-        await _close_card_if_cancelled(context, session)
+        await close_cancelled_card(context.bot, session)
         await refresh_card(context.bot, db, session.id)
         what = fmt_session(
             booking.starts_at, booking.starts_at + timedelta(minutes=booking.minutes)
@@ -102,18 +100,6 @@ async def on_cancel_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         if session.status == "cancelled":
             lines.append("That session is now cancelled.")
         await announce(context.bot, settings_of(context), "\n".join(lines))
-
-
-async def _close_card_if_cancelled(context: ContextTypes.DEFAULT_TYPE, session: Session) -> None:
-    """Close the session's attendance card if the session no longer has any bookings."""
-    if session.status != "cancelled" or session.card_message_id is None:
-        return
-    with contextlib.suppress(BadRequest):  # the card was deleted or can't be edited
-        await context.bot.edit_message_text(
-            f"❌ <b>Session cancelled</b>: {fmt_session(session.starts_at, session.ends_at)}",
-            chat_id=session.card_chat_id,
-            message_id=session.card_message_id,
-        )
 
 
 def register(application: Application) -> None:

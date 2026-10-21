@@ -100,3 +100,14 @@ async def cancel_booking(db: AsyncSession, booking: Booking, now: datetime) -> S
         session.status = "cancelled"
         await db.flush()
     return session
+
+
+async def cancel_session(db: AsyncSession, session_id: int, now: datetime) -> Session:
+    """Cancel a session and all its bookings (FR-ADM-2)."""
+    session = await recompute_span(db, session_id)
+    for booking in session.bookings:
+        if booking.cancelled_at is None:
+            booking.cancelled_at = now
+    session.status = "cancelled"
+    await db.flush()
+    return session

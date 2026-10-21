@@ -1,8 +1,8 @@
 """/edit: the admin corrects a session (FR-ADM-2, FR-ADM-3, FR-ADM-5).
 
-Flow: recent-session picker → session menu → attendance toggles → Save. Every
-saved change is announced in the group with the recalculated split, audited, and
-the session's attendance card is refreshed.
+Flow: recent-session picker → session menu → attendance toggles, a booking's price,
+payer or hours, or cancelling the session. Every saved change is announced in the
+group with the recalculated split, audited, and the session's card is refreshed.
 """
 
 from __future__ import annotations
@@ -14,17 +14,35 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
+from badminton.bot import prompts
 from badminton.bot.admin import admin_only
 from badminton.bot.context import db_session, settings_of
 from badminton.bot.keyboards import decode, encode
-from badminton.db.models import Draft, Member, Session
-from badminton.domain.money import allocate, fmt_sgd
-from badminton.domain.timeutil import fmt_date, fmt_session, fmt_time, sgt_date, utc_now
+from badminton.db.models import Booking, Draft, Member, Session
+from badminton.domain.money import allocate, fmt_sgd, parse_amount
+from badminton.domain.timeutil import (
+    fmt_date,
+    fmt_hours,
+    fmt_session,
+    fmt_time,
+    parse_hours,
+    sgt_date,
+    utc_now,
+)
 from badminton.services import audit
-from badminton.services.attendance import IN, OUT, load_card_view, refresh_card, set_attendance
+from badminton.services.attendance import (
+    IN,
+    OUT,
+    CardView,
+    close_cancelled_card,
+    load_card_view,
+    refresh_card,
+    set_attendance,
+)
 from badminton.services.drafts import create_draft, delete_draft, get_draft, update_data
 from badminton.services.members import active_members, upsert_from_telegram
 from badminton.services.notify import announce
+from badminton.services.sessions import cancel_session, recompute_span
 
 KIND = "edit"
 CALLBACK_KIND = "ed"
@@ -36,6 +54,16 @@ ATTENDANCE = "att"
 TOGGLE = "t"
 SAVE = "save"
 CLOSE = "x"
+BOOKINGS = "bks"
+BOOKING = "b"
+PRICE = "pr"
+PAYER = "py"
+SET_PAYER = "sp"
+HOURS = "hr"
+SET_HOURS = "sh"
+OTHER_HOURS = "ho"
+CANCEL_SESSION = "cs"
+CONFIRM_CANCEL = "cy"
 
 
 def _button(text: str, draft: Draft, action: str, value: str = "") -> InlineKeyboardButton:
@@ -80,11 +108,82 @@ async def render(db: AsyncSession, draft: Draft) -> tuple[str, InlineKeyboardMar
         )
         return f"{title}\nWho played? Tap to toggle, then Save.", InlineKeyboardMarkup(rows)
 
+    if screen == BOOKINGS:
+        rows = [
+            [_button(_booking_label(booking, names), draft, BOOKING, str(booking.id))]
+            for booking, names in await _active_bookings(db, session)
+        ]
+        rows.append([_button("‹ Back", draft, PICK_SESSION, str(session.id))])
+        return f"{title}\nWhich booking?", InlineKeyboardMarkup(rows)
+
+    if screen in (BOOKING, PAYER, HOURS):
+        booking = await db.get(Booking, data["booking_id"])
+        payer = await db.get(Member, booking.payer_member_id)
+        title += (
+            f"\n{html.escape(payer.display_name)}'s booking: {fmt_time(booking.starts_at)}, "
+            f"{fmt_hours(booking.minutes)}, {fmt_sgd(booking.amount_cents)}"
+        )
+        back = _button("‹ Back", draft, BOOKING, str(booking.id))
+        if screen == PAYER:
+            buttons = [
+                _button(m.display_name, draft, SET_PAYER, str(m.id))
+                for m in await active_members(db)
+            ]
+            rows = [buttons[i : i + 3] for i in range(0, len(buttons), 3)] + [[back]]
+            return f"{title}\nWho paid for it?", InlineKeyboardMarkup(rows)
+        if screen == HOURS:
+            rows = [
+                [
+                    _button("1h", draft, SET_HOURS, "60"),
+                    _button("2h", draft, SET_HOURS, "120"),
+                    _button("Other…", draft, OTHER_HOURS),
+                ],
+                [back],
+            ]
+            return f"{title}\nHow long is it booked for?", InlineKeyboardMarkup(rows)
+        rows = [
+            [
+                _button("💵 Price", draft, PRICE),
+                _button("👤 Payer", draft, PAYER),
+                _button("⏱ Hours", draft, HOURS),
+            ],
+            [_button("‹ Bookings", draft, BOOKINGS)],
+        ]
+        return f"{title}\nWhat should change?", InlineKeyboardMarkup(rows)
+
+    if screen == CANCEL_SESSION:
+        rows = [
+            [_button("Yes, cancel the session", draft, CONFIRM_CANCEL)],
+            [_button("‹ Keep it", draft, PICK_SESSION, str(session.id))],
+        ]
+        text = f"{title}\nCancel this session and all its bookings? Nobody is charged for it."
+        return text, InlineKeyboardMarkup(rows)
+
     rows = [
-        [_button("👥 Attendance", draft, ATTENDANCE)],
+        [_button("👥 Attendance", draft, ATTENDANCE), _button("💵 Bookings", draft, BOOKINGS)],
+        [_button("🗑 Cancel session", draft, CANCEL_SESSION)],
         [_button("‹ Sessions", draft, SESSIONS), _button("✖ Close", draft, CLOSE)],
     ]
     return f"{title}\nWhat do you want to change?", InlineKeyboardMarkup(rows)
+
+
+async def _active_bookings(
+    db: AsyncSession, session: Session
+) -> list[tuple[Booking, dict[int, str]]]:
+    bookings = await db.scalars(
+        select(Booking)
+        .where(Booking.session_id == session.id, Booking.cancelled_at.is_(None))
+        .order_by(Booking.starts_at, Booking.id)
+    )
+    names = {m.id: m.display_name for m in await db.scalars(select(Member))}
+    return [(booking, names) for booking in bookings]
+
+
+def _booking_label(booking: Booking, names: dict[int, str]) -> str:
+    return (
+        f"{names[booking.payer_member_id]} · {fmt_time(booking.starts_at)} · "
+        f"{fmt_hours(booking.minutes)} · {fmt_sgd(booking.amount_cents)}"
+    )
 
 
 async def _members(db: AsyncSession, ids: set[int]) -> list[Member]:
@@ -135,10 +234,34 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if action == SAVE:
             await _save_attendance(update, context, db, draft)
             return
+        if action == CONFIRM_CANCEL:
+            await _cancel_session(update, context, db, draft)
+            return
+        if action == SET_PAYER:
+            await _change_booking(update, context, db, draft, payer_id=int(value))
+            return
+        if action == SET_HOURS:
+            await _change_booking(update, context, db, draft, minutes=int(value))
+            return
+        if action in (PRICE, OTHER_HOURS):
+            question, field = (
+                ("what's the correct price for this booking? (e.g. 14.80)", "price")
+                if action == PRICE
+                else ("how many hours is it booked for? (e.g. 3 or 1.5)", "minutes")
+            )
+            await prompts.ask(
+                context.bot, draft, question, owner=update.effective_user, field=field
+            )
+            await db.commit()
+            return
+        if action in (BOOKINGS, PAYER, HOURS, CANCEL_SESSION):
+            update_data(draft, screen=action)
+        elif action == BOOKING:
+            update_data(draft, screen=BOOKING, booking_id=int(value))
         if action == SESSIONS:
             update_data(draft, screen=SESSIONS, session_id=None, ins=None)
         elif action == PICK_SESSION:
-            update_data(draft, screen="menu", session_id=int(value), ins=None)
+            update_data(draft, screen="menu", session_id=int(value), ins=None, booking_id=None)
         elif action == ATTENDANCE:
             ins = await _current_ins(db, draft.data["session_id"])
             update_data(draft, screen=ATTENDANCE, ins=ins)
@@ -187,16 +310,7 @@ async def _save_attendance(
         + [f"−{html.escape(names[i])}" for i in sorted(removed, key=lambda i: names[i].casefold())]
     )
     lines = [f"✏️ Admin changed attendance for <b>{when}</b>: {changes}"]
-    view = await load_card_view(db, session_id)
-    court = sum(cents for _, cents in view.payments)
-    if view.ins and court:
-        shares = allocate(court, dict.fromkeys(range(len(view.ins)), 1)).values()
-        each = fmt_sgd(min(shares))
-        if max(shares) != min(shares):
-            each = f"{fmt_sgd(min(shares))}–{fmt_sgd(max(shares))}"
-        lines.append(f"💵 Court now {each} each ({len(view.ins)} played)")
-    elif not view.ins:
-        lines.append("Nobody is marked in now, so this session is left out of the costs.")
+    lines.append(_split_line(await load_card_view(db, session_id)))
     await update.callback_query.edit_message_text(f"✅ Saved attendance for {when}.")
     await refresh_card(context.bot, db, session_id, locked=session.locked_at is not None)
     await announce(context.bot, settings_of(context), "\n".join(lines))
@@ -205,3 +319,123 @@ async def _save_attendance(
 def register(application: Application) -> None:
     application.add_handler(CommandHandler("edit", start_edit))
     application.add_handler(CallbackQueryHandler(on_button, pattern=rf"^{CALLBACK_KIND}:\d+:"))
+
+
+def _split_line(view: CardView) -> str:
+    """The recalculated court split after a change."""
+    if not view.ins:
+        return "Nobody is marked in now, so this session is left out of the costs."
+    court = sum(cents for _, cents in view.payments)
+    shares = allocate(court, dict.fromkeys(range(len(view.ins)), 1)).values()
+    each = fmt_sgd(min(shares))
+    if max(shares) != min(shares):
+        each = f"{fmt_sgd(min(shares))}–{fmt_sgd(max(shares))}"
+    return f"💵 Court now {each} each ({len(view.ins)} played)"
+
+
+async def _show(context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft) -> None:
+    text, markup = await render(db, draft)
+    await context.bot.edit_message_text(
+        text, chat_id=draft.chat_id, message_id=draft.message_id, reply_markup=markup
+    )
+
+
+async def _change_booking(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    db: AsyncSession,
+    draft: Draft,
+    *,
+    amount_cents: int | None = None,
+    payer_id: int | None = None,
+    minutes: int | None = None,
+) -> None:
+    """Apply one correction to a booking, then announce, audit and refresh."""
+    booking = await db.get(Booking, draft.data["booking_id"])
+    session = await db.get(Session, booking.session_id)
+    when = fmt_session(session.starts_at, session.ends_at)
+    names = {m.id: m.display_name for m in await db.scalars(select(Member))}
+    owner = html.escape(names[booking.payer_member_id])
+    before = {
+        "amount_cents": booking.amount_cents,
+        "payer_id": booking.payer_member_id,
+        "minutes": booking.minutes,
+    }
+
+    if amount_cents is not None:
+        change = f"price {fmt_sgd(booking.amount_cents)} → {fmt_sgd(amount_cents)}"
+        booking.amount_cents = amount_cents
+    elif payer_id is not None:
+        change = (
+            f"paid by {html.escape(names[booking.payer_member_id])} → "
+            f"{html.escape(names[payer_id])}"
+        )
+        booking.payer_member_id = payer_id
+    else:
+        change = f"{fmt_hours(booking.minutes)} → {fmt_hours(minutes)}"
+        booking.minutes = minutes
+        await db.flush()
+        session = await recompute_span(db, session.id)
+
+    admin = await upsert_from_telegram(db, update.effective_user)
+    audit.record(
+        db,
+        actor_member_id=admin.id,
+        action="booking.edit",
+        booking_id=booking.id,
+        before=before,
+        after={
+            "amount_cents": booking.amount_cents,
+            "payer_id": booking.payer_member_id,
+            "minutes": booking.minutes,
+        },
+    )
+    update_data(draft, screen=BOOKING)
+    await db.commit()
+
+    lines = [f"✏️ Admin changed {owner}'s booking for <b>{when}</b>: {change}"]
+    if minutes is not None:
+        lines.append(f"📅 The session is now {fmt_session(session.starts_at, session.ends_at)}")
+    lines.append(_split_line(await load_card_view(db, session.id)))
+    await _show(context, db, draft)
+    await refresh_card(context.bot, db, session.id, locked=session.locked_at is not None)
+    await announce(context.bot, settings_of(context), "\n".join(lines))
+
+
+async def _cancel_session(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft
+) -> None:
+    session = await cancel_session(db, draft.data["session_id"], utc_now())
+    when = fmt_session(session.starts_at, session.ends_at)
+    admin = await upsert_from_telegram(db, update.effective_user)
+    audit.record(
+        db,
+        actor_member_id=admin.id,
+        action="session.cancel",
+        session_id=session.id,
+        before={"status": "scheduled"},
+        after={"status": "cancelled"},
+    )
+    await delete_draft(db, draft)
+    await db.commit()
+    await update.callback_query.edit_message_text(f"🗑 Cancelled the session on {when}.")
+    await close_cancelled_card(context.bot, session)
+    await announce(
+        context.bot,
+        settings_of(context),
+        f"🗑 Admin cancelled the session on <b>{when}</b>. Nobody is charged for it.",
+    )
+
+
+@prompts.on_reply(KIND)
+async def on_typed_answer(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft, text: str
+) -> None:
+    try:
+        if draft.data.get("awaiting") == "price":
+            changes = {"amount_cents": parse_amount(text)}
+        else:
+            changes = {"minutes": parse_hours(text)}
+    except ValueError as error:
+        raise prompts.PromptError(str(error)) from None
+    await _change_booking(update, context, db, draft, **changes)
