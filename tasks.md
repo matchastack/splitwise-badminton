@@ -71,7 +71,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T32 | DM statements | `feat/t32-invoice-dm-statements` | E7 | T30 | ✅ | [#34](https://github.com/matchastack/splitwise-badminton/pull/34) |
 | T33 | Monthly schedule and `/invoice` | `feat/t33-invoice-schedule` | E7 | T32 | ✅ | [#36](https://github.com/matchastack/splitwise-badminton/pull/36) |
 | T34 | Admin: edit attendance | `feat/t34-admin-edit-attendance` | E8 | T14, T16, T17, T25 | ✅ | [#38](https://github.com/matchastack/splitwise-badminton/pull/38) |
-| T35 | Admin: edit bookings, cancel session | `feat/t35-admin-edit-booking` | E8 | T24, T34 | ⬜ | |
+| T35 | Admin: edit bookings, cancel session | `feat/t35-admin-edit-booking` | E8 | T24, T34 | ✅ | [#39](https://github.com/matchastack/splitwise-badminton/pull/39) |
 | T36 | Admin: manual transfer | `feat/t36-admin-manual-transfer` | E8 | T14, T16, T17 | ⬜ | |
 | T37 | Setup and deployment guide | `docs/t37-setup-guide` | E1 | T07, T32 | ✅ | [#35](https://github.com/matchastack/splitwise-badminton/pull/35) |
 
