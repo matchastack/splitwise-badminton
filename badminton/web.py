@@ -18,6 +18,7 @@ from telegram.request import BaseRequest
 from badminton.bot.app import build_application
 from badminton.config import Settings, get_settings
 from badminton.db.engine import create_engine, create_sessionmaker
+from badminton.services import schedule
 from badminton.services.tick import TickContext, run_tick
 
 logger = logging.getLogger(__name__)
@@ -96,5 +97,5 @@ async def cron(
             sessionmaker=runtime.sessionmaker,
             now=datetime.now(UTC),
         )
-        results = await run_tick(context)
+        results = await run_tick(context, schedule.default_steps())
     return {"ok": all(result == "ok" for result in results.values()), "steps": results}

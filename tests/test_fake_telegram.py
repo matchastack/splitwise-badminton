@@ -54,7 +54,8 @@ async def test_photo_caption_command_and_replies(bot: BotHarness) -> None:
     async def record(update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
         seen.append(update)
 
-    bot.application.add_handler(MessageHandler(filters.PHOTO | filters.REPLY, record))
+    # A separate group, so it sees updates the real handlers also consume.
+    bot.application.add_handler(MessageHandler(filters.PHOTO | filters.REPLY, record), group=1)
 
     await bot.send(message_update(photo_message(sender=ZY, caption="/book")))
     prompt = message(sender=ZY, text="How many hours?")

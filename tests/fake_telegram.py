@@ -131,9 +131,13 @@ class FakeTelegram(BaseRequest):
             "chat": _chat(chat_id),
             "from": BOT_USER,
         }
-        for key in ("text", "caption", "reply_markup"):
+        for key in ("text", "caption"):
             if key in params:
                 message[key] = params[key]
+        # Like Telegram, only inline keyboards come back on the message.
+        markup = params.get("reply_markup")
+        if isinstance(markup, dict) and "inline_keyboard" in markup:
+            message["reply_markup"] = markup
         return message
 
 

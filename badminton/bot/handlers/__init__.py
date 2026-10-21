@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from telegram.ext import Application
 
+from badminton.bot import prompts
 from badminton.bot.handlers import gate, members
 
 
 def register_handlers(application: Application) -> None:
     gate.register(application)
     members.register(application)
+    prompts.register(application)  # after commands: typed answers to wizard prompts

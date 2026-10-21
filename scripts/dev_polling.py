@@ -24,6 +24,7 @@ from badminton.bot.commands import ALLOWED_UPDATES
 from badminton.bot.context import SESSIONMAKER_KEY
 from badminton.config import Settings
 from badminton.db.engine import create_engine, create_sessionmaker
+from badminton.services.schedule import default_steps
 from badminton.services.tick import TickContext, run_tick
 
 logger = logging.getLogger("dev_polling")
@@ -47,7 +48,7 @@ async def tick_forever(application: Application, settings: Settings, interval: i
     sessionmaker = application.bot_data[SESSIONMAKER_KEY]
     while True:
         context = TickContext(application.bot, settings, sessionmaker, datetime.now(UTC))
-        logger.info("Tick: %s", await run_tick(context))
+        logger.info("Tick: %s", await run_tick(context, default_steps()))
         await asyncio.sleep(interval)
 
 

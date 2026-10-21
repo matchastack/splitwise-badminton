@@ -31,17 +31,10 @@ class TickContext:
 TickStep = Callable[[TickContext], Awaitable[None]]
 
 
-def default_steps() -> list[tuple[str, TickStep]]:
-    """Steps in the order of FR-OPS-2. Feature tasks add theirs here."""
-    return []
-
-
-async def run_tick(
-    context: TickContext, steps: Sequence[tuple[str, TickStep]] | None = None
-) -> dict[str, str]:
+async def run_tick(context: TickContext, steps: Sequence[tuple[str, TickStep]]) -> dict[str, str]:
     """Run each step in order. A failing step is logged and does not stop the rest."""
     results: dict[str, str] = {}
-    for name, step in default_steps() if steps is None else steps:
+    for name, step in steps:
         try:
             await step(context)
         except Exception:

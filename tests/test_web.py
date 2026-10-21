@@ -8,7 +8,7 @@ from telegram.ext import Application, TypeHandler
 
 from badminton.config import Settings
 from badminton.db.engine import create_engine, create_sessionmaker
-from badminton.services import tick
+from badminton.services import schedule, tick
 from badminton.web import Runtime, app, get_runtime
 from tests.fake_telegram import FakeTelegram
 
@@ -134,7 +134,7 @@ async def test_cron_runs_steps_and_isolates_failures(
         raise RuntimeError("boom")
 
     monkeypatch.setattr(
-        tick, "default_steps", lambda: [("broken", failing_step), ("works", ok_step)]
+        schedule, "default_steps", lambda: [("broken", failing_step), ("works", ok_step)]
     )
 
     response = await client.get("/api/cron", headers={"Authorization": "Bearer cron-secret"})
@@ -144,7 +144,11 @@ async def test_cron_runs_steps_and_isolates_failures(
     assert ran == ["ok"]
 
 
-async def test_cron_with_no_steps(client: httpx.AsyncClient) -> None:
+async def test_cron_with_no_steps(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(schedule, "default_steps", list)
+
     response = await client.post("/api/cron", headers={"Authorization": "Bearer cron-secret"})
 
     assert response.status_code == 200
