@@ -37,19 +37,19 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 
 | ID | Task | Branch | Epic | Depends on | Status | PR |
 |---|---|---|---|---|---|---|
-| T01 | Project scaffold | `chore/t01-project-scaffold` | E1 | — | ⬜ | |
-| T02 | CI workflow | `ci/t02-github-actions` | E1 | T01 | ⬜ | |
-| T03 | Settings from environment | `feat/t03-settings` | E1 | T01 | ⬜ | |
-| T04 | Database schema and migrations | `feat/t04-db-schema` | E1 | T03 | ⬜ | |
-| T05 | Web endpoints and Vercel config | `feat/t05-web-endpoints` | E1 | T03 | ⬜ | |
-| T06 | Fake Telegram test harness | `test/t06-fake-telegram-harness` | E1 | T04, T05 | ⬜ | |
-| T07 | Telegram setup and dev scripts | `chore/t07-telegram-scripts` | E1 | T05 | ⬜ | |
-| T08 | Money and allocation | `feat/t08-money-allocation` | E6 | T01 | ⬜ | |
-| T09 | SGT time utilities | `feat/t09-time-utils` | E6 | T01 | ⬜ | |
-| T10 | Ledger: court and transfers | `feat/t10-ledger-court-transfers` | E6 | T08 | ⬜ | |
-| T11 | Ledger: shuttle batches | `feat/t11-ledger-shuttle-batches` | E6 | T10 | ⬜ | |
-| T12 | Debt simplification | `feat/t12-debt-simplification` | E6 | T08 | ⬜ | |
-| T13 | Monthly statement builder | `feat/t13-monthly-statement` | E6 | T09, T11 | ⬜ | |
+| T01 | Project scaffold | `chore/t01-project-scaffold` | E1 | — | ✅ | [#2](https://github.com/matchastack/splitwise-badminton/pull/2) |
+| T02 | CI workflow | `ci/t02-github-actions` | E1 | T01 | ✅ | [#3](https://github.com/matchastack/splitwise-badminton/pull/3) |
+| T03 | Settings from environment | `feat/t03-settings` | E1 | T01 | ✅ | [#4](https://github.com/matchastack/splitwise-badminton/pull/4) |
+| T04 | Database schema and migrations | `feat/t04-db-schema` | E1 | T03 | ✅ | [#5](https://github.com/matchastack/splitwise-badminton/pull/5) |
+| T05 | Web endpoints and Vercel config | `feat/t05-web-endpoints` | E1 | T03 | ✅ | [#6](https://github.com/matchastack/splitwise-badminton/pull/6) |
+| T06 | Fake Telegram test harness | `test/t06-fake-telegram-harness` | E1 | T04, T05 | ✅ | [#7](https://github.com/matchastack/splitwise-badminton/pull/7) |
+| T07 | Telegram setup and dev scripts | `chore/t07-telegram-scripts` | E1 | T05 | ✅ | [#8](https://github.com/matchastack/splitwise-badminton/pull/8) |
+| T08 | Money and allocation | `feat/t08-money-allocation` | E6 | T01 | ✅ | [#9](https://github.com/matchastack/splitwise-badminton/pull/9) |
+| T09 | SGT time utilities | `feat/t09-time-utils` | E6 | T01 | ✅ | [#10](https://github.com/matchastack/splitwise-badminton/pull/10) |
+| T10 | Ledger: court and transfers | `feat/t10-ledger-court-transfers` | E6 | T08 | ✅ | [#11](https://github.com/matchastack/splitwise-badminton/pull/11) |
+| T11 | Ledger: shuttle batches | `feat/t11-ledger-shuttle-batches` | E6 | T10 | ✅ | [#12](https://github.com/matchastack/splitwise-badminton/pull/12) |
+| T12 | Debt simplification | `feat/t12-debt-simplification` | E6 | T08 | ✅ | [#13](https://github.com/matchastack/splitwise-badminton/pull/13) |
+| T13 | Monthly statement builder | `feat/t13-monthly-statement` | E6 | T09, T11 | ✅ | [#14](https://github.com/matchastack/splitwise-badminton/pull/14) |
 | T14 | Ledger repository | `feat/t14-ledger-repository` | E6 | T04, T11 | ⬜ | |
 | T15 | Member registry and basic commands | `feat/t15-member-registry` | E2 | T06 | ⬜ | |
 | T16 | Admin guard, audit log, announcements | `feat/t16-admin-guard-audit` | E8 | T15 | ⬜ | |

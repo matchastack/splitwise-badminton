@@ -1,0 +1,40 @@
+[project]
+name = "splitwise-badminton"
+version = "0.1.0"
+description = "Telegram bot that splits badminton court and shuttlecock costs"
+readme = "README.md"
+license = "MIT"
+requires-python = "~=3.13.0"
+dependencies = [
+    "alembic>=1.20",
+    "fastapi>=0.157",
+    "psycopg[binary]>=3.3",
+    "python-telegram-bot>=22.8",
+    "sqlalchemy[asyncio]>=2.1",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28",
+    "pytest>=8.4",
+    "pytest-asyncio>=1.4",
+    "ruff>=0.14",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "ASYNC", "RUF"]
+# Typographic characters used on purpose in user-facing messages.
+allowed-confusables = ["–", "−", "×"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
