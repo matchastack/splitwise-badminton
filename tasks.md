@@ -52,7 +52,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T13 | Monthly statement builder | `feat/t13-monthly-statement` | E6 | T09, T11 | ✅ | [#14](https://github.com/matchastack/splitwise-badminton/pull/14) |
 | T14 | Ledger repository | `feat/t14-ledger-repository` | E6 | T04, T11 | ✅ | [#15](https://github.com/matchastack/splitwise-badminton/pull/15) |
 | T15 | Member registry and basic commands | `feat/t15-member-registry` | E2 | T06 | ✅ | [#16](https://github.com/matchastack/splitwise-badminton/pull/16) |
-| T16 | Admin guard, audit log, announcements | `feat/t16-admin-guard-audit` | E8 | T15 | ⬜ | |
+| T16 | Admin guard, audit log, announcements | `feat/t16-admin-guard-audit` | E8 | T15 | ✅ | [#17](https://github.com/matchastack/splitwise-badminton/pull/17) |
 | T17 | Wizard drafts and reply prompts | `feat/t17-drafts-and-prompts` | E3 | T15 | ⬜ | |
 | T18 | Group message guard | `feat/t18-group-message-guard` | E9 | T17 | ⬜ | |
 | T19 | Member admin commands | `feat/t19-member-admin-commands` | E2 | T16, T17 | ⬜ | |
