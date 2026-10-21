@@ -13,6 +13,7 @@ from badminton.bot.handlers import (
     guard,
     member_admin,
     members,
+    shuttle,
 )
 
 
@@ -23,5 +24,6 @@ def register_handlers(application: Application) -> None:
     booking.register(application)
     booking_cancel.register(application)
     attendance.register(application)
+    shuttle.register(application)
     prompts.register(application)  # after commands: typed answers to wizard prompts
     guard.register(application)  # last: removes whatever nothing else handled
