@@ -37,7 +37,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 
 | ID | Task | Branch | Epic | Depends on | Status | PR |
 |---|---|---|---|---|---|---|
-| T01 | Project scaffold | `chore/t01-project-scaffold` | E1 | — | ⬜ | |
+| T01 | Project scaffold | `chore/t01-project-scaffold` | E1 | — | ✅ | [#2](https://github.com/matchastack/splitwise-badminton/pull/2) |
 | T02 | CI workflow | `ci/t02-github-actions` | E1 | T01 | ⬜ | |
 | T03 | Settings from environment | `feat/t03-settings` | E1 | T01 | ⬜ | |
 | T04 | Database schema and migrations | `feat/t04-db-schema` | E1 | T03 | ⬜ | |
