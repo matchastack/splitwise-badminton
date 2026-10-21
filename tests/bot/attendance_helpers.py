@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 
 from badminton.db.models import Booking, Member, Session
 from badminton.domain.timeutil import utc_now
@@ -27,11 +27,17 @@ async def make_session(
     """A scheduled session with one booking; returns its ID."""
     starts_at = starts_at or utc_now() + timedelta(days=2)
     async with bot.sessionmaker() as db:
-        payer = Member(
-            display_name=payer_name, telegram_user_id=payer_telegram_id, username="zy_handle"
-        )
-        db.add(payer)
-        await db.flush()
+        payer = None
+        if payer_telegram_id is not None:
+            payer = await db.scalar(
+                select(Member).where(Member.telegram_user_id == payer_telegram_id)
+            )
+        if payer is None:
+            payer = Member(
+                display_name=payer_name, telegram_user_id=payer_telegram_id, username="zy_handle"
+            )
+            db.add(payer)
+            await db.flush()
         booking = await record_booking(
             db,
             payer_id=payer.id,

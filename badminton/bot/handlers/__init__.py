@@ -11,6 +11,7 @@ from badminton.bot.handlers import (
     booking_cancel,
     gate,
     guard,
+    info,
     member_admin,
     members,
     shuttle,
@@ -20,6 +21,7 @@ from badminton.bot.handlers import (
 def register_handlers(application: Application) -> None:
     gate.register(application)
     members.register(application)
+    info.register(application)
     member_admin.register(application)
     booking.register(application)
     booking_cancel.register(application)
