@@ -62,12 +62,12 @@ async def find_by_prompt(
 
 
 def update_data(draft: Draft, **changes: Any) -> None:
-    """Merge ``changes`` into the draft's data. Assigning a new dict marks the JSONB
-    column as changed; mutating it in place would not."""
+    """Merge ``changes`` into the draft's data; a ``None`` value removes the key.
+    Assigning a new dict marks the JSONB column as changed; mutating it would not."""
     data = {**draft.data, **changes}
     for key, value in changes.items():
         if value is None:
-            data.pop(key)
+            data.pop(key, None)
     draft.data = data
 
 
