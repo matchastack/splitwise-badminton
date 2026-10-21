@@ -37,7 +37,7 @@ from badminton.bot.keyboards import (
     parse_day,
     parse_month,
 )
-from badminton.db.models import Draft, Member
+from badminton.db.models import Draft, Member, Session
 from badminton.domain.money import fmt_sgd, parse_amount
 from badminton.domain.timeutil import (
     at_sgt,
@@ -52,7 +52,7 @@ from badminton.domain.timeutil import (
 from badminton.services.drafts import create_draft, delete_draft, get_draft, update_data
 from badminton.services.members import mention_html, upsert_from_telegram
 from badminton.services.repo import last_hourly_rate
-from badminton.services.sessions import record_booking
+from badminton.services.sessions import find_mergeable_session, record_booking
 
 KIND = "booking"
 CALLBACK_KIND = "bk"
@@ -64,12 +64,15 @@ PICK_PRICE = "p"
 OTHER_PRICE = "px"
 BACK_TO_DURATION = "bkd"
 CONFIRM = "ok"
+MERGE = "mg"
+SEPARATE = "sep"
 CANCEL = "x"
 
 STEP_DATE = "date"
 STEP_HOUR = "hour"
 STEP_DURATION = "duration"
 STEP_PRICE = "price"
+STEP_MERGE = "merge"
 STEP_CONFIRM = "confirm"
 
 EXPIRED = "This booking form has expired. Send your screenshot with /book again."
@@ -78,8 +81,11 @@ EXPIRED = "This booking form has expired. Send your screenshot with /book again.
 # Rendering --------------------------------------------------------------------
 
 
-def render(draft: Draft, payer: Member) -> tuple[str, InlineKeyboardMarkup]:
-    """The wizard card for the draft's current step."""
+def render(
+    draft: Draft, payer: Member, merge_into: Session | None = None
+) -> tuple[str, InlineKeyboardMarkup]:
+    """The wizard card for the draft's current step. ``merge_into`` is the session the
+    booking may join (merge step) or will join (confirm step)."""
     data = draft.data
     lines = [f"🏸 <b>New court booking</b> by {mention_html(payer)}"]
     if "day" in data:
@@ -126,8 +132,20 @@ def render(draft: Draft, payer: Member) -> tuple[str, InlineKeyboardMarkup]:
                 [_button("‹ Change duration", draft, BACK_TO_DURATION)],
             ]
         )
+    elif step == STEP_MERGE:
+        lines.append(f"💵 {fmt_sgd(data['amount_cents'])}, paid by {mention_html(payer)}")
+        span = fmt_session(merge_into.starts_at, merge_into.ends_at)
+        lines.append(f"There's already a session on {span}. Is this court part of it?")
+        markup = InlineKeyboardMarkup(
+            [
+                [_button(f"➕ Add to {_times(merge_into)}", draft, MERGE, str(merge_into.id))],
+                [_button("Separate session", draft, SEPARATE)],
+            ]
+        )
     else:
         lines.append(f"💵 {fmt_sgd(data['amount_cents'])}, paid by {mention_html(payer)}")
+        if merge_into is not None:
+            lines.append(f"➕ Part of the {_times(merge_into)} session")
         lines.append("Is this right?")
         markup = InlineKeyboardMarkup(
             [
@@ -157,13 +175,19 @@ def card_note(starts_at: datetime, days_before: int, today: date) -> str:
     return f"🗳 Attendance card goes up on {fmt_date(due)}."
 
 
+def _times(session: Session) -> str:
+    return fmt_session(session.starts_at, session.ends_at).split(", ", 1)[1]
+
+
 def _button(text: str, draft: Draft, action: str, value: str = "") -> InlineKeyboardButton:
     return InlineKeyboardButton(text, callback_data=encode(CALLBACK_KIND, draft.id, action, value))
 
 
 async def refresh_card(context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft) -> None:
     payer = await db.get(Member, draft.data["payer_member_id"])
-    text, markup = render(draft, payer)
+    session_id = draft.data.get("merge_candidate_id") or draft.data.get("merge_session_id")
+    merge_into = await db.get(Session, session_id) if session_id else None
+    text, markup = render(draft, payer, merge_into)
     await context.bot.edit_message_text(
         text, chat_id=draft.chat_id, message_id=draft.message_id, reply_markup=markup
     )
@@ -252,9 +276,18 @@ async def _apply(
     elif action == PICK_DURATION:
         changes = await _price_step(context, db, int(value))
     elif action == BACK_TO_DURATION:
-        changes = {"step": STEP_DURATION, "amount_cents": None}
+        changes = {
+            "step": STEP_DURATION,
+            "amount_cents": None,
+            "merge_candidate_id": None,
+            "merge_session_id": None,
+        }
     elif action == PICK_PRICE:
-        changes = {"amount_cents": int(value), "step": STEP_CONFIRM}
+        changes = await _after_price(db, draft, int(value))
+    elif action == MERGE:
+        changes = {"merge_session_id": int(value), "merge_candidate_id": None, "step": STEP_CONFIRM}
+    elif action == SEPARATE:
+        changes = {"merge_candidate_id": None, "step": STEP_CONFIRM}
     elif action == OTHER_PRICE:
         await prompts.ask(
             context.bot,
@@ -291,16 +324,36 @@ async def _price_step(
     return {"minutes": minutes, "suggested_cents": suggested, "step": STEP_PRICE}
 
 
+def _booking_times(draft: Draft) -> tuple[datetime, datetime]:
+    starts_at = at_sgt(parse_day(draft.data["day"]), draft.data["hour"])
+    return starts_at, starts_at + timedelta(minutes=draft.data["minutes"])
+
+
+async def _after_price(db: AsyncSession, draft: Draft, amount_cents: int) -> dict[str, Any]:
+    """Ask whether to join a same-day session that overlaps or touches this booking
+    (FR-BK-7); otherwise go straight to confirm."""
+    candidate = await find_mergeable_session(db, *_booking_times(draft))
+    if candidate is None:
+        return {"amount_cents": amount_cents, "step": STEP_CONFIRM}
+    return {"amount_cents": amount_cents, "merge_candidate_id": candidate.id, "step": STEP_MERGE}
+
+
 async def _confirm(
     update: Update, context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft
 ) -> str | None:
     data = draft.data
-    starts_at = at_sgt(parse_day(data["day"]), data["hour"])
+    starts_at, ends_at = _booking_times(draft)
     now = utc_now()
     if starts_at <= now:
         return "That time has passed. Change the date or time first."
+    merge_into = None
+    if data.get("merge_session_id"):
+        # Only join if it can still be joined, e.g. it wasn't cancelled meanwhile.
+        candidate = await find_mergeable_session(db, starts_at, ends_at)
+        if candidate is not None and candidate.id == data["merge_session_id"]:
+            merge_into = candidate
     payer = await db.get(Member, data["payer_member_id"])
-    await record_booking(
+    booking = await record_booking(
         db,
         payer_id=payer.id,
         starts_at=starts_at,
@@ -309,11 +362,17 @@ async def _confirm(
         photo_file_id=data.get("photo_file_id"),
         record_chat_id=draft.chat_id,
         record_message_id=draft.message_id,
+        session_id=merge_into.id if merge_into is not None else None,
     )
     await delete_draft(db, draft)
-    note = card_note(starts_at, settings_of(context).reminder_days_before, sgt_date(now))
-    record = render_record(payer, starts_at, data["minutes"], data["amount_cents"])
-    await update.callback_query.edit_message_text(f"{record}\n{note}")
+    session = await db.get(Session, booking.session_id)
+    lines = [render_record(payer, starts_at, data["minutes"], data["amount_cents"])]
+    if merge_into is not None:
+        lines.append(f"➕ Added to the {fmt_session(session.starts_at, session.ends_at)} session")
+    lines.append(
+        card_note(session.starts_at, settings_of(context).reminder_days_before, sgt_date(now))
+    )
+    await update.callback_query.edit_message_text("\n".join(lines))
     return None
 
 
@@ -326,7 +385,7 @@ async def on_typed_answer(
         if awaiting == "minutes":
             update_data(draft, **await _price_step(context, db, parse_hours(text)))
         elif awaiting == "amount":
-            update_data(draft, amount_cents=parse_amount(text), step=STEP_CONFIRM)
+            update_data(draft, **await _after_price(db, draft, parse_amount(text)))
     except ValueError as error:
         raise prompts.PromptError(str(error)) from None
     await refresh_card(context, db, draft)
