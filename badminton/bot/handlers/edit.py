@@ -17,6 +17,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 from badminton.bot import prompts
 from badminton.bot.admin import admin_only
 from badminton.bot.context import db_session, settings_of
+from badminton.bot.handlers.booking import refresh_record
 from badminton.bot.keyboards import decode, encode
 from badminton.db.models import Booking, Draft, Member, Session
 from badminton.domain.money import allocate, fmt_sgd, parse_amount
@@ -418,6 +419,7 @@ async def _change_booking(
         lines.append(f"📅 The session is now {fmt_session(session.starts_at, session.ends_at)}")
     lines.append(_split_line(await load_card_view(db, session.id)))
     await _show(context, db, draft)
+    await refresh_record(context.bot, db, booking, "✏️ Corrected by the admin.")
     await refresh_card(context.bot, db, session.id, locked=session.locked_at is not None)
     await announce(context.bot, settings_of(context), "\n".join(lines))
 
@@ -425,7 +427,8 @@ async def _change_booking(
 async def _cancel_session(
     update: Update, context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft
 ) -> None:
-    session = await cancel_session(db, draft.data["session_id"], utc_now())
+    now = utc_now()
+    session = await cancel_session(db, draft.data["session_id"], now)
     when = fmt_session(session.starts_at, session.ends_at)
     admin = await upsert_from_telegram(db, update.effective_user)
     audit.record(
@@ -439,6 +442,10 @@ async def _cancel_session(
     await delete_draft(context.bot, db, draft)
     await db.commit()
     await update.callback_query.edit_message_text(f"🗑 Cancelled the session on {when}.")
+    note = f"Cancelled by {html.escape(admin.display_name)} with the session."
+    for booking in session.bookings:
+        if booking.cancelled_at == now:  # not the ones cancelled before
+            await refresh_record(context.bot, db, booking, note)
     await close_cancelled_card(context.bot, session)
     await announce(
         context.bot,
