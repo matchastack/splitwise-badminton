@@ -24,14 +24,18 @@ async def announce(bot: Bot, settings: Settings, text: str, **kwargs: Any) -> Me
 
 async def dm(bot: Bot, member: Member, text: str, **kwargs: Any) -> bool:
     """DM a member who has /start-ed the bot. If they have since blocked it, turn their
-    DMs off (FR-MEM-3) and carry on; the caller commits that change."""
+    DMs off (FR-MEM-3) and carry on; the caller commits that change. Any other rejected
+    message is skipped, with DMs left on."""
     if not member.dm_enabled or member.telegram_user_id is None:
         return False
     try:
         await bot.send_message(member.telegram_user_id, text, **kwargs)
-    except (Forbidden, BadRequest) as error:
+    except Forbidden as error:
         logger.info("Turning off DMs for member %s: %s", member.id, error)
         member.dm_enabled = False
+        return False
+    except BadRequest as error:
+        logger.warning("Could not DM member %s: %s", member.id, error)
         return False
     return True
 

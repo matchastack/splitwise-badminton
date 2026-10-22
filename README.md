@@ -127,7 +127,7 @@ It prints the webhook URL when done.
 6. Optional: in BotFather, use `/setjoingroups` → **Disable**, so nobody can add your bot to other groups. The bot ignores other chats anyway.
 7. Ask everyone to open a private chat with the bot and press **Start**. Telegram only lets a bot DM people who have done this, and the DM is how monthly statements arrive.
 
-> If Telegram ever converts the group to a *supergroup* (it does this for some settings changes), the group ID changes. Run `/chatid` again and update `GROUP_CHAT_ID`.
+> If Telegram ever converts the group to a *supergroup* (it does this for some settings changes), the group ID changes. As the admin, run `/chatid` in the group again and update `GROUP_CHAT_ID`.
 
 ### 8. Optional: run the scheduler more often (cron-job.org)
 
@@ -159,6 +159,7 @@ The only effect of a daily cron is that the "🔒 locked" summary can arrive up 
    It should return `{"ok":true,"steps":{…}}`.
 6. Optional: as the admin, `/invoice` posts a settle-up for the current month right away.
    - The scheduled run on the 1st skips a month that already has an invoice.
+   - In the first week of a month, before the scheduled run has posted the previous month's invoice, `/invoice` posts that one instead.
    - Anything that happens after a manual invoice is included in the next one, because balances carry over.
 
 ### Environment variables
@@ -187,7 +188,7 @@ The only effect of a daily cron is that the "🔒 locked" summary can arrive up 
   - `last_error_message` explains failures:
     - `401` means `WEBHOOK_SECRET` in Vercel differs from the one the setup script used, or Deployment Protection is blocking the URL.
     - `500` means look at Vercel's **Logs** tab; often `DATABASE_URL` is wrong or migrations weren't run.
-- **The bot replies in DMs but ignores the group.** `GROUP_CHAT_ID` is missing or wrong, or you didn't redeploy after setting it. Run `/chatid` in the group again.
+- **The bot replies in DMs but ignores the group.** `GROUP_CHAT_ID` is missing or wrong, or you didn't redeploy after setting it. As the admin, run `/chatid` in the group again.
 - **Messages aren't deleted.** The bot isn't an admin, or lacks *Delete messages*.
 - **Someone doesn't get statements.** They haven't pressed **Start** in a private chat with the bot, or they blocked it. Pressing Start again turns statements back on.
 - **I ran the local polling script and now the deployed bot is silent.** Polling removes the webhook. Run `scripts/setup_telegram.py` again (step 6).
@@ -202,7 +203,7 @@ The only effect of a daily cron is that the "🔒 locked" summary can arrive up 
 | `/name <name>` | anyone | anywhere | Change the name the bot shows for you |
 | `/start` | anyone | DM | Turn on monthly statements |
 | `/help` | anyone | anywhere | What the bot can do |
-| `/chatid` | anyone | anywhere | Show the chat ID (setup) |
+| `/chatid` | anyone (in other groups once `GROUP_CHAT_ID` is set: admin) | anywhere | Show the chat ID (setup) |
 | `/shuttle <price>` | admin | anywhere | Record a shuttlecock purchase |
 | `/edit` | admin | anywhere | Fix a session's attendance or bookings, or cancel it |
 | `/settle` | admin | anywhere | Record a payment made outside the bot |

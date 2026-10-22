@@ -7,11 +7,13 @@ duration. Only the submitter can operate it (FR-BK-2); the sender is the payer.
 
 from __future__ import annotations
 
+import contextlib
 from datetime import date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.error import BadRequest
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -37,7 +39,7 @@ from badminton.bot.keyboards import (
     parse_day,
     parse_month,
 )
-from badminton.db.models import Draft, Member, Session
+from badminton.db.models import Booking, Draft, Member, Session
 from badminton.domain.money import fmt_sgd, parse_amount
 from badminton.domain.timeutil import (
     at_sgt,
@@ -169,6 +171,26 @@ def render_record(payer: Member, starts_at: datetime, minutes: int, amount_cents
     )
 
 
+async def refresh_record(bot: Bot, db: AsyncSession, booking: Booking, note: str) -> None:
+    """Re-render a booking's record after the admin changed or cancelled the booking.
+    ``note`` says what happened."""
+    if booking.record_message_id is None:
+        return
+    payer = await db.get(Member, booking.payer_member_id)
+    record = render_record(payer, booking.starts_at, booking.minutes, booking.amount_cents)
+    if booking.cancelled_at is None:
+        text, markup = f"{record}\n{note}", cancel_markup(booking.id)
+    else:
+        text, markup = f"🗑 <s>{record}</s>\n{note}", None
+    with contextlib.suppress(BadRequest):  # the record was deleted
+        await bot.edit_message_text(
+            text,
+            chat_id=booking.record_chat_id,
+            message_id=booking.record_message_id,
+            reply_markup=markup,
+        )
+
+
 def card_note(starts_at: datetime, days_before: int, today: date) -> str:
     due = card_due_date(starts_at, days_before)
     if due <= today:
@@ -258,8 +280,10 @@ async def _apply(
     changes: dict[str, Any]
     if action == NOOP:
         return None
+    if action not in (OTHER_PRICE, OTHER_DURATION):
+        await prompts.dismiss(context.bot, draft)
     if action == CANCEL:
-        await delete_draft(db, draft)
+        await delete_draft(context.bot, db, draft)
         await update.callback_query.edit_message_text("✖ Booking cancelled.")
         return None
     if action == SHOW_MONTH:
@@ -367,7 +391,7 @@ async def _confirm(
         record_message_id=draft.message_id,
         session_id=merge_into.id if merge_into is not None else None,
     )
-    await delete_draft(db, draft)
+    await delete_draft(context.bot, db, draft)
     session = await db.get(Session, booking.session_id)
     if merge_into is not None:
         await refresh_card(context.bot, db, session.id)

@@ -20,9 +20,9 @@ from telegram.error import BadRequest
 
 from badminton.config import Settings
 from badminton.db.models import Attendance, Member, Session
-from badminton.domain.money import fmt_sgd
+from badminton.domain.money import allocate, fmt_sgd
 from badminton.domain.timeutil import fmt_hours, fmt_session, is_card_due
-from badminton.services.tick import TickContext
+from badminton.services.tick import TickContext, for_each
 
 IN = "in"
 OUT = "out"
@@ -34,6 +34,17 @@ class CardView:
     payments: list[tuple[str, int]]  # (payer name, cents) per active booking
     ins: list[str]
     outs: list[str]
+
+    @property
+    def court_cents(self) -> int:
+        return sum(cents for _, cents in self.payments)
+
+    def court_each(self) -> str:
+        """Each player's court share, e.g. "$7.40", or "$4.93–$4.94" when the cents don't
+        split evenly. Needs someone marked in."""
+        shares = allocate(self.court_cents, dict.fromkeys(range(len(self.ins)), 1)).values()
+        low, high = min(shares), max(shares)
+        return fmt_sgd(low) if low == high else f"{fmt_sgd(low)}–{fmt_sgd(high)}"
 
 
 async def load_card_view(db: AsyncSession, session_id: int) -> CardView:
@@ -65,15 +76,14 @@ async def load_card_view(db: AsyncSession, session_id: int) -> CardView:
 
 def render_card(view: CardView, *, locked: bool = False) -> tuple[str, InlineKeyboardMarkup | None]:
     session = view.session
-    minutes = int((session.ends_at - session.starts_at).total_seconds() // 60)
-    total = sum(cents for _, cents in view.payments)
     if len(view.payments) == 1:
         paid = f"paid by {html.escape(view.payments[0][0])}"
     else:
         paid = ", ".join(f"{html.escape(name)} {fmt_sgd(cents)}" for name, cents in view.payments)
     lines = [
-        f"🏸 <b>{fmt_session(session.starts_at, session.ends_at)}</b> ({fmt_hours(minutes)})",
-        f"💵 Court {fmt_sgd(total)} — {paid}",
+        f"🏸 <b>{fmt_session(session.starts_at, session.ends_at)}</b> "
+        f"({fmt_hours(session.minutes)})",
+        f"💵 Court {fmt_sgd(view.court_cents)} — {paid}",
         f"✅ In ({len(view.ins)}): {_names(view.ins)}",
         f"❌ Out ({len(view.outs)}): {_names(view.outs)}",
     ]
@@ -187,7 +197,7 @@ async def post_due_cards(context: TickContext) -> None:
     """Tick step: post every card that is due, catching up on missed days."""
     async with context.sessionmaker() as db:
         candidates = await db.scalars(
-            select(Session)
+            select(Session.id)
             .where(
                 Session.status == "scheduled",
                 Session.card_sent_at.is_(None),
@@ -195,5 +205,9 @@ async def post_due_cards(context: TickContext) -> None:
             )
             .order_by(Session.starts_at, Session.id)
         )
-        for session in candidates.all():
+
+        async def post(session_id: int) -> None:
+            session = await db.get(Session, session_id)
             await post_card_if_due(context.bot, db, session, context.settings, context.now)
+
+        await for_each(db, candidates.all(), post, "Posting the attendance card")

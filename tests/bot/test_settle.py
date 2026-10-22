@@ -95,6 +95,20 @@ async def test_record_a_payment(bot: BotHarness) -> None:
     )
 
 
+async def test_cancel_while_asked_for_the_amount_removes_the_prompt(bot: BotHarness) -> None:
+    await members(bot, "shawn", "hw")
+    card = await SettleCard(bot).open()
+    await card.tap("shawn")
+    await card.tap("hw")
+    prompt = bot.telegram.last("sendMessage").message
+
+    await card.tap("✖ Cancel")
+
+    deleted = [call.params["message_id"] for call in bot.telegram.calls_to("deleteMessage")]
+    assert deleted == [prompt["message_id"]]
+    assert card.current["text"] == "✖ Payment not recorded."
+
+
 async def test_same_person_on_both_sides_is_refused(bot: BotHarness) -> None:
     ids = await members(bot, "shawn", "hw")
     card = await SettleCard(bot).open()

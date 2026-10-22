@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from badminton.db.models import Session, ShuttleBatch
@@ -40,6 +40,17 @@ async def start_options(db: AsyncSession, now: datetime) -> StartOptions:
     if already_covered:
         last_session = None  # it belongs to the latest batch or an earlier one
     return StartOptions(next_session, last_session)
+
+
+async def split_as_of(db: AsyncSession, starts_at: datetime, now: datetime) -> datetime:
+    """When the split of the batch closed by one starting at ``starts_at`` is complete:
+    ``now``, or the end of a session still in progress that the closed batch covers."""
+    last_end = await db.scalar(
+        select(func.max(Session.ends_at)).where(
+            Session.status == "scheduled", Session.starts_at < starts_at
+        )
+    )
+    return max(now, last_end) if last_end is not None else now
 
 
 @dataclass(frozen=True)

@@ -13,7 +13,7 @@ import html
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
@@ -79,6 +79,18 @@ async def generate_invoice(db: AsyncSession, *, period: str, now: datetime) -> I
             line.carried_at = now
     await db.flush()
     return invoice
+
+
+async def discard_invoice(db: AsyncSession, invoice_id: int, previous_id: int | None) -> None:
+    """Undo ``generate_invoice`` after its card couldn't be posted, so the period can be
+    invoiced again. The previous invoice's lines are no longer carried."""
+    if previous_id is not None:
+        await db.execute(
+            update(InvoiceLine).where(InvoiceLine.invoice_id == previous_id).values(carried_at=None)
+        )
+    await db.execute(delete(InvoiceLine).where(InvoiceLine.invoice_id == invoice_id))
+    await db.execute(delete(InvoiceBalance).where(InvoiceBalance.invoice_id == invoice_id))
+    await db.execute(delete(Invoice).where(Invoice.id == invoice_id))
 
 
 def _summary(

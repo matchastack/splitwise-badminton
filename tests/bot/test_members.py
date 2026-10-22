@@ -85,6 +85,15 @@ async def test_foreign_groups_are_ignored(bot: BotHarness) -> None:
     assert bot.telegram.calls == []
 
 
+async def test_admin_chatid_works_in_another_group(bot: BotHarness) -> None:
+    for command in ("/chatid", "/help"):
+        await bot.send(text_update(command, sender=ZY, chat_id=OTHER_GROUP))
+
+    assert [call.params["text"] for call in bot.telegram.calls] == [
+        f"Chat ID: <code>{OTHER_GROUP}</code>"
+    ]
+
+
 async def test_chatid_works_anywhere_before_setup(bot: BotHarness) -> None:
     telegram = FakeTelegram()
     unconfigured = dataclasses.replace(TEST_SETTINGS, group_chat_id=None)

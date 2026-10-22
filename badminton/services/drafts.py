@@ -10,7 +10,7 @@ from typing import Any
 from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import Bot
-from telegram.error import BadRequest
+from telegram.error import BadRequest, Forbidden
 
 from badminton.db.models import Draft
 from badminton.services.tick import TickContext
@@ -71,7 +71,11 @@ def update_data(draft: Draft, **changes: Any) -> None:
     draft.data = data
 
 
-async def delete_draft(db: AsyncSession, draft: Draft) -> None:
+async def delete_draft(bot: Bot, db: AsyncSession, draft: Draft) -> None:
+    """Delete the draft and its open reply prompt, if any: with the wizard gone, nothing
+    could handle an answer."""
+    await delete_message_quietly(bot, draft.chat_id, draft.prompt_message_id)
+    draft.prompt_message_id = None
     await db.delete(draft)
 
 
@@ -81,12 +85,13 @@ def is_deleted(db: AsyncSession, draft: Draft) -> bool:
 
 
 async def delete_message_quietly(bot: Bot, chat_id: int, message_id: int | None) -> None:
-    """Delete a message, ignoring ones that are already gone or too old to delete."""
+    """Delete a message, ignoring ones that are already gone, too old to delete, or in a
+    chat the bot can no longer reach."""
     if message_id is None:
         return
     try:
         await bot.delete_message(chat_id, message_id)
-    except BadRequest as error:
+    except (BadRequest, Forbidden) as error:
         logger.info("Could not delete message %s in %s: %s", message_id, chat_id, error)
 
 
@@ -96,6 +101,5 @@ async def cleanup_expired_drafts(context: TickContext) -> None:
         expired = (await db.scalars(select(Draft).where(Draft.expires_at <= context.now))).all()
         for draft in expired:
             await delete_message_quietly(context.bot, draft.chat_id, draft.message_id)
-            await delete_message_quietly(context.bot, draft.chat_id, draft.prompt_message_id)
-            await delete_draft(db, draft)
+            await delete_draft(context.bot, db, draft)
         await db.commit()

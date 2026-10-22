@@ -122,8 +122,8 @@ async def start_rename(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             chat_id=query.message.chat_id,
             user_id=update.effective_user.id,
             now=utc_now(),
-            data={"member_id": member.id},
-            message_id=query.message.message_id,
+            # Not the draft's message_id: that one is deleted when the draft expires.
+            data={"member_id": member.id, "list_message_id": query.message.message_id},
         )
         await prompts.ask(
             context.bot,
@@ -160,11 +160,10 @@ async def finish_rename(
     )
     await db.flush()
     text_, markup = render_members(await all_members(db))
-    if draft.message_id is not None:
-        await context.bot.edit_message_text(
-            text_, chat_id=draft.chat_id, message_id=draft.message_id, reply_markup=markup
-        )
-    await delete_draft(db, draft)
+    await context.bot.edit_message_text(
+        text_, chat_id=draft.chat_id, message_id=draft.data["list_message_id"], reply_markup=markup
+    )
+    await delete_draft(context.bot, db, draft)
     await announce(
         context.bot,
         settings_of(context),

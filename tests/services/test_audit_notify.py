@@ -72,6 +72,14 @@ async def test_dm_turns_dms_off_when_blocked(bot: BotHarness) -> None:
     assert member.dm_enabled is False
 
 
+async def test_dm_keeps_dms_on_when_a_message_is_rejected(bot: BotHarness) -> None:
+    member = Member(display_name="reader", telegram_user_id=304, dm_enabled=True)
+    bot.telegram.fail("sendMessage", 400, "Bad Request: message is too long")
+
+    assert await dm(bot.application.bot, member, "hi") is False
+    assert member.dm_enabled is True
+
+
 async def test_dm_admins_skips_admins_who_cannot_be_reached(bot: BotHarness) -> None:
     settings = dataclasses.replace(TEST_SETTINGS, admin_ids=frozenset({ADMIN_ID, 112}))
     bot.telegram.fail("sendMessage", 403, "Forbidden: bot can't initiate conversation with a user")
