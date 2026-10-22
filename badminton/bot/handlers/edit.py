@@ -269,12 +269,19 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         elif action == BOOKING:
             update_data(draft, screen=BOOKING, booking_id=int(value))
         if action == SESSIONS:
-            update_data(draft, screen=SESSIONS, session_id=None, ins=None)
+            update_data(draft, screen=SESSIONS, session_id=None, ins=None, shown_ins=None)
         elif action == PICK_SESSION:
-            update_data(draft, screen="menu", session_id=int(value), ins=None, booking_id=None)
+            update_data(
+                draft,
+                screen="menu",
+                session_id=int(value),
+                ins=None,
+                shown_ins=None,
+                booking_id=None,
+            )
         elif action == ATTENDANCE:
             ins = await _current_ins(db, draft.data["session_id"])
-            update_data(draft, screen=ATTENDANCE, ins=ins)
+            update_data(draft, screen=ATTENDANCE, ins=ins, shown_ins=ins)
         elif action == TOGGLE:
             ins = set(draft.data["ins"]) ^ {int(value)}
             update_data(draft, ins=sorted(ins))
@@ -287,8 +294,11 @@ async def _save_attendance(
     update: Update, context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft
 ) -> None:
     session_id = draft.data["session_id"]
+    shown, chosen = set(draft.data["shown_ins"]), set(draft.data["ins"])
+    # Apply only the admin's toggles: anyone who answered since the screen was opened
+    # keeps their answer.
     before = set(await _current_ins(db, session_id))
-    after = set(draft.data["ins"])
+    after = (before - (shown - chosen)) | (chosen - shown)
     added, removed = after - before, before - after
     session = await db.get(Session, session_id)
     when = fmt_session(session.starts_at, session.ends_at)

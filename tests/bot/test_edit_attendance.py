@@ -117,6 +117,24 @@ async def test_change_attendance_announces_and_audits(bot: BotHarness) -> None:
     )
 
 
+async def test_saving_keeps_answers_given_while_editing(bot: BotHarness) -> None:
+    session_id, ids = await setup(bot)
+    card = await EditCard(bot).open()
+    await card.tap_starting(fmt_date(date(2026, 10, 4)))
+    await card.tap("👥 Attendance")
+    async with bot.sessionmaker() as db:
+        await set_attendance(db, session_id, ids["nic"], "in")  # nic taps ✅ on the card
+        await db.commit()
+
+    await card.tap("✅ hw")
+    await card.tap("💾 Save")
+
+    assert await ins(bot, session_id) == {ids["shawn"], ids["nic"]}
+    assert bot.telegram.sent_texts(GROUP_ID)[-1].startswith(
+        f"✏️ Admin changed attendance for <b>{WHEN}</b>: −hw\n"
+    )
+
+
 async def test_saving_without_changes(bot: BotHarness) -> None:
     await setup(bot)
     card = await EditCard(bot).open()
