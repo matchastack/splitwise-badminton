@@ -16,6 +16,7 @@ from sqlalchemy import (
     ForeignKey,
     MetaData,
     String,
+    Text,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -157,6 +158,7 @@ class Invoice(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     period: Mapped[str] = mapped_column(String(7), unique=True)  # YYYY-MM
+    summary: Mapped[str] = mapped_column(Text, default="", server_default="")  # card header
     card_chat_id: Mapped[int | None] = mapped_column(BigInteger)
     card_message_id: Mapped[int | None]
     created_at: Mapped[datetime] = _created_at()

@@ -50,30 +50,30 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T11 | Ledger: shuttle batches | `feat/t11-ledger-shuttle-batches` | E6 | T10 | ✅ | [#12](https://github.com/matchastack/splitwise-badminton/pull/12) |
 | T12 | Debt simplification | `feat/t12-debt-simplification` | E6 | T08 | ✅ | [#13](https://github.com/matchastack/splitwise-badminton/pull/13) |
 | T13 | Monthly statement builder | `feat/t13-monthly-statement` | E6 | T09, T11 | ✅ | [#14](https://github.com/matchastack/splitwise-badminton/pull/14) |
-| T14 | Ledger repository | `feat/t14-ledger-repository` | E6 | T04, T11 | ⬜ | |
-| T15 | Member registry and basic commands | `feat/t15-member-registry` | E2 | T06 | ⬜ | |
-| T16 | Admin guard, audit log, announcements | `feat/t16-admin-guard-audit` | E8 | T15 | ⬜ | |
-| T17 | Wizard drafts and reply prompts | `feat/t17-drafts-and-prompts` | E3 | T15 | ⬜ | |
-| T18 | Group message guard | `feat/t18-group-message-guard` | E9 | T17 | ⬜ | |
-| T19 | Member admin commands | `feat/t19-member-admin-commands` | E2 | T16, T17 | ⬜ | |
-| T20 | Calendar and hour keyboards | `feat/t20-calendar-hour-keyboards` | E3 | T09 | ⬜ | |
-| T21 | Booking wizard: date, time, duration | `feat/t21-booking-wizard-schedule` | E3 | T17, T20 | ⬜ | |
-| T22 | Booking wizard: price and confirm | `feat/t22-booking-wizard-confirm` | E3 | T21 | ⬜ | |
-| T23 | Same-day session merge | `feat/t23-booking-session-merge` | E3 | T22 | ⬜ | |
-| T24 | Booking cancellation | `feat/t24-booking-cancel` | E3 | T16, T22 | ⬜ | |
-| T25 | Attendance card | `feat/t25-attendance-card` | E4 | T22 | ⬜ | |
-| T26 | Attendance card scheduling | `feat/t26-attendance-scheduling` | E4 | T25 | ⬜ | |
-| T27 | Session finalisation | `feat/t27-session-finalize` | E4 | T14, T16, T25 | ⬜ | |
-| T28 | Shuttle purchase | `feat/t28-shuttle-purchase` | E5 | T14, T16, T17 | ⬜ | |
-| T29 | `/balance` and `/upcoming` | `feat/t29-balance-upcoming` | E2 | T14, T15 | ⬜ | |
-| T30 | Invoice generation and group card | `feat/t30-invoice-generation` | E7 | T12, T13, T14, T16 | ⬜ | |
-| T31 | Invoice Paid toggle | `feat/t31-invoice-paid-toggle` | E7 | T29, T30 | ⬜ | |
-| T32 | DM statements | `feat/t32-invoice-dm-statements` | E7 | T30 | ⬜ | |
-| T33 | Monthly schedule and `/invoice` | `feat/t33-invoice-schedule` | E7 | T32 | ⬜ | |
-| T34 | Admin: edit attendance | `feat/t34-admin-edit-attendance` | E8 | T14, T16, T17, T25 | ⬜ | |
-| T35 | Admin: edit bookings, cancel session | `feat/t35-admin-edit-booking` | E8 | T24, T34 | ⬜ | |
-| T36 | Admin: manual transfer | `feat/t36-admin-manual-transfer` | E8 | T14, T16, T17 | ⬜ | |
-| T37 | Setup and deployment guide | `docs/t37-setup-guide` | E1 | T07, T33 | ⬜ | |
+| T14 | Ledger repository | `feat/t14-ledger-repository` | E6 | T04, T11 | ✅ | [#15](https://github.com/matchastack/splitwise-badminton/pull/15) |
+| T15 | Member registry and basic commands | `feat/t15-member-registry` | E2 | T06 | ✅ | [#16](https://github.com/matchastack/splitwise-badminton/pull/16) |
+| T16 | Admin guard, audit log, announcements | `feat/t16-admin-guard-audit` | E8 | T15 | ✅ | [#17](https://github.com/matchastack/splitwise-badminton/pull/17) |
+| T17 | Wizard drafts and reply prompts | `feat/t17-drafts-and-prompts` | E3 | T15 | ✅ | [#18](https://github.com/matchastack/splitwise-badminton/pull/18) |
+| T18 | Group message guard | `feat/t18-group-message-guard` | E9 | T17 | ✅ | [#19](https://github.com/matchastack/splitwise-badminton/pull/19) |
+| T19 | Member admin commands | `feat/t19-member-admin-commands` | E2 | T16, T17 | ✅ | [#20](https://github.com/matchastack/splitwise-badminton/pull/20) |
+| T20 | Calendar and hour keyboards | `feat/t20-calendar-hour-keyboards` | E3 | T09 | ✅ | [#21](https://github.com/matchastack/splitwise-badminton/pull/21) |
+| T21 | Booking wizard: date, time, duration | `feat/t21-booking-wizard-schedule` | E3 | T17, T20 | ✅ | [#22](https://github.com/matchastack/splitwise-badminton/pull/22) |
+| T22 | Booking wizard: price and confirm | `feat/t22-booking-wizard-confirm` | E3 | T21 | ✅ | [#23](https://github.com/matchastack/splitwise-badminton/pull/23) |
+| T23 | Same-day session merge | `feat/t23-booking-session-merge` | E3 | T22 | ✅ | [#24](https://github.com/matchastack/splitwise-badminton/pull/24) |
+| T24 | Booking cancellation | `feat/t24-booking-cancel` | E3 | T16, T22 | ✅ | [#25](https://github.com/matchastack/splitwise-badminton/pull/25) |
+| T25 | Attendance card | `feat/t25-attendance-card` | E4 | T22 | ✅ | [#26](https://github.com/matchastack/splitwise-badminton/pull/26) |
+| T26 | Attendance card scheduling | `feat/t26-attendance-scheduling` | E4 | T25 | ✅ | [#27](https://github.com/matchastack/splitwise-badminton/pull/27) |
+| T27 | Session finalisation | `feat/t27-session-finalize` | E4 | T14, T16, T25 | ✅ | [#28](https://github.com/matchastack/splitwise-badminton/pull/28) |
+| T28 | Shuttle purchase | `feat/t28-shuttle-purchase` | E5 | T14, T16, T17 | ✅ | [#29](https://github.com/matchastack/splitwise-badminton/pull/29) |
+| T29 | `/balance` and `/upcoming` | `feat/t29-balance-upcoming` | E2 | T14, T15 | ✅ | [#30](https://github.com/matchastack/splitwise-badminton/pull/30) |
+| T30 | Invoice generation and group card | `feat/t30-invoice-generation` | E7 | T12, T13, T14, T16 | ✅ | [#32](https://github.com/matchastack/splitwise-badminton/pull/32) |
+| T31 | Invoice Paid toggle | `feat/t31-invoice-paid-toggle` | E7 | T29, T30 | ✅ | [#33](https://github.com/matchastack/splitwise-badminton/pull/33) |
+| T32 | DM statements | `feat/t32-invoice-dm-statements` | E7 | T30 | ✅ | [#34](https://github.com/matchastack/splitwise-badminton/pull/34) |
+| T33 | Monthly schedule and `/invoice` | `feat/t33-invoice-schedule` | E7 | T32 | ✅ | [#36](https://github.com/matchastack/splitwise-badminton/pull/36) |
+| T34 | Admin: edit attendance | `feat/t34-admin-edit-attendance` | E8 | T14, T16, T17, T25 | ✅ | [#38](https://github.com/matchastack/splitwise-badminton/pull/38) |
+| T35 | Admin: edit bookings, cancel session | `feat/t35-admin-edit-booking` | E8 | T24, T34 | ✅ | [#39](https://github.com/matchastack/splitwise-badminton/pull/39) |
+| T36 | Admin: manual transfer | `feat/t36-admin-manual-transfer` | E8 | T14, T16, T17 | ✅ | [#40](https://github.com/matchastack/splitwise-badminton/pull/40) |
+| T37 | Setup and deployment guide | `docs/t37-setup-guide` | E1 | T07, T32 | ✅ | [#35](https://github.com/matchastack/splitwise-badminton/pull/35) |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
@@ -407,7 +407,7 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
 ## E1 — Documentation
 
 ### T37 · Setup and deployment guide
-`docs/t37-setup-guide` · Stories US-1.3 · FR-OPS-4 · Depends on T07, T33
+`docs/t37-setup-guide` · Stories US-1.3 · FR-OPS-4 · Depends on T07, T32 (brought forward at the owner's request)
 - **Scope:** README covering:
   - BotFather;
   - adding the bot to the group as an admin with *Delete messages*;
