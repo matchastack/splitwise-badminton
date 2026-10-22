@@ -126,8 +126,8 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
   - `badminton/web.py`: the FastAPI app.
     - `POST /api/telegram` checks the secret header, builds the python-telegram-bot application (`badminton/bot/app.py`, no handlers yet), runs `process_update`, and always returns 200 once authenticated.
     - `GET /api/cron` checks the Bearer token and runs `services/tick.py`, an orchestrator over an ordered list of steps that starts empty.
-  - `api/telegram.py` and `api/cron.py` entry points, one per route. Vercel serves `api/<name>.py` at `/api/<name>`; a rewrite to a shared `api/index.py` makes the app see `/api/index` and 404 every route.
-  - `vercel.json`: the daily cron at `0 2 * * *` (10:00 SGT) and `includeFiles` for both functions.
+  - `api/index.py` entry point. Vercel detects the FastAPI app there and serves every path to it, so there is no rewrite: a rewrite to `/api/index` makes the app see that path and 404 every route.
+  - `vercel.json`: the daily cron at `0 2 * * *` (10:00 SGT) and `includeFiles` for the function.
 - **Done when:** tests check 401 for a missing or wrong secret or token, and 200 for a valid request.
 
 ### T06 · Fake Telegram test harness

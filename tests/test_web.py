@@ -1,4 +1,3 @@
-import importlib
 import json
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -159,22 +158,20 @@ async def test_cron_with_no_steps(
     assert response.json() == {"ok": True, "steps": {}}
 
 
-@pytest.mark.parametrize("name", ["telegram", "cron"])
-def test_vercel_entry_point_exposes_app(name: str) -> None:
-    entry_app = importlib.import_module(f"api.{name}").app
+def test_vercel_entry_point_exposes_app() -> None:
+    from api.index import app as entry_app
 
     assert entry_app is app
 
 
-def test_every_route_is_served_by_its_own_vercel_function() -> None:
-    # Vercel serves api/<name>.py at /api/<name>. A rewrite to one shared function would hand
-    # the app the rewritten path (/api/index), so no route would match and every request 404s.
+def test_vercel_serves_the_app_directly_without_a_rewrite() -> None:
+    # Vercel detects the FastAPI app in api/index.py (it fails the build if there isn't exactly
+    # one entry point) and serves every path to it. A vercel.json rewrite would hand the app
+    # the rewritten path (/api/index), so no route would match and every request would 404.
     config = json.loads((ROOT / "vercel.json").read_text())
     paths = {route.path for route in app.routes}
 
-    assert paths == {"/api/telegram", "/api/cron"}
     assert "rewrites" not in config
-    assert set(config["functions"]) == {f"{path.removeprefix('/')}.py" for path in paths}
-    for function in config["functions"]:
-        assert (ROOT / function).is_file()
+    assert set(config["functions"]) == {"api/index.py"}
+    assert sorted(path.name for path in (ROOT / "api").glob("*.py")) == ["index.py"]
     assert {job["path"] for job in config["crons"]} <= paths
