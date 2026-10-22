@@ -15,14 +15,16 @@ async def drop_foreign_chats(update: Update, context: ContextTypes.DEFAULT_TYPE)
     chat = update.effective_chat
     if chat is None or chat.type == ChatType.PRIVATE:
         return
-    group_chat_id = settings_of(context).group_chat_id
-    if group_chat_id is None:
-        # Not set up yet: only /chatid is useful, so let it through anywhere.
-        message = update.effective_message
-        if message is not None and (message.text or "").startswith("/chatid"):
-            return
-    elif chat.id == group_chat_id:
+    settings = settings_of(context)
+    if chat.id == settings.group_chat_id:
         return
+    message = update.effective_message
+    if message is not None and (message.text or "").startswith("/chatid"):
+        # Only /chatid is useful elsewhere: anyone's before setup, and the admin's after,
+        # e.g. once the group became a supergroup and got a new ID.
+        user = update.effective_user
+        if settings.group_chat_id is None or (user is not None and settings.is_admin(user.id)):
+            return
     raise ApplicationHandlerStop
 
 
