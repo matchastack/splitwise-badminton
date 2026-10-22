@@ -68,6 +68,16 @@ async def ask(
     update_data(draft, awaiting=field, question=question)
 
 
+async def dismiss(bot: Bot, draft: Draft) -> None:
+    """Withdraw the open prompt, if any. Call it when the owner moves on with a button:
+    an answer typed afterwards would land wherever the wizard is by then."""
+    if draft.prompt_message_id is None:
+        return
+    await delete_message_quietly(bot, draft.chat_id, draft.prompt_message_id)
+    draft.prompt_message_id = None
+    update_data(draft, awaiting=None, question=None)
+
+
 async def handle_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
     async with db_session(context) as db:
