@@ -3,6 +3,7 @@ from datetime import date, timedelta
 
 import pytest
 from sqlalchemy import select, update
+from telegram.error import BadRequest
 
 from badminton.db.models import Session
 from badminton.domain.timeutil import at_sgt
@@ -101,6 +102,19 @@ async def test_failed_send_is_retried_next_tick(bot: BotHarness) -> None:
 
     await post_due_cards(tick_at(bot, friday + timedelta(minutes=15)))
     assert len(cards_sent(bot)) == 1
+
+
+async def test_one_failing_card_does_not_hold_up_the_rest(bot: BotHarness) -> None:
+    first = await make_session(bot, starts_at=SESSION_START)
+    second = await make_session(bot, starts_at=SESSION_START + timedelta(hours=3))
+    bot.telegram.fail("sendMessage", 400, "Bad Request: message is too long")
+
+    with pytest.raises(BadRequest):
+        await post_due_cards(tick_at(bot, at_sgt(SUNDAY - timedelta(days=2), 10)))
+
+    ids = await card_ids(bot)
+    assert ids[first] is None
+    assert ids[second] is not None
 
 
 async def test_booking_inside_the_window_posts_its_card_at_once(bot: BotHarness) -> None:

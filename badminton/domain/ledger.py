@@ -14,6 +14,7 @@ from datetime import datetime
 from enum import StrEnum
 
 from badminton.domain.money import allocate
+from badminton.domain.timeutil import minutes_between
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,7 +36,7 @@ class SessionFact:
 
     @property
     def minutes(self) -> int:
-        return int((self.ends_at - self.starts_at).total_seconds() // 60)
+        return minutes_between(self.starts_at, self.ends_at)
 
     @property
     def court_cents(self) -> int:

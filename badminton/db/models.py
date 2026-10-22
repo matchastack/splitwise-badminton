@@ -22,6 +22,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from badminton.domain.timeutil import minutes_between
+
 NAMING_CONVENTION = {
     "ix": "ix_%(column_0_label)s",
     "uq": "uq_%(table_name)s_%(column_0_name)s",
@@ -83,6 +85,10 @@ class Session(Base):
 
     bookings: Mapped[list[Booking]] = relationship(back_populates="session")
     attendance: Mapped[list[Attendance]] = relationship(back_populates="session")
+
+    @property
+    def minutes(self) -> int:
+        return minutes_between(self.starts_at, self.ends_at)
 
 
 class Booking(Base):

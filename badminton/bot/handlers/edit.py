@@ -17,9 +17,10 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 from badminton.bot import prompts
 from badminton.bot.admin import admin_only
 from badminton.bot.context import db_session, settings_of
+from badminton.bot.handlers.booking import refresh_record
 from badminton.bot.keyboards import decode, encode
 from badminton.db.models import Booking, Draft, Member, Session
-from badminton.domain.money import allocate, fmt_sgd, parse_amount
+from badminton.domain.money import fmt_sgd, parse_amount
 from badminton.domain.timeutil import (
     fmt_date,
     fmt_hours,
@@ -46,7 +47,8 @@ from badminton.services.sessions import cancel_session, recompute_span
 
 KIND = "edit"
 CALLBACK_KIND = "ed"
-RECENT_SESSIONS = 8
+RECENT_SESSIONS = 8  # that have started: the ones whose attendance may need fixing
+UPCOMING_SESSIONS = 4
 
 PICK_SESSION = "s"
 SESSIONS = "list"
@@ -79,12 +81,19 @@ async def render(db: AsyncSession, draft: Draft) -> tuple[str, InlineKeyboardMar
     data = draft.data
     screen = data.get("screen", SESSIONS)
     if screen == SESSIONS:
-        sessions = await db.scalars(
-            select(Session)
-            .where(Session.status == "scheduled")
+        now = utc_now()
+        scheduled = select(Session).where(Session.status == "scheduled")
+        upcoming = await db.scalars(
+            scheduled.where(Session.starts_at > now)
+            .order_by(Session.starts_at)
+            .limit(UPCOMING_SESSIONS)
+        )
+        recent = await db.scalars(
+            scheduled.where(Session.starts_at <= now)
             .order_by(Session.starts_at.desc())
             .limit(RECENT_SESSIONS)
         )
+        sessions = [*reversed(upcoming.all()), *recent]  # newest first
         rows = [[_button(_label(s), draft, PICK_SESSION, str(s.id))] for s in sessions]
         text = "✏️ <b>Edit a session</b>\nWhich one?" if rows else "There are no sessions to edit."
         return text, InlineKeyboardMarkup([*rows, [_button("✖ Close", draft, CLOSE)]])
@@ -261,12 +270,19 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         elif action == BOOKING:
             update_data(draft, screen=BOOKING, booking_id=int(value))
         if action == SESSIONS:
-            update_data(draft, screen=SESSIONS, session_id=None, ins=None)
+            update_data(draft, screen=SESSIONS, session_id=None, ins=None, shown_ins=None)
         elif action == PICK_SESSION:
-            update_data(draft, screen="menu", session_id=int(value), ins=None, booking_id=None)
+            update_data(
+                draft,
+                screen="menu",
+                session_id=int(value),
+                ins=None,
+                shown_ins=None,
+                booking_id=None,
+            )
         elif action == ATTENDANCE:
             ins = await _current_ins(db, draft.data["session_id"])
-            update_data(draft, screen=ATTENDANCE, ins=ins)
+            update_data(draft, screen=ATTENDANCE, ins=ins, shown_ins=ins)
         elif action == TOGGLE:
             ins = set(draft.data["ins"]) ^ {int(value)}
             update_data(draft, ins=sorted(ins))
@@ -279,8 +295,11 @@ async def _save_attendance(
     update: Update, context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft
 ) -> None:
     session_id = draft.data["session_id"]
+    shown, chosen = set(draft.data["shown_ins"]), set(draft.data["ins"])
+    # Apply only the admin's toggles: anyone who answered since the screen was opened
+    # keeps their answer.
     before = set(await _current_ins(db, session_id))
-    after = set(draft.data["ins"])
+    after = (before - (shown - chosen)) | (chosen - shown)
     added, removed = after - before, before - after
     session = await db.get(Session, session_id)
     when = fmt_session(session.starts_at, session.ends_at)
@@ -327,12 +346,7 @@ def _split_line(view: CardView) -> str:
     """The recalculated court split after a change."""
     if not view.ins:
         return "Nobody is marked in now, so this session is left out of the costs."
-    court = sum(cents for _, cents in view.payments)
-    shares = allocate(court, dict.fromkeys(range(len(view.ins)), 1)).values()
-    each = fmt_sgd(min(shares))
-    if max(shares) != min(shares):
-        each = f"{fmt_sgd(min(shares))}–{fmt_sgd(max(shares))}"
-    return f"💵 Court now {each} each ({len(view.ins)} played)"
+    return f"💵 Court now {view.court_each()} each ({len(view.ins)} played)"
 
 
 async def _show(context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft) -> None:
@@ -400,6 +414,7 @@ async def _change_booking(
         lines.append(f"📅 The session is now {fmt_session(session.starts_at, session.ends_at)}")
     lines.append(_split_line(await load_card_view(db, session.id)))
     await _show(context, db, draft)
+    await refresh_record(context.bot, db, booking, "✏️ Corrected by the admin.")
     await refresh_card(context.bot, db, session.id, locked=session.locked_at is not None)
     await announce(context.bot, settings_of(context), "\n".join(lines))
 
@@ -407,7 +422,8 @@ async def _change_booking(
 async def _cancel_session(
     update: Update, context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft
 ) -> None:
-    session = await cancel_session(db, draft.data["session_id"], utc_now())
+    now = utc_now()
+    session = await cancel_session(db, draft.data["session_id"], now)
     when = fmt_session(session.starts_at, session.ends_at)
     admin = await upsert_from_telegram(db, update.effective_user)
     audit.record(
@@ -421,6 +437,10 @@ async def _cancel_session(
     await delete_draft(context.bot, db, draft)
     await db.commit()
     await update.callback_query.edit_message_text(f"🗑 Cancelled the session on {when}.")
+    note = f"Cancelled by {html.escape(admin.display_name)} with the session."
+    for booking in session.bookings:
+        if booking.cancelled_at == now:  # not the ones cancelled before
+            await refresh_record(context.bot, db, booking, note)
     await close_cancelled_card(context.bot, session)
     await announce(
         context.bot,

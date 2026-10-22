@@ -3,6 +3,7 @@ from datetime import timedelta
 from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 
+from badminton.bot.handlers.booking_cancel import STARTED
 from badminton.db.models import AuditLog, Booking, Session
 from badminton.domain.timeutil import at_sgt, fmt_date, utc_now
 from tests.bot.booking_helpers import NIC, SHAWN, ZY, Wizard, book, future_day
@@ -73,14 +74,39 @@ async def test_admin_can_cancel_but_others_cannot(bot: BotHarness) -> None:
 
 async def test_cannot_cancel_once_started(bot: BotHarness) -> None:
     record = await booked(bot)
+    started = utc_now() - timedelta(minutes=5)
     async with bot.sessionmaker() as db:
-        await db.execute(update(Booking).values(starts_at=utc_now() - timedelta(minutes=5)))
+        await db.execute(update(Booking).values(starts_at=started))
+        await db.execute(update(Session).values(starts_at=started))
         await db.commit()
 
     await record.tap("🗑 Cancel booking")
 
-    assert record.last_alert() == "This booking has already started."
+    assert record.last_alert() == STARTED
     assert (await only_session(bot)).status == "scheduled"
+
+
+async def test_cannot_cancel_a_later_booking_once_its_session_started(bot: BotHarness) -> None:
+    await booked(bot, ZY)
+    second = await booked(bot, SHAWN, hour="13:00", hours="1h")
+    started = utc_now() - timedelta(minutes=30)
+    async with bot.sessionmaker() as db:  # play began at the first booking; the second is next
+        session = await only_session(bot)
+        first, later = sorted(session.bookings, key=lambda b: b.starts_at)
+        await db.execute(update(Booking).where(Booking.id == first.id).values(starts_at=started))
+        await db.execute(
+            update(Booking)
+            .where(Booking.id == later.id)
+            .values(starts_at=started + timedelta(hours=2))
+        )
+        await db.execute(update(Session).values(starts_at=started))
+        await db.commit()
+
+    await second.tap("🗑 Cancel booking")
+
+    assert second.last_alert() == STARTED
+    async with bot.sessionmaker() as db:
+        assert await db.scalar(select(Booking.cancelled_at).where(Booking.id == later.id)) is None
 
 
 async def test_cancelling_one_of_two_bookings_shrinks_the_session(bot: BotHarness) -> None:

@@ -64,6 +64,24 @@ async def test_session_picker_lists_newest_first(bot: BotHarness) -> None:
     ]
 
 
+async def test_session_picker_keeps_past_sessions_behind_many_upcoming_ones(
+    bot: BotHarness,
+) -> None:
+    await setup(bot)
+    soon = utc_now().replace(microsecond=0) + timedelta(days=1)
+    upcoming = [soon + timedelta(weeks=week) for week in range(10)]
+    for starts_at in upcoming:
+        await make_session(bot, starts_at=starts_at)
+
+    card = await EditCard(bot).open()
+
+    labels = [label for label in card.buttons() if label != "✖ Close"]
+    assert labels == [
+        *(f"{fmt_date(sgt_date(start))} {fmt_time(start)}" for start in reversed(upcoming[:4])),
+        f"{fmt_date(date(2026, 10, 4))} 11:00",
+    ]
+
+
 async def test_change_attendance_announces_and_audits(bot: BotHarness) -> None:
     session_id, ids = await setup(bot)
     card_message = await post(bot, session_id)
@@ -96,6 +114,24 @@ async def test_change_attendance_announces_and_audits(bot: BotHarness) -> None:
         "attendance.edit",
         ["hw", "shawn"],
         ["nic", "shawn"],
+    )
+
+
+async def test_saving_keeps_answers_given_while_editing(bot: BotHarness) -> None:
+    session_id, ids = await setup(bot)
+    card = await EditCard(bot).open()
+    await card.tap_starting(fmt_date(date(2026, 10, 4)))
+    await card.tap("👥 Attendance")
+    async with bot.sessionmaker() as db:
+        await set_attendance(db, session_id, ids["nic"], "in")  # nic taps ✅ on the card
+        await db.commit()
+
+    await card.tap("✅ hw")
+    await card.tap("💾 Save")
+
+    assert await ins(bot, session_id) == {ids["shawn"], ids["nic"]}
+    assert bot.telegram.sent_texts(GROUP_ID)[-1].startswith(
+        f"✏️ Admin changed attendance for <b>{WHEN}</b>: −hw\n"
     )
 
 

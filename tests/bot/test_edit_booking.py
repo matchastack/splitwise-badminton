@@ -6,6 +6,7 @@ from badminton.db.models import AuditLog, Booking, Member, Session
 from badminton.domain.timeutil import fmt_date, fmt_session, utc_now
 from badminton.services.repo import load_ledger
 from tests.bot.attendance_helpers import post
+from tests.bot.booking_helpers import SHAWN, Wizard, book, future_day
 from tests.bot.edit_helpers import ZY, EditCard
 from tests.bot.test_edit_attendance import START, WHEN, setup
 from tests.conftest import BotHarness
@@ -154,3 +155,40 @@ async def test_moving_on_withdraws_an_open_prompt(bot: BotHarness) -> None:
     assert prompt["message_id"] in deleted
     assert (await the_booking(bot)).amount_cents == 1480
     assert not [t for t in bot.telegram.sent_texts(GROUP_ID) if t.startswith("✏️ Admin")]
+
+
+async def booked_record(bot: BotHarness) -> Wizard:
+    """shawn's confirmed booking, 11:00–13:00 in two weeks for $14.80."""
+    record = await book(bot, SHAWN, future_day(14))
+    await record.tap("$14.80")
+    await record.tap("✅ Confirm")
+    return record
+
+
+async def test_a_corrected_booking_updates_its_record(bot: BotHarness) -> None:
+    record = await booked_record(bot)
+    card = await EditCard(bot).open()
+    await card.tap_starting(fmt_date(future_day(14)))
+    await card.tap("💵 Bookings")
+    await card.tap("shawn · 11:00 · 2h · $14.80")
+
+    await card.tap("💵 Price")
+    prompt = bot.telegram.last("sendMessage").message
+    await bot.send(message_update(message(sender=ZY, text="20", reply_to=prompt)))
+
+    assert record.text.startswith("✅ <b>Court booked</b> by @shawn_t\n")
+    assert record.text.endswith("(2h) · $20.00\n✏️ Corrected by the admin.")
+    assert set(record.buttons()) == {"🗑 Cancel booking"}
+
+
+async def test_cancelling_the_session_updates_its_records(bot: BotHarness) -> None:
+    record = await booked_record(bot)
+    card = await EditCard(bot).open()
+    await card.tap_starting(fmt_date(future_day(14)))
+
+    await card.tap("🗑 Cancel session")
+    await card.tap("Yes, cancel the session")
+
+    assert record.text.startswith("🗑 <s>✅ <b>Court booked</b> by @shawn_t\n")
+    assert record.text.endswith("$14.80</s>\nCancelled by zy with the session.")
+    assert record.buttons() == {}

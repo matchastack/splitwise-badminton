@@ -24,7 +24,7 @@ from badminton.services.drafts import create_draft, delete_draft, get_draft, upd
 from badminton.services.members import active_members, upsert_from_telegram
 from badminton.services.notify import announce
 from badminton.services.repo import load_ledger
-from badminton.services.shuttle import closed_batch, start_options
+from badminton.services.shuttle import closed_batch, split_as_of, start_options
 
 KIND = "shuttle"
 CALLBACK_KIND = "sh"
@@ -169,15 +169,17 @@ async def _record(
     ]
     if previous is not None:
         lines.append("")
-        lines.extend(await _closed_lines(db, previous, names))
+        lines.extend(await _closed_lines(db, previous, batch, names))
     await update.callback_query.edit_message_text(f"✅ Recorded shuttle batch #{batch.id}.")
     await announce(context.bot, settings_of(context), "\n".join(lines))
 
 
 async def _closed_lines(
-    db: AsyncSession, previous: ShuttleBatch, names: dict[int, str]
+    db: AsyncSession, previous: ShuttleBatch, batch: ShuttleBatch, names: dict[int, str]
 ) -> list[str]:
-    split = closed_batch(await load_ledger(db, utc_now()), previous.id)
+    # A session in progress belongs to the closed batch, so count it as played.
+    as_of = await split_as_of(db, batch.starts_at, utc_now())
+    split = closed_batch(await load_ledger(db, as_of), previous.id)
     if split is None or not split.shares:
         payer = html.escape(names[previous.payer_member_id])
         return [

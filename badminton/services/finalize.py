@@ -14,19 +14,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import Bot
 
 from badminton.config import Settings
-from badminton.db.models import Session, ShuttleBatch
-from badminton.domain.ledger import BatchFact, batch_of
-from badminton.domain.money import allocate, fmt_sgd
+from badminton.db.models import Session
+from badminton.domain.ledger import batch_of
 from badminton.domain.timeutil import fmt_hours, fmt_session
 from badminton.services.attendance import CardView, load_card_view, refresh_card
 from badminton.services.notify import announce, dm_admins
-from badminton.services.tick import TickContext
+from badminton.services.repo import load_batches
+from badminton.services.tick import TickContext, for_each
 
 
 async def finalize_session(
     bot: Bot, db: AsyncSession, session_id: int, settings: Settings, now: datetime
 ) -> bool:
-    """Lock an ended session's attendance and post its summary, once. Commits."""
+    """Lock an ended session's attendance and post its summary, once. Commits.
+
+    If the summary can't be posted, the lock is released so the next run tries again.
+    Once it is posted the session stays locked, even if the admin can't be told.
+    """
     claimed = await db.scalar(
         update(Session)
         .where(
@@ -45,19 +49,19 @@ async def finalize_session(
         await refresh_card(bot, db, session_id, locked=True)
         view = await load_card_view(db, session_id)
         await announce(bot, settings, await summary(db, view))
-        if not view.ins:
-            when = fmt_session(view.session.starts_at, view.session.ends_at)
-            await dm_admins(
-                bot,
-                settings,
-                f"⚠️ Nobody was marked in for <b>{when}</b>, so it's left out of the costs. "
-                "Use /edit to fix the attendance or cancel the session.",
-            )
     except Exception:
         await db.rollback()
         await db.execute(update(Session).where(Session.id == session_id).values(locked_at=None))
         await db.commit()
         raise
+    if not view.ins:
+        when = fmt_session(view.session.starts_at, view.session.ends_at)
+        await dm_admins(
+            bot,
+            settings,
+            f"⚠️ Nobody was marked in for <b>{when}</b>, so it's left out of the costs. "
+            "Use /edit to fix the attendance or cancel the session.",
+        )
     return True
 
 
@@ -67,21 +71,10 @@ async def summary(db: AsyncSession, view: CardView) -> str:
     if not view.ins:
         return f"{title}\nNobody was marked in, so the admin has been asked to check it."
 
-    minutes = int((session.ends_at - session.starts_at).total_seconds() // 60)
-    court = sum(cents for _, cents in view.payments)
-    shares = allocate(court, dict.fromkeys(range(len(view.ins)), 1)).values()
-    each = fmt_sgd(min(shares))
-    if max(shares) != min(shares):
-        each = f"{fmt_sgd(min(shares))}–{fmt_sgd(max(shares))}"
     names = ", ".join(html.escape(name) for name in view.ins)
-    lines = [title, f"👥 {len(view.ins)} played: {names}", f"💵 Court {each} each"]
-
-    batches = [
-        BatchFact(b.id, b.payer_member_id, b.amount_cents, b.starts_at, b.created_at)
-        for b in await db.scalars(select(ShuttleBatch).order_by(ShuttleBatch.starts_at))
-    ]
-    if (batch := batch_of(session.starts_at, batches)) is not None:
-        lines.append(f"🏸 +{fmt_hours(minutes)} each on shuttle batch #{batch.id}")
+    lines = [title, f"👥 {len(view.ins)} played: {names}", f"💵 Court {view.court_each()} each"]
+    if (batch := batch_of(session.starts_at, await load_batches(db))) is not None:
+        lines.append(f"🏸 +{fmt_hours(session.minutes)} each on shuttle batch #{batch.id}")
     return "\n".join(lines)
 
 
@@ -97,5 +90,8 @@ async def finalize_ended_sessions(context: TickContext) -> None:
             )
             .order_by(Session.ends_at, Session.id)
         )
-        for session_id in ended.all():
+
+        async def finalize(session_id: int) -> None:
             await finalize_session(context.bot, db, session_id, context.settings, context.now)
+
+        await for_each(db, ended.all(), finalize, "Finalising the session")

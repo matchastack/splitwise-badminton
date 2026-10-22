@@ -10,7 +10,7 @@ from typing import Any
 from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import Bot
-from telegram.error import BadRequest
+from telegram.error import BadRequest, Forbidden
 
 from badminton.db.models import Draft
 from badminton.services.tick import TickContext
@@ -85,12 +85,13 @@ def is_deleted(db: AsyncSession, draft: Draft) -> bool:
 
 
 async def delete_message_quietly(bot: Bot, chat_id: int, message_id: int | None) -> None:
-    """Delete a message, ignoring ones that are already gone or too old to delete."""
+    """Delete a message, ignoring ones that are already gone, too old to delete, or in a
+    chat the bot can no longer reach."""
     if message_id is None:
         return
     try:
         await bot.delete_message(chat_id, message_id)
-    except BadRequest as error:
+    except (BadRequest, Forbidden) as error:
         logger.info("Could not delete message %s in %s: %s", message_id, chat_id, error)
 
 

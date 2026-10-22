@@ -14,7 +14,7 @@ from telegram.ext import Application, CallbackQueryHandler, ContextTypes
 
 from badminton.bot.context import db_session, settings_of
 from badminton.bot.handlers.booking import cancel_markup, render_record
-from badminton.db.models import Booking, Member
+from badminton.db.models import Booking, Member, Session
 from badminton.domain.money import fmt_sgd
 from badminton.domain.timeutil import fmt_session, utc_now
 from badminton.services import audit
@@ -26,6 +26,8 @@ from badminton.services.sessions import cancel_booking
 ASK = "bkc"
 YES = "bkcy"
 KEEP = "bkck"
+
+STARTED = "This session has already started."
 
 
 async def on_cancel_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -45,8 +47,8 @@ async def on_cancel_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             )
             return
         now = utc_now()
-        if booking.starts_at <= now:
-            await query.answer("This booking has already started.", show_alert=True)
+        if (await db.get(Session, booking.session_id)).starts_at <= now:
+            await query.answer(STARTED, show_alert=True)
             return
 
         if action == ASK:

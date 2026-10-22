@@ -8,7 +8,7 @@ safe to run any number of times.
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -43,3 +43,21 @@ async def run_tick(context: TickContext, steps: Sequence[tuple[str, TickStep]]) 
         else:
             results[name] = "ok"
     return results
+
+
+async def for_each(
+    db: AsyncSession, ids: Iterable[int], action: Callable[[int], Awaitable[object]], what: str
+) -> None:
+    """Run ``action`` for each ID in turn, so one that fails doesn't hold up the rest: its
+    error is logged and its changes rolled back. Afterwards the first error is raised, so
+    the step still counts as failed."""
+    first_error: Exception | None = None
+    for item_id in ids:
+        try:
+            await action(item_id)
+        except Exception as error:
+            logger.exception("%s failed for %s", what, item_id)
+            await db.rollback()
+            first_error = first_error or error
+    if first_error is not None:
+        raise first_error

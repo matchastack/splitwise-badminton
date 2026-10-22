@@ -19,16 +19,11 @@ from badminton.domain.timeutil import fmt_hours, fmt_session, utc_now
 from badminton.services.invoice import LineView, open_lines_for
 from badminton.services.members import mention_html, upsert_from_telegram
 from badminton.services.repo import load_ledger
+from badminton.services.statements import balance_phrase
 
 
 def balance_lines(ledger: Ledger, member: Member) -> list[str]:
-    balance = ledger.balance(member.id)
-    if balance > 0:
-        status = f"you're owed {fmt_sgd(balance)}"
-    elif balance < 0:
-        status = f"you owe {fmt_sgd(-balance)}"
-    else:
-        status = "you're all square"
+    status = balance_phrase(ledger.balance(member.id))
     lines = [f"💰 <b>{html.escape(member.display_name)}</b>, {status}."]
     pending = ledger.pending_minutes(member.id)
     if ledger.open_batch_id is not None:
@@ -75,13 +70,12 @@ async def upcoming_lines(db: AsyncSession, now: datetime) -> list[str]:
     names = {m.id: m.display_name for m in await db.scalars(select(Member))}
     lines = ["📅 <b>Upcoming sessions</b>"]
     for session in sessions:
-        minutes = int((session.ends_at - session.starts_at).total_seconds() // 60)
         payers = sorted(
             {names[b.payer_member_id] for b in session.bookings if b.cancelled_at is None},
             key=str.casefold,
         )
         lines.append(
-            f"• {fmt_session(session.starts_at, session.ends_at)} ({fmt_hours(minutes)}) — "
+            f"• {fmt_session(session.starts_at, session.ends_at)} ({fmt_hours(session.minutes)}) — "
             f"booked by {html.escape(', '.join(payers))}"
         )
     return lines
