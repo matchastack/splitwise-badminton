@@ -8,6 +8,7 @@ from badminton.services.drafts import (
     DRAFT_TTL,
     cleanup_expired_drafts,
     create_draft,
+    delete_draft,
     find_by_prompt,
     get_draft,
     update_data,
@@ -35,6 +36,20 @@ async def test_draft_lifecycle(db: AsyncSession) -> None:
     later = NOW + DRAFT_TTL
     assert await get_draft(db, draft.id, now=later) is None
     assert await find_by_prompt(db, chat_id=GROUP_ID, prompt_message_id=55, now=later) is None
+
+
+async def test_deleting_a_draft_removes_its_open_prompt(bot: BotHarness) -> None:
+    async with bot.sessionmaker() as db:
+        draft = await create_draft(db, kind="booking", chat_id=GROUP_ID, user_id=222, now=NOW)
+        draft.prompt_message_id = 55
+        await db.commit()
+
+        await delete_draft(bot.application.bot, db, draft)
+        await db.commit()
+
+        assert await db.scalar(select(func.count()).select_from(Draft)) == 0
+    deleted = bot.telegram.last("deleteMessage").params
+    assert (deleted["chat_id"], deleted["message_id"]) == (GROUP_ID, 55)
 
 
 async def test_update_data_removes_none_values(db: AsyncSession) -> None:

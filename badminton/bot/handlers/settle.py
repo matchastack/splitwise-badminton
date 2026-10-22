@@ -103,7 +103,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             return
         await query.answer()
         if callback.action == CANCEL:
-            await delete_draft(db, draft)
+            await delete_draft(context.bot, db, draft)
             await db.commit()
             await query.edit_message_text("✖ Payment not recorded.")
             return
@@ -173,7 +173,7 @@ async def _record(
             "invoice_line_id": transfer.invoice_line_id,
         },
     )
-    await delete_draft(db, draft)
+    await delete_draft(context.bot, db, draft)
     await db.commit()
 
     names = {m.id: m.display_name for m in await db.scalars(select(Member))}

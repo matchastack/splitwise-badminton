@@ -261,7 +261,7 @@ async def _apply(
     if action not in (OTHER_PRICE, OTHER_DURATION):
         await prompts.dismiss(context.bot, draft)
     if action == CANCEL:
-        await delete_draft(db, draft)
+        await delete_draft(context.bot, db, draft)
         await update.callback_query.edit_message_text("✖ Booking cancelled.")
         return None
     if action == SHOW_MONTH:
@@ -369,7 +369,7 @@ async def _confirm(
         record_message_id=draft.message_id,
         session_id=merge_into.id if merge_into is not None else None,
     )
-    await delete_draft(db, draft)
+    await delete_draft(context.bot, db, draft)
     session = await db.get(Session, booking.session_id)
     if merge_into is not None:
         await refresh_card(context.bot, db, session.id)
