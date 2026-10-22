@@ -129,6 +129,39 @@ async def test_new_batch_closes_the_previous_and_shows_the_split(bot: BotHarness
     assert new.id > old.id
 
 
+async def test_split_counts_a_session_in_progress(bot: BotHarness) -> None:
+    ids = await seed_members(bot, "zy2", "yt", "hw")
+    async with bot.sessionmaker() as db:
+        db.add(
+            ShuttleBatch(
+                payer_member_id=ids["zy2"],
+                amount_cents=8000,
+                starts_at=utc_now() - timedelta(days=30),
+            )
+        )
+        await db.commit()
+    await played(bot, 1, [ids["yt"], ids["hw"]])  # 2h, started an hour ago
+
+    await bot.send(text_update("/shuttle 76.79", sender=ZY))
+    card = Card(bot)
+    await card.tap("yt")
+    await card.tap("From the next session on")
+    await card.tap("✅ Record")
+
+    old = (await db_batches(bot))[0]
+    assert bot.telegram.sent_texts(GROUP_ID)[-1].splitlines()[2:] == [
+        f"Batch #{old.id} is finished: $80.00 over 4h = $20.00/h",
+        "• yt 2h — $40.00",
+        "• hw 2h — $40.00",
+        "These amounts go on the next monthly invoice.",
+    ]
+
+
+async def db_batches(bot: BotHarness) -> list[ShuttleBatch]:
+    async with bot.sessionmaker() as db:
+        return list(await db.scalars(select(ShuttleBatch).order_by(ShuttleBatch.starts_at)))
+
+
 async def test_last_session_option_covers_it(bot: BotHarness) -> None:
     ids = await seed_members(bot, "yt")
     last = await played(bot, 5, [ids["yt"]])
