@@ -1,9 +1,12 @@
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from badminton.bot.admin import NOT_ADMIN
 from badminton.db.models import AuditLog, Draft, Member
+from badminton.domain.timeutil import utc_now
+from badminton.services.drafts import cleanup_expired_drafts
 from badminton.services.members import active_members
-from tests.conftest import BotHarness
+from badminton.services.tick import TickContext
+from tests.conftest import TEST_SETTINGS, BotHarness
 from tests.fake_telegram import ADMIN_ID, GROUP_ID, callback_update, message, text_update, user
 
 ZY = user(ADMIN_ID, "zy", "zy_handle")
@@ -101,6 +104,22 @@ async def test_rename_through_a_prompt(bot: BotHarness) -> None:
     assert "• Danish K (guest)" in bot.telegram.last("editMessageText").params["text"]
     async with bot.sessionmaker() as db:
         assert await db.scalar(select(func.count()).select_from(Draft)) == 0
+
+
+async def test_an_unanswered_rename_expires_without_the_member_list(bot: BotHarness) -> None:
+    card = await open_member_list(bot)
+    await bot.send(callback_update(button(card, "✏️ danish"), sender=ZY, on_message=card))
+    prompt = bot.telegram.last("sendMessage").message
+    async with bot.sessionmaker() as db:
+        await db.execute(update(Draft).values(expires_at=utc_now()))
+        await db.commit()
+
+    await cleanup_expired_drafts(
+        TickContext(bot.application.bot, TEST_SETTINGS, bot.sessionmaker, utc_now())
+    )
+
+    deleted = [call.params["message_id"] for call in bot.telegram.calls_to("deleteMessage")]
+    assert deleted == [prompt["message_id"]]
 
 
 async def test_member_buttons_are_admin_only(bot: BotHarness) -> None:
