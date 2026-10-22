@@ -105,6 +105,8 @@ Alternatively, once the bot is deployed, send `/chatid` to it in a private chat.
 
 ### 6. Connect the bot to the deployment
 
+First, open your bot in Telegram (search for its username) and press **Start**. Telegram won't let the script set a command menu for you until you've started a chat with the bot.
+
 Create a `.env` file in the repo, copying `.env.example`, with the same values you gave Vercel. Then run:
 
 ```sh
@@ -191,6 +193,7 @@ The only effect of a daily cron is that the "🔒 locked" summary can arrive up 
 - **The bot replies in DMs but ignores the group.** `GROUP_CHAT_ID` is missing or wrong, or you didn't redeploy after setting it. As the admin, run `/chatid` in the group again.
 - **Messages aren't deleted.** The bot isn't an admin, or lacks *Delete messages*.
 - **Someone doesn't get statements.** They haven't pressed **Start** in a private chat with the bot, or they blocked it. Pressing Start again turns statements back on.
+- **The setup script says Telegram refused an admin command menu (`Chat not found`).** The webhook and member menu are already set, so the bot works. Telegram only accepts an admin's menu once that person has started a chat with the bot. Open the bot, press **Start**, and run the script again. If it still fails, check that the ID in `ADMIN_TELEGRAM_IDS` is your own user ID (step 4), not the bot's or a group's. For the group menu, the admin must also be a member of the group.
 - **I ran the local polling script and now the deployed bot is silent.** Polling removes the webhook. Run `scripts/setup_telegram.py` again (step 6).
 
 ## Commands

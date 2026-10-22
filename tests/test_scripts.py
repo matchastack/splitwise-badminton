@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from telegram import Bot
+from telegram.error import BadRequest
 
 from badminton.bot.app import build_application
 from badminton.bot.commands import ADMIN_COMMANDS, MEMBER_COMMANDS
@@ -42,6 +43,26 @@ async def test_configure_sets_webhook_and_command_menus() -> None:
         ({"type": "chat", "chat_id": ADMIN_ID}, admins),
         ({"type": "chat_member", "chat_id": GROUP_ID, "user_id": ADMIN_ID}, admins),
     ]
+
+
+async def test_configure_reports_an_admin_who_has_not_started_the_bot() -> None:
+    telegram = FakeTelegram()
+    telegram.fail("setMyCommands", 400, "Bad Request: chat not found", chat_id=ADMIN_ID)
+    async with Bot(TEST_SETTINGS.bot_token, request=telegram) as bot:
+        refused = await configure(bot, TEST_SETTINGS, "https://example.vercel.app")
+
+    assert refused == [f"admin {ADMIN_ID}, private chat: Chat not found"]
+    assert telegram.last("setWebhook").params["url"] == "https://example.vercel.app/api/telegram"
+    scopes = [c.params["scope"] for c in telegram.calls_to("setMyCommands")]
+    assert {"type": "chat_member", "chat_id": GROUP_ID, "user_id": ADMIN_ID} in scopes
+
+
+async def test_configure_still_raises_when_the_webhook_is_refused() -> None:
+    telegram = FakeTelegram()
+    telegram.fail("setWebhook", 400, "Bad Request: bad webhook: HTTPS url must be provided")
+    async with Bot(TEST_SETTINGS.bot_token, request=telegram) as bot:
+        with pytest.raises(BadRequest, match=r"(?i)bad webhook"):
+            await configure(bot, TEST_SETTINGS, "https://example.vercel.app")
 
 
 def test_webhook_url_requires_https() -> None:
