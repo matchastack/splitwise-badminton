@@ -1,5 +1,7 @@
+import json
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import httpx
 import pytest
@@ -21,6 +23,7 @@ SETTINGS = Settings.from_env(
         "ADMIN_TELEGRAM_IDS": "111",
     }
 )
+ROOT = Path(__file__).resolve().parents[1]
 UPDATE = {
     "update_id": 1,
     "message": {
@@ -159,3 +162,16 @@ def test_vercel_entry_point_exposes_app() -> None:
     from api.index import app as entry_app
 
     assert entry_app is app
+
+
+def test_vercel_serves_the_app_directly_without_a_rewrite() -> None:
+    # Vercel detects the FastAPI app in api/index.py (it fails the build if there isn't exactly
+    # one entry point) and serves every path to it. A vercel.json rewrite would hand the app
+    # the rewritten path (/api/index), so no route would match and every request would 404.
+    config = json.loads((ROOT / "vercel.json").read_text())
+    paths = {route.path for route in app.routes}
+
+    assert "rewrites" not in config
+    assert set(config["functions"]) == {"api/index.py"}
+    assert sorted(path.name for path in (ROOT / "api").glob("*.py")) == ["index.py"]
+    assert {job["path"] for job in config["crons"]} <= paths

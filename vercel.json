@@ -8,12 +8,6 @@
       "includeFiles": "badminton/**"
     }
   },
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/index"
-    }
-  ],
   "crons": [
     {
       "path": "/api/cron",

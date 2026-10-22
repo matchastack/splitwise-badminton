@@ -82,7 +82,7 @@ Alternatively, once the bot is deployed, send `/chatid` to it in a private chat.
 1. Sign up at [vercel.com](https://vercel.com) with GitHub. Then go to **Add New… → Project** and import `splitwise-badminton`.
 2. Under **Configure Project**:
    - **Framework Preset:** `Other`.
-   - **Root Directory:** leave as `./`. Build and output settings can stay empty: `vercel.json` routes `/api/*` to the Python function.
+   - **Root Directory:** leave as `./`. Build and output settings can stay empty: Vercel detects the FastAPI app in `api/index.py` and serves every path to it. `vercel.json` must not rewrite `/api/*`, or the app sees the wrong path and returns 404.
    - Vercel reads the Python version (3.13) and dependencies from `pyproject.toml` / `uv.lock`.
 3. Open **Environment Variables** and add these, for the Production environment:
 
@@ -180,7 +180,13 @@ The only effect of a daily cron is that the "🔒 locked" summary can arrive up 
 
 ### Troubleshooting
 
-- **The bot doesn't reply.** Check the webhook:
+- **The bot doesn't reply.** First check that the deployment answers:
+
+  ```sh
+  curl -i -X POST https://splitwise-badminton.vercel.app/api/telegram
+  ```
+
+  `401` is the healthy answer: the bot is up and rejected a request without the webhook secret. `404` (`{"detail":"Not Found"}`) means the request reached the app under the wrong path: check that `vercel.json` has no `rewrites`, then redeploy. `500` means look at Vercel's **Logs** tab. Then check the webhook:
 
   ```sh
   curl https://api.telegram.org/bot<BOT_TOKEN>/getWebhookInfo
