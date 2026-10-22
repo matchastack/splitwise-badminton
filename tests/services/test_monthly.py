@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy import func, select
 
 from badminton.bot.admin import NOT_ADMIN
+from badminton.bot.handlers import invoice as invoice_handlers
 from badminton.db.models import Invoice
 from badminton.domain.timeutil import at_sgt, fmt_period, period_of, utc_now
 from badminton.services.monthly import monthly_invoice
@@ -69,6 +70,33 @@ async def test_admin_invoice_command(bot: BotHarness) -> None:
     )
     async with bot.sessionmaker() as db:
         assert await db.scalar(select(func.count()).select_from(Invoice)) == 1
+
+
+async def test_invoice_command_early_in_the_month_takes_the_monthly_invoice(
+    bot: BotHarness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await seed(bot)
+    monkeypatch.setattr(invoice_handlers, "utc_now", lambda: at_sgt(date(2026, 11, 1), 8))
+
+    await bot.send(text_update("/invoice", sender=ZY))
+    await tick(bot, date(2026, 11, 1))
+    await tick(bot, date(2026, 12, 1))
+
+    assert await periods(bot) == ["2026-10", "2026-11"]
+    headers = [t.split("\n")[0] for t in bot.telegram.sent_texts(GROUP_ID) if t.startswith("🧾")]
+    assert headers == ["🧾 <b>October 2026</b>", "🧾 <b>November 2026</b>"]
+
+
+async def test_invoice_command_after_the_monthly_invoice_takes_this_month(
+    bot: BotHarness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await seed(bot)
+    await tick(bot, date(2026, 11, 1))
+    monkeypatch.setattr(invoice_handlers, "utc_now", lambda: at_sgt(date(2026, 11, 3), 8))
+
+    await bot.send(text_update("/invoice", sender=ZY))
+
+    assert await periods(bot) == ["2026-10", "2026-11"]
 
 
 async def test_invoice_command_in_a_dm_confirms(bot: BotHarness) -> None:

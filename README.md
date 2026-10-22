@@ -159,6 +159,7 @@ The only effect of a daily cron is that the "🔒 locked" summary can arrive up 
    It should return `{"ok":true,"steps":{…}}`.
 6. Optional: as the admin, `/invoice` posts a settle-up for the current month right away.
    - The scheduled run on the 1st skips a month that already has an invoice.
+   - In the first week of a month, before the scheduled run has posted the previous month's invoice, `/invoice` posts that one instead.
    - Anything that happens after a manual invoice is included in the next one, because balances carry over.
 
 ### Environment variables

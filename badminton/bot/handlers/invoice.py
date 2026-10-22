@@ -8,11 +8,11 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 from badminton.bot.admin import admin_only
 from badminton.bot.context import db_session, settings_of
 from badminton.db.models import Invoice, InvoiceLine, Member
-from badminton.domain.timeutil import fmt_period, period_of, utc_now
+from badminton.domain.timeutil import fmt_period, utc_now
 from badminton.services import audit
 from badminton.services.invoice import previous_invoice, refresh_invoice_card, toggle_paid
 from badminton.services.members import upsert_from_telegram
-from badminton.services.monthly import run_invoice
+from badminton.services.monthly import manual_period, run_invoice
 
 REPLACED = "This invoice has been replaced by a newer one."
 
@@ -53,10 +53,11 @@ async def on_paid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 @admin_only
 async def invoice_now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/invoice: post this month's settle-up now (FR-INV-1)."""
+    """/invoice: post the settle-up now (FR-INV-1). Early in a month that's the previous
+    month's, if the monthly run hasn't posted it yet."""
     now = utc_now()
-    period = period_of(now)
     async with db_session(context) as db:
+        period = await manual_period(db, now)
         invoice = await run_invoice(context.bot, db, settings_of(context), period=period, now=now)
     message = update.effective_message
     if invoice is None:
