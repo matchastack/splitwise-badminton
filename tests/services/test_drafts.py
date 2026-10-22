@@ -81,3 +81,18 @@ async def test_cleanup_deletes_expired_drafts_and_their_messages(bot: BotHarness
         remaining = await db.scalars(select(Draft.message_id))
         assert remaining.all() == [20]
         assert await db.scalar(select(func.count()).select_from(Draft)) == 1
+
+
+async def test_cleanup_carries_on_when_the_bot_left_the_chat(bot: BotHarness) -> None:
+    async with bot.sessionmaker() as db:
+        await create_draft(
+            db, kind="booking", chat_id=GROUP_ID, user_id=1, now=NOW - DRAFT_TTL, message_id=10
+        )
+        await db.commit()
+    bot.telegram.fail("deleteMessage", 403, "Forbidden: bot was kicked from the supergroup chat")
+
+    context = TickContext(bot.application.bot, TEST_SETTINGS, bot.sessionmaker, NOW)
+    await cleanup_expired_drafts(context)
+
+    async with bot.sessionmaker() as db:
+        assert await db.scalar(select(func.count()).select_from(Draft)) == 0

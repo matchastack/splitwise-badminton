@@ -20,7 +20,7 @@ from badminton.domain.money import allocate, fmt_sgd
 from badminton.domain.timeutil import fmt_hours, fmt_session
 from badminton.services.attendance import CardView, load_card_view, refresh_card
 from badminton.services.notify import announce, dm_admins
-from badminton.services.tick import TickContext
+from badminton.services.tick import TickContext, for_each
 
 
 async def finalize_session(
@@ -101,5 +101,8 @@ async def finalize_ended_sessions(context: TickContext) -> None:
             )
             .order_by(Session.ends_at, Session.id)
         )
-        for session_id in ended.all():
+
+        async def finalize(session_id: int) -> None:
             await finalize_session(context.bot, db, session_id, context.settings, context.now)
+
+        await for_each(db, ended.all(), finalize, "Finalising the session")

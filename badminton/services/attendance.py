@@ -22,7 +22,7 @@ from badminton.config import Settings
 from badminton.db.models import Attendance, Member, Session
 from badminton.domain.money import fmt_sgd
 from badminton.domain.timeutil import fmt_hours, fmt_session, is_card_due
-from badminton.services.tick import TickContext
+from badminton.services.tick import TickContext, for_each
 
 IN = "in"
 OUT = "out"
@@ -187,7 +187,7 @@ async def post_due_cards(context: TickContext) -> None:
     """Tick step: post every card that is due, catching up on missed days."""
     async with context.sessionmaker() as db:
         candidates = await db.scalars(
-            select(Session)
+            select(Session.id)
             .where(
                 Session.status == "scheduled",
                 Session.card_sent_at.is_(None),
@@ -195,5 +195,9 @@ async def post_due_cards(context: TickContext) -> None:
             )
             .order_by(Session.starts_at, Session.id)
         )
-        for session in candidates.all():
+
+        async def post(session_id: int) -> None:
+            session = await db.get(Session, session_id)
             await post_card_if_due(context.bot, db, session, context.settings, context.now)
+
+        await for_each(db, candidates.all(), post, "Posting the attendance card")
