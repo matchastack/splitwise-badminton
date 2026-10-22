@@ -117,6 +117,10 @@ def fmt_session(start: datetime, end: datetime) -> str:
     return f"{fmt_date(sgt_date(start))}, {fmt_time(start)}–{fmt_time(end)}"
 
 
+def minutes_between(start: datetime, end: datetime) -> int:
+    return int((end - start).total_seconds() // 60)
+
+
 def fmt_hours(minutes: int) -> str:
     """``120`` -> ``2h``, ``90`` -> ``1.5h``."""
     hours = minutes / 60

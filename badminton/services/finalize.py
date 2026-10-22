@@ -14,12 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import Bot
 
 from badminton.config import Settings
-from badminton.db.models import Session, ShuttleBatch
-from badminton.domain.ledger import BatchFact, batch_of
-from badminton.domain.money import allocate, fmt_sgd
+from badminton.db.models import Session
+from badminton.domain.ledger import batch_of
 from badminton.domain.timeutil import fmt_hours, fmt_session
 from badminton.services.attendance import CardView, load_card_view, refresh_card
 from badminton.services.notify import announce, dm_admins
+from badminton.services.repo import load_batches
 from badminton.services.tick import TickContext, for_each
 
 
@@ -71,21 +71,10 @@ async def summary(db: AsyncSession, view: CardView) -> str:
     if not view.ins:
         return f"{title}\nNobody was marked in, so the admin has been asked to check it."
 
-    minutes = int((session.ends_at - session.starts_at).total_seconds() // 60)
-    court = sum(cents for _, cents in view.payments)
-    shares = allocate(court, dict.fromkeys(range(len(view.ins)), 1)).values()
-    each = fmt_sgd(min(shares))
-    if max(shares) != min(shares):
-        each = f"{fmt_sgd(min(shares))}–{fmt_sgd(max(shares))}"
     names = ", ".join(html.escape(name) for name in view.ins)
-    lines = [title, f"👥 {len(view.ins)} played: {names}", f"💵 Court {each} each"]
-
-    batches = [
-        BatchFact(b.id, b.payer_member_id, b.amount_cents, b.starts_at, b.created_at)
-        for b in await db.scalars(select(ShuttleBatch).order_by(ShuttleBatch.starts_at))
-    ]
-    if (batch := batch_of(session.starts_at, batches)) is not None:
-        lines.append(f"🏸 +{fmt_hours(minutes)} each on shuttle batch #{batch.id}")
+    lines = [title, f"👥 {len(view.ins)} played: {names}", f"💵 Court {view.court_each()} each"]
+    if (batch := batch_of(session.starts_at, await load_batches(db))) is not None:
+        lines.append(f"🏸 +{fmt_hours(session.minutes)} each on shuttle batch #{batch.id}")
     return "\n".join(lines)
 
 

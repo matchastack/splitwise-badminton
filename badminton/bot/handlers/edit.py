@@ -20,7 +20,7 @@ from badminton.bot.context import db_session, settings_of
 from badminton.bot.handlers.booking import refresh_record
 from badminton.bot.keyboards import decode, encode
 from badminton.db.models import Booking, Draft, Member, Session
-from badminton.domain.money import allocate, fmt_sgd, parse_amount
+from badminton.domain.money import fmt_sgd, parse_amount
 from badminton.domain.timeutil import (
     fmt_date,
     fmt_hours,
@@ -346,12 +346,7 @@ def _split_line(view: CardView) -> str:
     """The recalculated court split after a change."""
     if not view.ins:
         return "Nobody is marked in now, so this session is left out of the costs."
-    court = sum(cents for _, cents in view.payments)
-    shares = allocate(court, dict.fromkeys(range(len(view.ins)), 1)).values()
-    each = fmt_sgd(min(shares))
-    if max(shares) != min(shares):
-        each = f"{fmt_sgd(min(shares))}–{fmt_sgd(max(shares))}"
-    return f"💵 Court now {each} each ({len(view.ins)} played)"
+    return f"💵 Court now {view.court_each()} each ({len(view.ins)} played)"
 
 
 async def _show(context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft) -> None:

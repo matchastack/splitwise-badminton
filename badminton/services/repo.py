@@ -38,18 +38,24 @@ async def load_facts(db: AsyncSession) -> LedgerFacts:
         .options(selectinload(Session.bookings), selectinload(Session.attendance))
         .order_by(Session.starts_at, Session.id)
     )
-    batches = await db.scalars(select(ShuttleBatch).order_by(ShuttleBatch.starts_at))
+    batches = await load_batches(db)
     transfers = await db.scalars(select(Transfer).order_by(Transfer.created_at, Transfer.id))
     return LedgerFacts(
         sessions=tuple(session_fact(session) for session in sessions),
-        batches=tuple(
-            BatchFact(b.id, b.payer_member_id, b.amount_cents, b.starts_at, b.created_at)
-            for b in batches
-        ),
+        batches=batches,
         transfers=tuple(
             TransferFact(t.id, t.from_member_id, t.to_member_id, t.amount_cents, t.created_at)
             for t in transfers
         ),
+    )
+
+
+async def load_batches(db: AsyncSession) -> tuple[BatchFact, ...]:
+    """Every shuttle batch, sorted by start."""
+    batches = await db.scalars(select(ShuttleBatch).order_by(ShuttleBatch.starts_at))
+    return tuple(
+        BatchFact(b.id, b.payer_member_id, b.amount_cents, b.starts_at, b.created_at)
+        for b in batches
     )
 
 
