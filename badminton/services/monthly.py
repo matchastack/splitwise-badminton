@@ -12,6 +12,7 @@ from badminton.config import Settings
 from badminton.db.models import Invoice
 from badminton.domain.timeutil import fmt_period, previous_period, sgt_date
 from badminton.services.invoice import (
+    discard_invoice,
     generate_invoice,
     previous_invoice,
     publish_invoice,
@@ -28,13 +29,22 @@ CATCH_UP_DAYS = 7
 async def run_invoice(
     bot: Bot, db: AsyncSession, settings: Settings, *, period: str, now: datetime
 ) -> Invoice | None:
-    """Returns None if ``period`` was already invoiced."""
+    """Returns None if ``period`` was already invoiced. If the card can't be posted, the
+    invoice is discarded so the next run tries again."""
     previous = await previous_invoice(db)
+    previous_id = previous.id if previous is not None else None
     invoice = await generate_invoice(db, period=period, now=now)
     if invoice is None:
         return None
+    invoice_id = invoice.id
     await db.commit()
-    await publish_invoice(bot, db, settings, invoice)
+    try:
+        await publish_invoice(bot, db, settings, invoice)
+    except Exception:
+        await db.rollback()
+        await discard_invoice(db, invoice_id, previous_id)
+        await db.commit()
+        raise
     await db.commit()
     if previous is not None:
         await refresh_invoice_card(bot, db, previous, carried_into=fmt_period(period))
