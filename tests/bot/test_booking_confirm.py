@@ -98,3 +98,22 @@ async def test_booking_inside_the_reminder_window_says_card_is_going_up(bot: Bot
     await wizard.tap("✅ Confirm")
 
     assert wizard.text.endswith("🗳 The attendance card is going up now.")
+
+
+async def test_going_back_withdraws_an_open_prompt(bot: BotHarness) -> None:
+    wizard = await book(bot, SHAWN, future_day(14))
+    await wizard.tap("Other…")
+    prompt = bot.telegram.last("sendMessage").message
+
+    await wizard.tap("‹ Change duration")
+    await wizard.tap("‹ Change time")
+    await bot.send(message_update(message(sender=SHAWN, text="20", reply_to=prompt)))
+
+    deleted = [call.params["message_id"] for call in bot.telegram.calls_to("deleteMessage")]
+    assert prompt["message_id"] in deleted
+    assert "What time does it start?" in wizard.text
+    async with bot.sessionmaker() as db:
+        draft = await db.scalar(select(Draft))
+    assert draft.prompt_message_id is None
+    assert "awaiting" not in draft.data
+    assert "amount_cents" not in draft.data

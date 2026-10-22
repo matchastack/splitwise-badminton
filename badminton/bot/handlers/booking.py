@@ -258,6 +258,8 @@ async def _apply(
     changes: dict[str, Any]
     if action == NOOP:
         return None
+    if action not in (OTHER_PRICE, OTHER_DURATION):
+        await prompts.dismiss(context.bot, draft)
     if action == CANCEL:
         await delete_draft(db, draft)
         await update.callback_query.edit_message_text("✖ Booking cancelled.")

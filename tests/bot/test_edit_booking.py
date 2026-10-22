@@ -138,3 +138,19 @@ async def test_keep_it_goes_back_to_the_menu(bot: BotHarness) -> None:
     await card.tap("‹ Keep it")
 
     assert "What do you want to change?" in card.text
+
+
+async def test_moving_on_withdraws_an_open_prompt(bot: BotHarness) -> None:
+    await setup(bot)
+    card = await open_booking(bot)
+    await card.tap("💵 Price")
+    prompt = bot.telegram.last("sendMessage").message
+
+    await card.tap("‹ Bookings")
+    await card.tap("‹ Back")
+    await bot.send(message_update(message(sender=ZY, text="20", reply_to=prompt)))
+
+    deleted = [call.params["message_id"] for call in bot.telegram.calls_to("deleteMessage")]
+    assert prompt["message_id"] in deleted
+    assert (await the_booking(bot)).amount_cents == 1480
+    assert not [t for t in bot.telegram.sent_texts(GROUP_ID) if t.startswith("✏️ Admin")]

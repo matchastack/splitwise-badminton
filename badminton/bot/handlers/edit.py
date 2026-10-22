@@ -226,6 +226,8 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             return
         await query.answer()
         action, value = callback.action, callback.value
+        if action not in (PRICE, OTHER_HOURS):
+            await prompts.dismiss(context.bot, draft)
         if action == CLOSE:
             await delete_draft(db, draft)
             await db.commit()
