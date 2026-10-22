@@ -46,7 +46,8 @@ from badminton.services.sessions import cancel_session, recompute_span
 
 KIND = "edit"
 CALLBACK_KIND = "ed"
-RECENT_SESSIONS = 8
+RECENT_SESSIONS = 8  # that have started: the ones whose attendance may need fixing
+UPCOMING_SESSIONS = 4
 
 PICK_SESSION = "s"
 SESSIONS = "list"
@@ -79,12 +80,19 @@ async def render(db: AsyncSession, draft: Draft) -> tuple[str, InlineKeyboardMar
     data = draft.data
     screen = data.get("screen", SESSIONS)
     if screen == SESSIONS:
-        sessions = await db.scalars(
-            select(Session)
-            .where(Session.status == "scheduled")
+        now = utc_now()
+        scheduled = select(Session).where(Session.status == "scheduled")
+        upcoming = await db.scalars(
+            scheduled.where(Session.starts_at > now)
+            .order_by(Session.starts_at)
+            .limit(UPCOMING_SESSIONS)
+        )
+        recent = await db.scalars(
+            scheduled.where(Session.starts_at <= now)
             .order_by(Session.starts_at.desc())
             .limit(RECENT_SESSIONS)
         )
+        sessions = [*reversed(upcoming.all()), *recent]  # newest first
         rows = [[_button(_label(s), draft, PICK_SESSION, str(s.id))] for s in sessions]
         text = "✏️ <b>Edit a session</b>\nWhich one?" if rows else "There are no sessions to edit."
         return text, InlineKeyboardMarkup([*rows, [_button("✖ Close", draft, CLOSE)]])
