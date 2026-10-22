@@ -1,5 +1,8 @@
+import importlib
+import json
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import httpx
 import pytest
@@ -21,6 +24,7 @@ SETTINGS = Settings.from_env(
         "ADMIN_TELEGRAM_IDS": "111",
     }
 )
+ROOT = Path(__file__).resolve().parents[1]
 UPDATE = {
     "update_id": 1,
     "message": {
@@ -155,7 +159,22 @@ async def test_cron_with_no_steps(
     assert response.json() == {"ok": True, "steps": {}}
 
 
-def test_vercel_entry_point_exposes_app() -> None:
-    from api.index import app as entry_app
+@pytest.mark.parametrize("name", ["telegram", "cron"])
+def test_vercel_entry_point_exposes_app(name: str) -> None:
+    entry_app = importlib.import_module(f"api.{name}").app
 
     assert entry_app is app
+
+
+def test_every_route_is_served_by_its_own_vercel_function() -> None:
+    # Vercel serves api/<name>.py at /api/<name>. A rewrite to one shared function would hand
+    # the app the rewritten path (/api/index), so no route would match and every request 404s.
+    config = json.loads((ROOT / "vercel.json").read_text())
+    paths = {route.path for route in app.routes}
+
+    assert paths == {"/api/telegram", "/api/cron"}
+    assert "rewrites" not in config
+    assert set(config["functions"]) == {f"{path.removeprefix('/')}.py" for path in paths}
+    for function in config["functions"]:
+        assert (ROOT / function).is_file()
+    assert {job["path"] for job in config["crons"]} <= paths

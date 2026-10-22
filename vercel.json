@@ -4,16 +4,13 @@
     "sin1"
   ],
   "functions": {
-    "api/index.py": {
+    "api/telegram.py": {
+      "includeFiles": "badminton/**"
+    },
+    "api/cron.py": {
       "includeFiles": "badminton/**"
     }
   },
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/index"
-    }
-  ],
   "crons": [
     {
       "path": "/api/cron",
