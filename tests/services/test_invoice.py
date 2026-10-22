@@ -1,6 +1,8 @@
 from datetime import date, timedelta
 
+import pytest
 from sqlalchemy import func, select
+from telegram.error import NetworkError
 
 from badminton.db.models import (
     Attendance,
@@ -142,3 +144,37 @@ async def test_unpaid_lines_are_carried_into_the_next_invoice(bot: BotHarness) -
     )
     november_card = bot.telegram.last("sendMessage").params["text"]
     assert november_card.startswith("🧾 <b>November 2026</b>\n🏸 0 sessions · court $0.00")
+
+
+async def test_an_invoice_whose_card_fails_is_retried(bot: BotHarness) -> None:
+    ids = await seed(bot)
+    october = await invoice_for(bot, "2026-10", NOV_1)
+    bot.telegram.fail("sendMessage", 502, "Bad Gateway", chat_id=GROUP_ID)
+
+    with pytest.raises(NetworkError):
+        await invoice_for(bot, "2026-11", DEC_1)
+
+    async with bot.sessionmaker() as db:
+        assert list(await db.scalars(select(Invoice.period))) == ["2026-10"]
+        assert await db.scalar(select(func.count()).select_from(InvoiceBalance)) == 3
+        carried = await db.scalars(
+            select(InvoiceLine.carried_at).where(InvoiceLine.invoice_id == october.id)
+        )
+        assert list(carried) == [None, None]
+
+    retry = DEC_1 + timedelta(days=1)
+    november = await invoice_for(bot, "2026-11", retry)
+
+    assert november is not None
+    assert november.card_message_id == bot.telegram.last("sendMessage").message["message_id"]
+    async with bot.sessionmaker() as db:
+        carried = await db.scalars(
+            select(InvoiceLine.carried_at)
+            .where(InvoiceLine.invoice_id == october.id)
+            .order_by(InvoiceLine.from_member_id)
+        )
+        assert list(carried) == [retry, retry]
+        lines = await db.scalars(
+            select(InvoiceLine.from_member_id).where(InvoiceLine.invoice_id == november.id)
+        )
+        assert sorted(lines) == sorted([ids["shawn"], ids["nic"]])
