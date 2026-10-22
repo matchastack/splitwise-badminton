@@ -77,7 +77,9 @@ class FakeTelegram(BaseRequest):
         if api_method == "getMe":
             return 200, _encode({"ok": True, "result": BOT_USER})
 
-        if failure := self._take_failure(api_method, params.get("chat_id")):
+        # setMyCommands names its chat inside ``scope`` rather than as a top-level chat_id.
+        target_chat = params.get("chat_id") or (params.get("scope") or {}).get("chat_id")
+        if failure := self._take_failure(api_method, target_chat):
             code, description = failure
             self.calls.append(ApiCall(api_method, params))
             return code, _encode({"ok": False, "error_code": code, "description": description})
