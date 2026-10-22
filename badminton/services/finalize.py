@@ -26,7 +26,11 @@ from badminton.services.tick import TickContext
 async def finalize_session(
     bot: Bot, db: AsyncSession, session_id: int, settings: Settings, now: datetime
 ) -> bool:
-    """Lock an ended session's attendance and post its summary, once. Commits."""
+    """Lock an ended session's attendance and post its summary, once. Commits.
+
+    If the summary can't be posted, the lock is released so the next run tries again.
+    Once it is posted the session stays locked, even if the admin can't be told.
+    """
     claimed = await db.scalar(
         update(Session)
         .where(
@@ -45,19 +49,19 @@ async def finalize_session(
         await refresh_card(bot, db, session_id, locked=True)
         view = await load_card_view(db, session_id)
         await announce(bot, settings, await summary(db, view))
-        if not view.ins:
-            when = fmt_session(view.session.starts_at, view.session.ends_at)
-            await dm_admins(
-                bot,
-                settings,
-                f"⚠️ Nobody was marked in for <b>{when}</b>, so it's left out of the costs. "
-                "Use /edit to fix the attendance or cancel the session.",
-            )
     except Exception:
         await db.rollback()
         await db.execute(update(Session).where(Session.id == session_id).values(locked_at=None))
         await db.commit()
         raise
+    if not view.ins:
+        when = fmt_session(view.session.starts_at, view.session.ends_at)
+        await dm_admins(
+            bot,
+            settings,
+            f"⚠️ Nobody was marked in for <b>{when}</b>, so it's left out of the costs. "
+            "Use /edit to fix the attendance or cancel the session.",
+        )
     return True
 
 

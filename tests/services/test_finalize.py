@@ -1,6 +1,8 @@
 from datetime import date, timedelta
 
+import pytest
 from sqlalchemy import select, update
+from telegram.error import NetworkError
 
 from badminton.db.models import Member, Session, ShuttleBatch
 from badminton.domain.timeutil import at_sgt, fmt_session, utc_now
@@ -105,6 +107,35 @@ async def test_nobody_in_alerts_the_admin(bot: BotHarness) -> None:
     ]
     admin_dm = [c for c in bot.telegram.calls_to("sendMessage") if c.params["chat_id"] == ADMIN_ID]
     assert admin_dm[0].params["text"].startswith(f"⚠️ Nobody was marked in for <b>{WHEN}</b>")
+
+
+async def test_a_failed_admin_dm_does_not_unlock_the_session(bot: BotHarness) -> None:
+    session_id = await make_session(bot, starts_at=START)
+    bot.telegram.fail("sendMessage", 502, "Bad Gateway", chat_id=ADMIN_ID)
+
+    with pytest.raises(NetworkError):
+        await finalize_ended_sessions(tick(bot))
+    await finalize_ended_sessions(tick(bot, AFTER + timedelta(hours=1)))
+
+    assert len(summaries(bot)) == 1
+    async with bot.sessionmaker() as db:
+        assert (await db.get(Session, session_id)).locked_at == AFTER
+
+
+async def test_a_failed_summary_is_retried(bot: BotHarness) -> None:
+    session_id = await make_session(bot, starts_at=START)
+    await mark_in(bot, session_id, "shawn")
+    bot.telegram.fail("sendMessage", 502, "Bad Gateway", chat_id=GROUP_ID)
+
+    with pytest.raises(NetworkError):
+        await finalize_ended_sessions(tick(bot))
+    bot.telegram.clear()  # forget the failed attempt
+    later = AFTER + timedelta(hours=1)
+    await finalize_ended_sessions(tick(bot, later))
+
+    assert len(summaries(bot)) == 1
+    async with bot.sessionmaker() as db:
+        assert (await db.get(Session, session_id)).locked_at == later
 
 
 async def test_a_late_tap_finalises_straight_away(bot: BotHarness) -> None:
