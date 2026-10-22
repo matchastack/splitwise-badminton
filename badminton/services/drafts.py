@@ -71,7 +71,11 @@ def update_data(draft: Draft, **changes: Any) -> None:
     draft.data = data
 
 
-async def delete_draft(db: AsyncSession, draft: Draft) -> None:
+async def delete_draft(bot: Bot, db: AsyncSession, draft: Draft) -> None:
+    """Delete the draft and its open reply prompt, if any: with the wizard gone, nothing
+    could handle an answer."""
+    await delete_message_quietly(bot, draft.chat_id, draft.prompt_message_id)
+    draft.prompt_message_id = None
     await db.delete(draft)
 
 
@@ -96,6 +100,5 @@ async def cleanup_expired_drafts(context: TickContext) -> None:
         expired = (await db.scalars(select(Draft).where(Draft.expires_at <= context.now))).all()
         for draft in expired:
             await delete_message_quietly(context.bot, draft.chat_id, draft.message_id)
-            await delete_message_quietly(context.bot, draft.chat_id, draft.prompt_message_id)
-            await delete_draft(db, draft)
+            await delete_draft(context.bot, db, draft)
         await db.commit()

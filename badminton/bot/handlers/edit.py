@@ -229,7 +229,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if action not in (PRICE, OTHER_HOURS):
             await prompts.dismiss(context.bot, draft)
         if action == CLOSE:
-            await delete_draft(db, draft)
+            await delete_draft(context.bot, db, draft)
             await db.commit()
             await query.edit_message_text("✏️ Editing closed.")
             return
@@ -285,7 +285,7 @@ async def _save_attendance(
     session = await db.get(Session, session_id)
     when = fmt_session(session.starts_at, session.ends_at)
     if not added and not removed:
-        await delete_draft(db, draft)
+        await delete_draft(context.bot, db, draft)
         await db.commit()
         await update.callback_query.edit_message_text(f"✏️ {when}: no changes.")
         return
@@ -304,7 +304,7 @@ async def _save_attendance(
         before=sorted(names[i] for i in before),
         after=sorted(names[i] for i in after),
     )
-    await delete_draft(db, draft)
+    await delete_draft(context.bot, db, draft)
     await db.commit()
 
     changes = " ".join(
@@ -418,7 +418,7 @@ async def _cancel_session(
         before={"status": "scheduled"},
         after={"status": "cancelled"},
     )
-    await delete_draft(db, draft)
+    await delete_draft(context.bot, db, draft)
     await db.commit()
     await update.callback_query.edit_message_text(f"🗑 Cancelled the session on {when}.")
     await close_cancelled_card(context.bot, session)

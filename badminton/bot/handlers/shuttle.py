@@ -106,7 +106,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             return
         await query.answer()
         if callback.action == CANCEL:
-            await delete_draft(db, draft)
+            await delete_draft(context.bot, db, draft)
             await db.commit()
             await query.edit_message_text("✖ Shuttle purchase not recorded.")
             return
@@ -158,7 +158,7 @@ async def _record(
             "starts_at": starts_at,
         },
     )
-    await delete_draft(db, draft)
+    await delete_draft(context.bot, db, draft)
     await db.commit()
 
     names = {m.id: m.display_name for m in await db.scalars(select(Member))}

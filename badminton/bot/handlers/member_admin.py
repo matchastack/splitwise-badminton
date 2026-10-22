@@ -164,7 +164,7 @@ async def finish_rename(
         await context.bot.edit_message_text(
             text_, chat_id=draft.chat_id, message_id=draft.message_id, reply_markup=markup
         )
-    await delete_draft(db, draft)
+    await delete_draft(context.bot, db, draft)
     await announce(
         context.bot,
         settings_of(context),
