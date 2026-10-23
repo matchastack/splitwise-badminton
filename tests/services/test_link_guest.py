@@ -118,7 +118,12 @@ async def test_linking_moves_everything_onto_the_guest(db: AsyncSession) -> None
 
     assert await db.get(Member, account.id) is None
     linked = await db.get(Member, guest.id)
-    assert (linked.display_name, linked.telegram_user_id, linked.username) == ("yt", 2, "yuting")
+    # The guest's record, under the account's name, as for anyone who joined normally.
+    assert (linked.display_name, linked.telegram_user_id, linked.username) == (
+        "Yu Ting",
+        2,
+        "yuting",
+    )
     assert linked.dm_enabled and linked.active
 
     answers = await db.scalars(select(Attendance).where(Attendance.member_id == guest.id))

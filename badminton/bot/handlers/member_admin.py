@@ -254,7 +254,8 @@ async def confirm_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     guest_cents, account_cents = balances.get(guest.id, 0), balances.get(account.id, 0)
     await query.edit_message_text(
         f"🔗 Link guest <b>{name}</b> to <b>{account_name}</b>?\n"
-        f"Their records become one, called {name}. Balances {fmt_signed(guest_cents)} and "
+        f"Their records become one, called {html.escape(account.display_name)}. "
+        f"Balances {fmt_signed(guest_cents)} and "
         f"{fmt_signed(account_cents)} make {fmt_signed(guest_cents + account_cents)}.",
         reply_markup=InlineKeyboardMarkup(
             [
@@ -282,6 +283,7 @@ async def finish_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         now = utc_now()
         before = await get_balances(db, now)
         guest_cents, account_cents = before.get(guest.id, 0), before.get(account.id, 0)
+        guest_name = guest.display_name  # the link renames the guest
         linked_from = {
             "id": account.id,
             "name": account.display_name,
@@ -300,14 +302,18 @@ async def finish_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             actor_member_id=admin.id,
             action="member.link",
             before={
-                "guest": {"id": guest.id, "balance_cents": guest_cents},
+                "guest": {"id": guest.id, "name": guest_name, "balance_cents": guest_cents},
                 "account": linked_from,
             },
-            after={"id": guest.id, "balance_cents": guest_cents + account_cents},
+            after={
+                "id": guest.id,
+                "name": guest.display_name,
+                "balance_cents": guest_cents + account_cents,
+            },
         )
         await db.commit()
         text, markup = render_members(await all_members(db))
-        name, mention = html.escape(guest.display_name), mention_html(guest)
+        name, mention = html.escape(guest_name), mention_html(guest)
         await query.answer()
         await query.edit_message_text(text, reply_markup=markup)
         await announce(

@@ -194,15 +194,18 @@ async def test_admin_links_a_guest_to_the_account_they_joined_with(bot: BotHarne
     confirm = await tap(bot, picker, "Danish K")
     assert confirm["text"] == (
         "🔗 Link guest <b>danish</b> to <b>Danish K (@danishk)</b>?\n"
-        "Their records become one, called danish. Balances −$5.00 and +$0.00 make −$5.00."
+        "Their records become one, called Danish K. Balances −$5.00 and +$0.00 make −$5.00."
     )
+    guest_id = (await members(bot))["danish"].id
 
     listed = await tap(bot, confirm, "✅ Link")
 
+    # The guest record stays, under the name their Telegram account has, like anyone's.
     by_name = await members(bot)
-    assert set(by_name) == {"zy", "danish"}
-    assert (by_name["danish"].telegram_user_id, by_name["danish"].username) == (333, "danishk")
-    assert listed["text"] == "👥 <b>Members</b>\n• zy (@zy_handle)\n• danish (@danishk)"
+    assert set(by_name) == {"zy", "Danish K"}
+    linked = by_name["Danish K"]
+    assert (linked.id, linked.telegram_user_id, linked.username) == (guest_id, 333, "danishk")
+    assert listed["text"] == "👥 <b>Members</b>\n• zy (@zy_handle)\n• Danish K (@danishk)"
     assert "🔗 Link" not in buttons(listed)
     assert bot.telegram.sent_texts(GROUP_ID)[-1] == (
         "🔗 Admin linked guest <b>danish</b> to @danishk. "
@@ -212,13 +215,14 @@ async def test_admin_links_a_guest_to_the_account_they_joined_with(bot: BotHarne
         row = await db.scalar(select(AuditLog).where(AuditLog.action == "member.link"))
         assert row.actor_member_id == by_name["zy"].id
         assert row.payload["before"]["account"]["name"] == "Danish K"
-        assert row.payload["after"] == {"id": by_name["danish"].id, "balance_cents": -500}
+        assert row.payload["before"]["guest"]["name"] == "danish"
+        assert row.payload["after"] == {"id": guest_id, "name": "Danish K", "balance_cents": -500}
 
     await bot.send(text_update("/balance", sender=DANISH, chat_id=333))
     assert (
         bot.telegram.last("sendMessage")
         .params["text"]
-        .startswith("💰 <b>danish</b>, you owe $5.00.")
+        .startswith("💰 <b>Danish K</b>, you owe $5.00.")
     )
 
 
@@ -234,11 +238,11 @@ async def test_the_admin_can_link_a_guest_to_their_own_account(bot: BotHarness) 
     await tap(bot, confirm, "✅ Link")
 
     by_name = await members(bot)
-    assert set(by_name) == {"zy (sheet)"}
-    assert by_name["zy (sheet)"].telegram_user_id == ADMIN_ID
+    assert set(by_name) == {"zy"}  # the admin's Telegram name
+    assert by_name["zy"].telegram_user_id == ADMIN_ID
     async with bot.sessionmaker() as db:
         row = await db.scalar(select(AuditLog).where(AuditLog.action == "member.link"))
-        assert row.actor_member_id == by_name["zy (sheet)"].id
+        assert row.actor_member_id == by_name["zy"].id
 
 
 async def test_linking_needs_someone_on_telegram_and_an_up_to_date_card(bot: BotHarness) -> None:
@@ -350,7 +354,8 @@ async def test_linking_refreshes_the_latest_invoice_card(bot: BotHarness) -> Non
         for call in bot.telegram.calls_to("editMessageText")
         if call.params["message_id"] == invoice_card["message_id"]
     ]
-    assert buttons(refreshed[-1]) == ["✅ danish → zy $7.40 paid"]  # the line moved to danish
+    assert len(refreshed) == 1  # edited once, by the link
+    assert buttons(refreshed[0]) == ["✅ Danish K → zy $7.40 paid"]
     assert "• @danishk → @zy_handle $7.40" in refreshed[-1]["text"]
 
 

@@ -203,7 +203,7 @@ It runs only once, and the dry run is refused in the same cases as `--apply`, ch
 3. Pick their Telegram account. The newest are listed first.
 4. Check the combined balance, and confirm.
 
-The records become one: the guest's name and carried-over balance, plus their Telegram account and anything they did with it. Nobody else's balance changes. The link is announced in the group. They can change the name with `/name`.
+The records become one: the guest's carried-over balance, plus their Telegram account and anything they did with it. The bot then shows them by their Telegram name, like anyone who joined normally, and they can change it with `/name`. Nobody else's balance changes. The link is announced in the group.
 
 If both records are marked in for a session that has already ended, the bot won't link them yet: it would count the person once there and change everyone's share. Use `/edit` to mark one of them out for that session, then link.
 
