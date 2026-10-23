@@ -4,7 +4,7 @@
 |---|---|
 | Status | Draft v1 |
 | Owner | Admin (group organiser) |
-| Last updated | 2026-10-21 |
+| Last updated | 2026-10-23 |
 | Task breakdown | [`tasks.md`](../tasks.md) |
 
 ## 1. Introduction
@@ -37,6 +37,7 @@ In scope: one Telegram group, where the bot does the following.
 5. Keeps running balances.
 6. Posts a monthly settle-up.
 7. Lets the admin correct any record, transparently.
+8. Carries each player's balance over from the spreadsheet.
 
 Out of scope for v1 is listed in [§8](#8-out-of-scope-v1).
 
@@ -111,6 +112,13 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
   - Members without a username are shown as a text mention, i.e. a tappable name.
   - Guest members are shown by display name.
 - **FR-MEM-7:** `/help` must list the commands available to the caller. Admin commands are shown to the admin only.
+- **FR-MEM-8:** In `/members`, the admin can link a guest to a Telegram account. This covers someone who was a guest (for example, imported from the spreadsheet, FR-MIG-4) and has since joined, so the bot made them a second member record (FR-MEM-1).
+  - The admin taps 🔗 on the guest, picks the member the bot made for their account (newest first), and confirms. The confirmation shows both balances and their sum.
+  - The two records become one, with the guest's name and the account's Telegram identity. Everything the account did (bookings, attendance, shuttle purchases, payments, settle-up lines, stored balances) moves to the guest. Nobody else's figures change, so the linked balance is the two balances added together.
+  - If both records are marked *in* for a session that has ended, the link is refused, naming the sessions. Counting the person once there would re-split costs already in everyone's balance, so the admin first marks one of them out with `/edit`, which announces that correction (FR-ADM-3).
+  - For other sessions, the person counts once: *in* if either answer was *in*. Payments and settle-up lines between the two records are dropped, because they would be to themselves.
+  - Open wizards that hold the account's member ID expire. The latest invoice card is refreshed.
+  - The link is announced in the group and audited.
 
 ### 4.2 Court bookings (BK)
 - **FR-BK-1:**
@@ -195,7 +203,7 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
 - **FR-LED-5:** A **transfer** credits the sender and debits the receiver.
 - **FR-LED-6:** Balance = credits − debits over all time. The sum of all members' balances must always be zero.
 - **FR-LED-7:**
-  - Costs and shares are derived from stored facts (bookings, attendance, batches, transfers). They are never stored.
+  - Costs and shares are derived from stored facts (bookings, attendance, batches, transfers, and the opening balances carried over from the spreadsheet, FR-MIG-2). They are never stored.
   - Any correction therefore flows through to every figure automatically.
 - **FR-LED-8:** `/balance` shows the caller's balance, their pending hours in the open batch, and any unpaid settle-up lines involving them.
 - **FR-LED-9:** `/upcoming` lists scheduled sessions with their date, time, hours and payer(s).
@@ -227,6 +235,7 @@ Worked examples:
     - each session played: date, hours, court share;
     - each closed batch they were charged for: hours and amount;
     - payments sent and received;
+    - the balance carried over from the spreadsheet, in the first statement after the import (FR-MIG-2);
     - adjustments;
     - closing balance;
     - who to pay and how much, or "nothing to pay".
@@ -288,6 +297,29 @@ Worked examples:
   - local long-polling for development.
 - **FR-OPS-5:** `/chatid` replies with the current chat's ID, even before `GROUP_CHAT_ID` is configured.
 
+### 4.10 Migration from the spreadsheet (MIG)
+- **FR-MIG-1:** `scripts/import_spreadsheet.py <file>` reads the `Items` sheet of `Badminton.xlsx`.
+  - By default it is a dry run. It prints the bot's members, which member each player column becomes, and a reconciliation table: Paid, Spend and Surplus as on the `Total` sheet, and the opening balance the bot will carry over.
+  - `--apply` saves the import, writes it to the audit log, and announces the balances in the group (unless `--no-announce`).
+  - Rows the bot can't reproduce are refused with their row number: an unknown item or payer, a price that isn't whole cents, a transfer without exactly one receiver, or a row without shares other than the latest shuttle purchase.
+  - The dry run is refused in the same cases as `--apply` (FR-MIG-4), so it never invites an import that will fail.
+- **FR-MIG-2:**
+  - Each player's balance is carried over as one opening balance: Paid − Spend, computed exactly, then rounded to cents by largest remainder so the balances still sum to zero.
+  - History isn't copied. The sheet stays the record of it.
+  - Before saving, the import checks with the ledger that every member's balance moved by exactly their opening balance and that all balances sum to zero. Otherwise nothing is saved.
+- **FR-MIG-3:** The latest shuttle row with no shares (a tube nobody has used yet) becomes the open batch.
+  - It has the row's payer and price, and starts at 00:00 SGT the day after the sheet's last row.
+  - Its price is left out of its buyer's opening balance; they are credited when the batch closes (FR-LED-3, FR-LED-4).
+  - The tube needs a date. A court row dated after it is refused: that session played with the tube, but the batch only bills sessions after the sheet's last day. Its shares must be filled in first.
+- **FR-MIG-4:**
+  - A player column matches the member with the same display name or @username, ignoring case, or the member chosen with `--member NAME=ID`. Anyone else becomes a guest member.
+  - The import refuses, changing nothing, anything that would count twice:
+    - balances already carried over;
+    - a session before the batch start;
+    - a shuttle batch starting, or a payment recorded, before the batch start;
+    - any shuttle batch, when the sheet has an unused tube.
+  - Batches and payments can't be removed in the bot, so the refusal says to import into a new, empty database.
+
 ## 5. Non-functional requirements
 | ID | Category | Requirement |
 |---|---|---|
@@ -317,7 +349,7 @@ Worked examples:
 | `/shuttle <price>` | admin | any | Record a shuttle batch |
 | `/settle` | admin | any | Record a manual transfer |
 | `/addmember <name>` | admin | any | Add a guest member |
-| `/members` | admin | any | List, rename or deactivate members |
+| `/members` | admin | any | List, rename or deactivate members; link a guest to a Telegram account |
 | `/invoice` | admin | any | Generate the invoice now |
 
 ### 6.2 HTTP endpoints
@@ -338,6 +370,7 @@ Worked examples:
 | Attendance | session, member, status (in / out) |
 | ShuttleBatch | payer, amount_cents, starts_at |
 | Transfer | from, to, amount_cents, invoice line (optional), recorded_by |
+| OpeningBalance | member (one each), amount_cents (signed), created_at |
 | Invoice / InvoiceLine / InvoiceBalance | period (unique), lines, per-member closing balance |
 | Draft | kind, chat, user, message refs, JSON state, expires_at |
 | AuditLog | actor, action, payload (before/after), created_at |
@@ -364,9 +397,10 @@ Acceptance criteria are brief; the referenced FRs hold the detail.
   - After `/start` in DM, I receive monthly statements.
   - If I block the bot, delivery to me stops without errors.
 - **US-2.3:** As a member, I want to choose the name the bot shows for me. *(FR-MEM-4)*
-- **US-2.4:** As the admin, I want to add and manage members who aren't on Telegram, so that guests can be charged. *(FR-MEM-5)*
+- **US-2.4:** As the admin, I want to add and manage members who aren't on Telegram, so that guests can be charged. *(FR-MEM-5, FR-MEM-8)*
   - Guests appear in attendance editing and settle-ups.
   - Deactivated members disappear from pickers but keep their history.
+  - When a guest joins, I link them to their Telegram account, and their balance and history follow them.
 - **US-2.5:** As a member, I want to check my balance and upcoming sessions any time. *(FR-LED-8, FR-LED-9)*
 
 ### E3 — Court booking
@@ -420,13 +454,19 @@ Acceptance criteria are brief; the referenced FRs hold the detail.
 - **US-9.2:** As a member, I want my replies to bot prompts to be accepted and then cleaned up. *(FR-MOD-2)*
 - **US-9.3:** As the admin, I want the bot to ignore other chats. *(FR-MOD-4)*
 
+### E10 — Migration from the spreadsheet
+- **US-10.1:** As the admin, I want to carry everyone's balance over from `Badminton.xlsx`, so that nothing owed is lost and the bot's figures match the sheet to the cent. *(FR-MIG-1, FR-MIG-2, FR-MIG-4)*
+  - A dry run shows the reconciliation before anything is saved.
+  - The carried-over balances sum to zero.
+- **US-10.2:** As a member, I want a tube bought but not yet used before the switch to be split by hours played, like any other batch. *(FR-MIG-3)*
+
 ## 8. Out of scope (v1)
 - OCR of booking screenshots.
 - More than one group.
 - A "+1 guest" button on the attendance card. Guests are added by the admin instead.
 - Partial attendance within a session.
 - PayNow numbers or QR codes.
-- Importing `Badminton.xlsx`. The bot starts fresh.
+- Importing the history in `Badminton.xlsx`, row by row. Only each player's balance and the unused tube are carried over (§4.10).
 - A web dashboard.
 - Recurring bookings.
 - Currencies other than SGD.

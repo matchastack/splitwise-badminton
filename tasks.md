@@ -74,6 +74,8 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T35 | Admin: edit bookings, cancel session | `feat/t35-admin-edit-booking` | E8 | T24, T34 | ✅ | [#39](https://github.com/matchastack/splitwise-badminton/pull/39) |
 | T36 | Admin: manual transfer | `feat/t36-admin-manual-transfer` | E8 | T14, T16, T17 | ✅ | [#40](https://github.com/matchastack/splitwise-badminton/pull/40) |
 | T37 | Setup and deployment guide | `docs/t37-setup-guide` | E1 | T07, T32 | ✅ | [#35](https://github.com/matchastack/splitwise-badminton/pull/35) |
+| T38 | Opening balances and spreadsheet import | `feat/t38-spreadsheet-import` | E10 | T14, T16, T37 | ✅ | [#61](https://github.com/matchastack/splitwise-badminton/pull/61) |
+| T39 | Link a guest to a Telegram account | `feat/t39-link-guests` | E2 | T19, T38 | ✅ | [#62](https://github.com/matchastack/splitwise-badminton/pull/62) |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
@@ -419,3 +421,21 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
   - local development with `dev_polling.py`;
   - a manual end-to-end checklist.
 - **Done when:** someone else can follow it from scratch and get a working bot in a test group.
+
+## E10 — Migration from the spreadsheet
+
+### T38 · Opening balances and spreadsheet import
+`feat/t38-spreadsheet-import` · Stories US-10.1, US-10.2 · FR-MIG-1 to FR-MIG-4 · Depends on T14, T16, T37
+- **Scope:**
+  - An `opening_balances` table (one signed amount per member), loaded into the ledger as an opening-balance entry and shown on statements.
+  - `badminton/domain/sheet.py`: reproduce the `Total` sheet exactly from the `Items` rows, and round each balance to cents that sum to zero.
+  - `scripts/import_spreadsheet.py`: dry run by default, `--member NAME=ID`, `--apply`, `--no-announce`. The unused tube becomes the open batch; unmatched players become guests.
+  - The import checks the tally with the ledger before saving, and refuses a second import or one that would count something twice.
+- **Done when:** tests cover the sheet maths and each refused row, rounding to a zero sum, the import's matching and refusals, a rollback when the tally is off, and the unused tube being billed by hours once the next batch is bought.
+
+### T39 · Link a guest to a Telegram account
+`feat/t39-link-guests` · Stories US-2.4 · FR-MEM-8 · Depends on T19, T38
+- **Scope:**
+  - `link_guest`: move everything the Telegram member did onto the guest (bookings, attendance, batches, transfers, invoice lines and balances, opening balance, audit actor), then delete it and give the guest its Telegram identity.
+  - `/members`: a 🔗 button on guests → pick the Telegram member (newest first) → confirm with both balances → link, announce and audit.
+- **Done when:** tests cover each moved fact, a session both records answered, payments between the two, the linked balance being the sum, the admin linking their own account, stale or empty pickers, and refusal for non-admins.

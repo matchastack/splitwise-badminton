@@ -1,6 +1,9 @@
+from datetime import date
+
 from sqlalchemy import select, update
 
-from badminton.db.models import Attendance, Member
+from badminton.db.models import Attendance, Member, OpeningBalance
+from badminton.domain.timeutil import at_sgt
 from tests.conftest import BotHarness
 from tests.services.test_invoice import DEC_1, NOV_1, invoice_for, seed
 
@@ -57,6 +60,32 @@ async def test_members_without_dms_or_activity_get_nothing(bot: BotHarness) -> N
     await invoice_for(bot, "2026-10", NOV_1)
 
     assert dms(bot) == {}
+
+
+async def test_statement_shows_the_balance_carried_over_from_the_spreadsheet(
+    bot: BotHarness,
+) -> None:
+    ids = await seed(bot)
+    await enable_dms(bot, 222)
+    async with bot.sessionmaker() as db:
+        imported = at_sgt(date(2026, 10, 23), 9)
+        db.add_all(
+            [
+                OpeningBalance(member_id=ids["shawn"], amount_cents=1452, created_at=imported),
+                OpeningBalance(member_id=ids["nic"], amount_cents=-1452, created_at=imported),
+            ]
+        )
+        await db.commit()
+
+    await invoice_for(bot, "2026-10", NOV_1)
+
+    assert dms(bot)[222].splitlines()[2:7] == [
+        "Opening balance: +$0.00",
+        "🏸 Sun 4 Oct (2h): court −$5.00",
+        "🏸 Sun 11 Oct (2h): court −$7.50",
+        "📒 Carried over from the spreadsheet: +$14.52",
+        "<b>Closing balance</b>: you're owed $2.02.",
+    ]
 
 
 async def test_blocked_member_is_skipped_and_dms_turned_off(bot: BotHarness) -> None:

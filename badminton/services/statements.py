@@ -65,6 +65,8 @@ def _entry_line(entry: Entry, members: dict[int, Member]) -> str:
         return f"🏸 Shuttle batch #{entry.batch_id} ({fmt_hours(entry.minutes or 0)}): {amount}"
     if entry.kind is EntryKind.SHUTTLE_PAID:
         return f"💵 You bought shuttle batch #{entry.batch_id}: {amount}"
+    if entry.kind is EntryKind.OPENING_BALANCE:
+        return f"📒 Carried over from the spreadsheet: {amount}"
     other = html.escape(members[entry.counterparty_id].display_name)
     if entry.kind is EntryKind.TRANSFER_SENT:
         return f"↔️ You paid {other} ({when}): {amount}"

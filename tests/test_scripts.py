@@ -1,13 +1,20 @@
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
+import openpyxl
 import pytest
 from telegram import Bot
 from telegram.error import BadRequest
 
 from badminton.bot.app import build_application
 from badminton.bot.commands import ADMIN_COMMANDS, MEMBER_COMMANDS
+from badminton.db.models import Member
+from badminton.domain.sheet import SheetError
+from badminton.services.spreadsheet import ImportRefused, ImportResult, Match
+from scripts import import_spreadsheet
+from scripts.import_spreadsheet import announcement, parse_args, read_workbook, report
 from scripts.setup_telegram import configure, webhook_url
 from tests.conftest import TEST_SETTINGS
 from tests.fake_telegram import ADMIN_ID, GROUP_ID, FakeTelegram
@@ -77,9 +84,135 @@ def test_polling_application_keeps_its_updater() -> None:
     assert build_application(TEST_SETTINGS, None).updater is None  # type: ignore[arg-type]
 
 
+def write_sheet(path: Path) -> Path:
+    workbook = openpyxl.Workbook()
+    items = workbook.active
+    items.title = "Items"
+    rows = [
+        ("Date", "Item", "Price", "Paid By", "zy", "yt", "Number of Shares", "Price per Share"),
+        (datetime(2026, 10, 18), "court", 14.8, "zy", 1, 1, "=SUM(E2:F2)", "=C2/G2"),
+        (datetime(2026, 10, 18), "shuttle", 76.79, "yt", 0, None, "=SUM(E3:F3)", "=C3/G3"),
+    ]
+    for row in rows:
+        items.append(row)
+    workbook.create_sheet("Total")
+    workbook.save(path)
+    return path
+
+
+def test_import_reads_the_items_sheet_and_reports_the_tally(tmp_path: Path) -> None:
+    summary = read_workbook(write_sheet(tmp_path / "Badminton.xlsx"))
+    zy = Member(id=1, display_name="Zhen Yi", username="zzyi", telegram_user_id=111, active=True)
+
+    lines = report(summary, [Match("zy", zy, "same name"), Match("yt", None, "new guest")], [zy])
+
+    assert lines[:6] == [
+        "Bot members now:",
+        "  #1 Zhen Yi (@zzyi)",
+        "",
+        "Player columns:",
+        "  zy       → Zhen Yi (@zzyi), same name",
+        "  yt       → new guest member",
+    ]
+    assert lines[7:11] == [
+        "Player         Paid        Spend    Surplus     Tube   Opening",
+        "zy            14.80       7.4000     7.4000              +7.40",
+        "yt            76.79       7.4000    69.3900   -76.79     -7.40",
+        "Total         91.59      14.8000    76.7900   -76.79     +0.00",
+    ]
+    assert lines[-1].startswith("Row 3 is a tube nobody has used yet: $76.79 bought by yt.")
+
+
+def test_import_needs_an_items_sheet(tmp_path: Path) -> None:
+    path = tmp_path / "Other.xlsx"
+    openpyxl.Workbook().save(path)
+
+    with pytest.raises(SheetError, match="no 'Items' sheet"):
+        read_workbook(path)
+
+
+def test_import_announces_each_carried_over_balance(tmp_path: Path) -> None:
+    summary = read_workbook(write_sheet(tmp_path / "Badminton.xlsx"))
+    result = ImportResult(
+        member_ids={"zy": 1, "yt": 2},
+        guests=("yt",),
+        opening_cents={"zy": 740, "yt": -740},
+        batch_id=1,
+        balances={1: 740, 2: -740},
+    )
+
+    text = announcement(summary, result, {1: "Zhen <Yi>", 2: "yt"})
+
+    assert text == (
+        "📒 <b>Balances carried over from the spreadsheet</b>, up to Sun 18 Oct:\n"
+        "• Zhen &lt;Yi&gt; +$7.40\n"
+        "• yt −$7.40\n"
+        "+ means the group owes them, − means they owe the group.\n"
+        "\n"
+        "🏸 The $76.79 tube yt bought is shuttle batch #1. "
+        "It's billed by hours played once the next one is bought."
+    )
+
+
+def use_test_bot_and_database(monkeypatch: pytest.MonkeyPatch, database_url: str) -> FakeTelegram:
+    """Point the import script at the test database and a fake Telegram."""
+    env = {
+        "BOT_TOKEN": TEST_SETTINGS.bot_token,
+        "WEBHOOK_SECRET": "test-secret",
+        "CRON_SECRET": "test-cron",
+        "ADMIN_TELEGRAM_IDS": str(ADMIN_ID),
+        "GROUP_CHAT_ID": str(GROUP_ID),
+        "DATABASE_URL": database_url,
+    }
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    telegram = FakeTelegram()
+    monkeypatch.setattr(import_spreadsheet, "Bot", lambda token: Bot(token, request=telegram))
+    return telegram
+
+
+async def test_import_announces_the_balances_as_html(
+    engine: object, migrated_database_url: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    telegram = use_test_bot_and_database(monkeypatch, migrated_database_url)
+
+    await import_spreadsheet.main([str(write_sheet(tmp_path / "Badminton.xlsx")), "--apply"])
+
+    post = telegram.last("sendMessage").params
+    assert (post["chat_id"], post["parse_mode"]) == (GROUP_ID, "HTML")
+    assert post["text"].startswith("📒 <b>Balances carried over from the spreadsheet</b>")
+
+
+async def test_import_dry_run_is_refused_like_apply(
+    engine: object,
+    migrated_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    use_test_bot_and_database(monkeypatch, migrated_database_url)
+    path = str(write_sheet(tmp_path / "Badminton.xlsx"))
+    await import_spreadsheet.main([path, "--apply", "--no-announce"])
+    capsys.readouterr()
+
+    with pytest.raises(ImportRefused, match="already been carried over"):
+        await import_spreadsheet.main([path])
+    assert capsys.readouterr().out == ""  # no report inviting --apply
+
+
+def test_import_member_choices_are_name_equals_id() -> None:
+    assert parse_args(["x.xlsx", "--member", "zy=3"]).member == [("zy", 3)]
+    with pytest.raises(SystemExit):
+        parse_args(["x.xlsx", "--member", "zy"])
+
+
 @pytest.mark.parametrize(
     ("script", "flag"),
-    [("setup_telegram.py", "--base-url"), ("dev_polling.py", "--tick-interval")],
+    [
+        ("setup_telegram.py", "--base-url"),
+        ("dev_polling.py", "--tick-interval"),
+        ("import_spreadsheet.py", "--apply"),
+    ],
 )
 def test_scripts_document_their_arguments(script: str, flag: str) -> None:
     result = subprocess.run(
