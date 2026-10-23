@@ -300,6 +300,7 @@ Worked examples:
   - By default it is a dry run. It prints the bot's members, which member each player column becomes, and a reconciliation table: Paid, Spend and Surplus as on the `Total` sheet, and the opening balance the bot will carry over.
   - `--apply` saves the import, writes it to the audit log, and announces the balances in the group (unless `--no-announce`).
   - Rows the bot can't reproduce are refused with their row number: an unknown item or payer, a price that isn't whole cents, a transfer without exactly one receiver, or a row without shares other than the latest shuttle purchase.
+  - The dry run is refused in the same cases as `--apply` (FR-MIG-4), so it never invites an import that will fail.
 - **FR-MIG-2:**
   - Each player's balance is carried over as one opening balance: Paid − Spend, computed exactly, then rounded to cents by largest remainder so the balances still sum to zero.
   - History isn't copied. The sheet stays the record of it.
@@ -307,9 +308,15 @@ Worked examples:
 - **FR-MIG-3:** The latest shuttle row with no shares (a tube nobody has used yet) becomes the open batch.
   - It has the row's payer and price, and starts at 00:00 SGT the day after the sheet's last row.
   - Its price is left out of its buyer's opening balance; they are credited when the batch closes (FR-LED-3, FR-LED-4).
+  - The tube needs a date. A court row dated after it is refused: that session played with the tube, but the batch only bills sessions after the sheet's last day. Its shares must be filled in first.
 - **FR-MIG-4:**
-  - A player column matches the member with the same display name or @username, or the member chosen with `--member NAME=ID`. Anyone else becomes a guest member.
-  - The import refuses, changing nothing, if balances were already carried over, if a shuttle batch is already recorded while the sheet has an unused tube, or if the bot has a session before the batch start.
+  - A player column matches the member with the same display name or @username, ignoring case, or the member chosen with `--member NAME=ID`. Anyone else becomes a guest member.
+  - The import refuses, changing nothing, anything that would count twice:
+    - balances already carried over;
+    - a session before the batch start;
+    - a shuttle batch starting, or a payment recorded, before the batch start;
+    - any shuttle batch, when the sheet has an unused tube.
+  - Batches and payments can't be removed in the bot, so the refusal says to import into a new, empty database.
 
 ## 5. Non-functional requirements
 | ID | Category | Requirement |

@@ -66,6 +66,29 @@ def test_the_unused_tube_is_kept_out_of_spend_and_off_its_buyers_opening() -> No
     assert summary.opening_cents() == {"zy": 1110, "shawn": -370, "nic": -370, "yt": -370}
 
 
+def test_a_court_row_on_the_day_the_tube_was_bought_used_the_previous_one() -> None:
+    summary = sheet(
+        (day(10, 18), "court", 14.8, "zy", 1, 1, None, 1),
+        (day(10, 18), "shuttle", 76.79, "yt", 0, 0, None),  # bought after that session
+    )
+
+    assert summary.pending is not None and summary.pending.row == 3
+
+
+def test_refuses_an_unused_tube_that_later_sessions_played_with() -> None:
+    with pytest.raises(SheetError, match=r"Row 2: this tube has no shares, but rows 3, 4 played"):
+        sheet(
+            (day(10, 10), "shuttle", 76.79, "yt", None, None, None),
+            (day(10, 11), "court", 14.8, "zy", 1, 1, None, 1),
+            (day(10, 18), "court", 14.8, "zy", 1, 1, None, 1),
+        )
+    with pytest.raises(SheetError, match=r"Row 2: .* needs a date"):
+        sheet(
+            (None, "shuttle", 76.79, "yt", None, None, None),
+            (day(10, 11), "court", 14.8, "zy", 1, 1, None, 1),
+        )
+
+
 def test_opening_balances_are_whole_cents_that_sum_to_zero() -> None:
     summary = sheet(
         (day(10, 4), "court", 14.8, "zy", 1, 1, 1, None),  # 4.9333… each

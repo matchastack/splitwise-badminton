@@ -12,15 +12,18 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from badminton.db.models import Member, OpeningBalance, Session, ShuttleBatch
+from badminton.db.models import Member, OpeningBalance, Session, ShuttleBatch, Transfer
 from badminton.domain.sheet import SheetSummary
 from badminton.domain.timeutil import at_sgt, fmt_date, sgt_date
 from badminton.services import audit
-from badminton.services.members import clean_name
+from badminton.services.members import all_members, clean_name
 from badminton.services.repo import get_balances
+
+# Batches and payments can't be removed in the bot, so there's no undoing them here.
+FRESH_DATABASE = "Import into a new, empty database instead."
 
 
 class ImportRefused(RuntimeError):
@@ -61,6 +64,7 @@ async def match_members(
     unknown = sorted(set(chosen) - set(players))
     if unknown:
         raise ImportRefused(f"No player column called {', '.join(map(repr, unknown))}.")
+    members = await all_members(db)
     matches = []
     for name in players:
         if name in chosen:
@@ -69,19 +73,13 @@ async def match_members(
                 raise ImportRefused(f"There's no member #{chosen[name]} (for {name!r}).")
             matches.append(Match(name, member, "chosen with --member"))
             continue
-        lowered = name.casefold()
-        candidates = list(
-            await db.scalars(
-                select(Member)
-                .where(
-                    or_(
-                        func.lower(Member.display_name) == lowered,
-                        func.lower(Member.username) == lowered,
-                    )
-                )
-                .order_by(Member.id)
-            )
-        )
+        # Compared here rather than in SQL, so both sides fold case the same way.
+        folded = name.casefold()
+        candidates = [
+            member
+            for member in members
+            if folded in (member.display_name.casefold(), (member.username or "").casefold())
+        ]
         if len(candidates) > 1:
             ids = ", ".join(f"#{member.id}" for member in candidates)
             raise ImportRefused(f"{name!r} could be member {ids}: pick one with --member.")
@@ -103,19 +101,32 @@ async def match_members(
 
 
 async def check_can_import(db: AsyncSession, summary: SheetSummary) -> None:
-    """Refuse an import that would count something twice."""
+    """Refuse an import that would count something twice: anything the bot recorded
+    for the time the sheet covers is on the sheet too."""
+    start = cutoff(summary)
     if await db.scalar(select(OpeningBalance.member_id).limit(1)) is not None:
         raise ImportRefused("Balances have already been carried over from the spreadsheet.")
-    if summary.pending is not None and await db.scalar(select(ShuttleBatch.id).limit(1)):
+    first_batch = await db.scalar(select(func.min(ShuttleBatch.starts_at)))
+    if summary.pending is not None and first_batch is not None:
         raise ImportRefused(
             "A shuttle batch is already recorded, but the sheet's unused tube must become "
-            "the first batch."
+            f"the first batch. {FRESH_DATABASE}"
+        )
+    if first_batch is not None and first_batch < start:
+        raise ImportRefused(
+            f"The bot has a shuttle batch from {fmt_date(sgt_date(first_batch))}, which the "
+            f"sheet covers. {FRESH_DATABASE}"
+        )
+    first_payment = await db.scalar(select(func.min(Transfer.created_at)))
+    if first_payment is not None and first_payment < start:
+        raise ImportRefused(
+            f"The bot has a payment from {fmt_date(sgt_date(first_payment))}, which the "
+            f"sheet covers. {FRESH_DATABASE}"
         )
     earlier = await db.scalar(
-        select(Session.starts_at)
-        .where(Session.status == "scheduled", Session.starts_at < cutoff(summary))
-        .order_by(Session.starts_at)
-        .limit(1)
+        select(func.min(Session.starts_at)).where(
+            Session.status == "scheduled", Session.starts_at < start
+        )
     )
     if earlier is not None:
         raise ImportRefused(

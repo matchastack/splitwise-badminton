@@ -57,7 +57,7 @@ class PendingShuttle:
     """The latest shuttle purchase, which nobody has played with yet."""
 
     row: int
-    day: date | None
+    day: date
     payer: str
     amount_cents: int
 
@@ -195,7 +195,11 @@ def _parse_row(
 
 
 def _pending_shuttle(rows: Sequence[SheetRow]) -> PendingShuttle | None:
-    """The unused tube: a shuttle row with no shares, which must be the latest one."""
+    """The unused tube: a shuttle row with no shares, which must be the latest one.
+
+    The bot bills it only for sessions after the sheet's last day, so a court row
+    after the purchase, which would have played with it, is refused.
+    """
     unshared = [row for row in rows if not row.shares]
     if not unshared:
         return None
@@ -205,6 +209,17 @@ def _pending_shuttle(rows: Sequence[SheetRow]) -> PendingShuttle | None:
             raise SheetError(
                 f"Row {row.number}: only the latest shuttle purchase may have no shares yet."
             )
+    if latest.day is None:
+        raise SheetError(f"Row {latest.number}: the shuttle purchase with no shares needs a date.")
+    played = [
+        str(row.number) for row in rows if row.item == COURT and row.day and row.day > latest.day
+    ]
+    if played:
+        later = ("rows " if len(played) > 1 else "row ") + ", ".join(played)
+        raise SheetError(
+            f"Row {latest.number}: this tube has no shares, but {later} played after it was "
+            "bought. Fill in its shares first."
+        )
     return PendingShuttle(latest.number, latest.day, latest.payer, int(latest.price * 100))
 
 

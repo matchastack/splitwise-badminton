@@ -191,9 +191,11 @@ If the group kept its accounts in the spreadsheet, carry everyone's balance over
 
 What it carries over:
 - **One opening balance per player:** Paid − Spend, rounded to cents so the balances still sum to zero. The history isn't copied; the sheet stays the record of it. The first monthly statement shows it as "Carried over from the spreadsheet".
-- **The unused tube:** a shuttle row with no shares yet becomes the current shuttle batch. When the next `/shuttle` closes it, its buyer is credited and everyone is charged by hours played. Until then, its price isn't in its buyer's balance.
+- **The unused tube:** a shuttle row with no shares yet becomes the current shuttle batch. When the next `/shuttle` closes it, its buyer is credited and everyone is charged by hours played. Until then, its price isn't in its buyer's balance. Only the latest tube can be unused. If a court row is dated after it, fill in its shares first: those sessions played with it.
 
-It runs only once. It refuses, changing nothing, if the bot already has a shuttle batch, or a session on or before the sheet's last date.
+It runs only once, and the dry run is refused in the same cases as `--apply`, changing nothing. It refuses when the bot already has:
+- a session on or before the sheet's last date. Cancel it with `/edit`;
+- a shuttle batch or a payment from that time, or any shuttle batch at all when the sheet has an unused tube. These can't be removed in the bot, so import into a new, empty database instead.
 
 **When a guest joins the group.** The first time they use the bot (tap a card, send `/start` or `/balance`), it makes a new member record for their Telegram account, as for anyone. To link the two:
 1. Send `/members`.
