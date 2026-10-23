@@ -76,7 +76,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T37 | Setup and deployment guide | `docs/t37-setup-guide` | E1 | T07, T32 | ✅ | [#35](https://github.com/matchastack/splitwise-badminton/pull/35) |
 | T38 | Opening balances and spreadsheet import | `feat/t38-spreadsheet-import` | E10 | T14, T16, T37 | ✅ | [#61](https://github.com/matchastack/splitwise-badminton/pull/61) |
 | T39 | Link a guest to a Telegram account | `feat/t39-link-guests` | E2 | T19, T38 | ✅ | [#62](https://github.com/matchastack/splitwise-badminton/pull/62) |
-| T40 | A linked guest takes their Telegram name | `feat/t40-linked-guest-name` | E2 | T39 | ✅ | [#64](https://github.com/matchastack/splitwise-badminton/pull/64) |
+| T40 | Linking: Telegram name, list closes | `feat/t40-linked-guest-name` | E2 | T39 | ✅ | [#64](https://github.com/matchastack/splitwise-badminton/pull/64) |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
@@ -441,7 +441,8 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
   - `/members`: a 🔗 button on guests → pick the Telegram member (newest first) → confirm with both balances → link, announce and audit.
 - **Done when:** tests cover each moved fact, a session both records answered, payments between the two, the linked balance being the sum, the admin linking their own account, stale or empty pickers, and refusal for non-admins.
 
-### T40 · A linked guest takes their Telegram name
+### T40 · Linking: Telegram name, list closes
 `feat/t40-linked-guest-name` · Stories US-2.4 · FR-MEM-8 · Depends on T39
 - **Scope:** when a guest is linked, the merged member takes the account's display name (their Telegram first name, or what they set with `/name`) instead of keeping the guest's spreadsheet name. The confirm step, audit row and docs say so.
-- **Done when:** tests cover the linked member's name, the confirm text, `/balance` and the member list after a link.
+  - After a link, the member list closes without buttons, so a stray tap can't link anyone else; `/members` opens a fresh one.
+- **Done when:** tests cover the linked member's name, the confirm text, `/balance`, and the member list closing after a link.

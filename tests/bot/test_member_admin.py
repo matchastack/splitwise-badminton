@@ -4,7 +4,12 @@ from datetime import timedelta
 from sqlalchemy import func, select, update
 
 from badminton.bot.admin import NOT_ADMIN
-from badminton.bot.handlers.member_admin import LINK_GONE, NOBODY_TO_LINK, _link_pair
+from badminton.bot.handlers.member_admin import (
+    LINK_GONE,
+    LIST_CLOSED,
+    NOBODY_TO_LINK,
+    _link_pair,
+)
 from badminton.db.models import (
     Attendance,
     AuditLog,
@@ -205,8 +210,10 @@ async def test_admin_links_a_guest_to_the_account_they_joined_with(bot: BotHarne
     assert set(by_name) == {"zy", "Danish K"}
     linked = by_name["Danish K"]
     assert (linked.id, linked.telegram_user_id, linked.username) == (guest_id, 333, "danishk")
-    assert listed["text"] == "👥 <b>Members</b>\n• zy (@zy_handle)\n• Danish K (@danishk)"
-    assert "🔗 Link" not in buttons(listed)
+    assert listed["text"] == (
+        f"👥 <b>Members</b>\n• zy (@zy_handle)\n• Danish K (@danishk)\n\n{LIST_CLOSED}"
+    )
+    assert "reply_markup" not in listed  # closed, so a stray tap can't link anyone else
     assert bot.telegram.sent_texts(GROUP_ID)[-1] == (
         "🔗 Admin linked guest <b>danish</b> to @danishk. "
         "Their balance and history are now one record."

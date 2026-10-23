@@ -42,6 +42,7 @@ LIST = "mem:list"
 NOBODY_TO_LINK = "Nobody has used the bot yet. Ask them to send /start to the bot first."
 LINK_GONE = "That's out of date: the guest is already linked or someone was removed."
 ALERT_LIMIT = 200  # characters Telegram shows in an alert
+LIST_CLOSED = "🔒 Linked. Send /members again to link someone else or make other changes."
 
 
 def render_members(members: list[Member]) -> tuple[str, InlineKeyboardMarkup]:
@@ -312,10 +313,11 @@ async def finish_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             },
         )
         await db.commit()
-        text, markup = render_members(await all_members(db))
+        text, _ = render_members(await all_members(db))
         name, mention = html.escape(guest_name), mention_html(guest)
         await query.answer()
-        await query.edit_message_text(text, reply_markup=markup)
+        # Closed, without buttons, so a stray tap can't link or change anyone else.
+        await query.edit_message_text(f"{text}\n\n{LIST_CLOSED}")
         await announce(
             context.bot,
             settings_of(context),
