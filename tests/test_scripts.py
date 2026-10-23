@@ -89,9 +89,9 @@ def write_sheet(path: Path) -> Path:
     items = workbook.active
     items.title = "Items"
     rows = [
-        ("Date", "Item", "Price", "Paid By", "zy", "yt", "Number of Shares", "Price per Share"),
-        (datetime(2026, 10, 18), "court", 14.8, "zy", 1, 1, "=SUM(E2:F2)", "=C2/G2"),
-        (datetime(2026, 10, 18), "shuttle", 76.79, "yt", 0, None, "=SUM(E3:F3)", "=C3/G3"),
+        ("Date", "Item", "Price", "Paid By", "alice", "frank", "Number of Shares", "Price per Share"),
+        (datetime(2026, 10, 18), "court", 14.8, "alice", 1, 1, "=SUM(E2:F2)", "=C2/G2"),
+        (datetime(2026, 10, 18), "shuttle", 76.79, "frank", 0, None, "=SUM(E3:F3)", "=C3/G3"),
     ]
     for row in rows:
         items.append(row)
@@ -102,25 +102,25 @@ def write_sheet(path: Path) -> Path:
 
 def test_import_reads_the_items_sheet_and_reports_the_tally(tmp_path: Path) -> None:
     summary = read_workbook(write_sheet(tmp_path / "Badminton.xlsx"))
-    zy = Member(id=1, display_name="Zhen Yi", username="zzyi", telegram_user_id=111, active=True)
+    alice = Member(id=1, display_name="Alice Wong", username="alice_w", telegram_user_id=111, active=True)
 
-    lines = report(summary, [Match("zy", zy, "same name"), Match("yt", None, "new guest")], [zy])
+    lines = report(summary, [Match("alice", alice, "same name"), Match("frank", None, "new guest")], [alice])
 
     assert lines[:6] == [
         "Bot members now:",
-        "  #1 Zhen Yi (@zzyi)",
+        "  #1 Alice Wong (@alice_w)",
         "",
         "Player columns:",
-        "  zy       → Zhen Yi (@zzyi), same name",
-        "  yt       → new guest member",
+        "  alice    → Alice Wong (@alice_w), same name",
+        "  frank    → new guest member",
     ]
     assert lines[7:11] == [
         "Player         Paid        Spend    Surplus     Tube   Opening",
-        "zy            14.80       7.4000     7.4000              +7.40",
-        "yt            76.79       7.4000    69.3900   -76.79     -7.40",
+        "alice         14.80       7.4000     7.4000              +7.40",
+        "frank         76.79       7.4000    69.3900   -76.79     -7.40",
         "Total         91.59      14.8000    76.7900   -76.79     +0.00",
     ]
-    assert lines[-1].startswith("Row 3 is a tube nobody has used yet: $76.79 bought by yt.")
+    assert lines[-1].startswith("Row 3 is a tube nobody has used yet: $76.79 bought by frank.")
 
 
 def test_import_needs_an_items_sheet(tmp_path: Path) -> None:
@@ -134,22 +134,22 @@ def test_import_needs_an_items_sheet(tmp_path: Path) -> None:
 def test_import_announces_each_carried_over_balance(tmp_path: Path) -> None:
     summary = read_workbook(write_sheet(tmp_path / "Badminton.xlsx"))
     result = ImportResult(
-        member_ids={"zy": 1, "yt": 2},
-        guests=("yt",),
-        opening_cents={"zy": 740, "yt": -740},
+        member_ids={"alice": 1, "frank": 2},
+        guests=("frank",),
+        opening_cents={"alice": 740, "frank": -740},
         batch_id=1,
         balances={1: 740, 2: -740},
     )
 
-    text = announcement(summary, result, {1: "Zhen <Yi>", 2: "yt"})
+    text = announcement(summary, result, {1: "Alice <Wong>", 2: "frank"})
 
     assert text == (
         "📒 <b>Balances carried over from the spreadsheet</b>, up to Sun 18 Oct:\n"
-        "• Zhen &lt;Yi&gt; +$7.40\n"
-        "• yt −$7.40\n"
+        "• Alice &lt;Wong&gt; +$7.40\n"
+        "• frank −$7.40\n"
         "+ means the group owes them, − means they owe the group.\n"
         "\n"
-        "🏸 The $76.79 tube yt bought is shuttle batch #1. "
+        "🏸 The $76.79 tube frank bought is shuttle batch #1. "
         "It's billed by hours played once the next one is bought."
     )
 
@@ -201,9 +201,9 @@ async def test_import_dry_run_is_refused_like_apply(
 
 
 def test_import_member_choices_are_name_equals_id() -> None:
-    assert parse_args(["x.xlsx", "--member", "zy=3"]).member == [("zy", 3)]
+    assert parse_args(["x.xlsx", "--member", "alice=3"]).member == [("alice", 3)]
     with pytest.raises(SystemExit):
-        parse_args(["x.xlsx", "--member", "zy"])
+        parse_args(["x.xlsx", "--member", "alice"])
 
 
 @pytest.mark.parametrize(

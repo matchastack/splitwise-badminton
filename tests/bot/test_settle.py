@@ -4,7 +4,7 @@ from badminton.bot.admin import NOT_ADMIN
 from badminton.db.models import AuditLog, Member, Transfer
 from badminton.domain.timeutil import utc_now
 from badminton.services.repo import load_ledger
-from tests.bot.edit_helpers import ZY
+from tests.bot.edit_helpers import ALICE
 from tests.conftest import BotHarness
 from tests.fake_telegram import (
     GROUP_ID,
@@ -23,7 +23,7 @@ class SettleCard:
         self.message: dict = {}
 
     async def open(self) -> "SettleCard":
-        await self.bot.send(text_update("/settle", sender=ZY))
+        await self.bot.send(text_update("/settle", sender=ALICE))
         self.message = self.bot.telegram.last("sendMessage").message
         return self
 
@@ -41,12 +41,12 @@ class SettleCard:
 
     async def tap(self, label: str) -> None:
         await self.bot.send(
-            callback_update(self.buttons()[label], sender=ZY, on_message=self.message)
+            callback_update(self.buttons()[label], sender=ALICE, on_message=self.message)
         )
 
     async def answer(self, text: str) -> None:
         prompt = self.bot.telegram.last("sendMessage").message
-        await self.bot.send(message_update(message(sender=ZY, text=text, reply_to=prompt)))
+        await self.bot.send(message_update(message(sender=ALICE, text=text, reply_to=prompt)))
 
 
 async def members(bot: BotHarness, *names: str) -> dict[str, int]:
@@ -58,18 +58,18 @@ async def members(bot: BotHarness, *names: str) -> dict[str, int]:
 
 
 async def test_settle_is_admin_only(bot: BotHarness) -> None:
-    await bot.send(text_update("/settle", sender=user(222, "shawn")))
+    await bot.send(text_update("/settle", sender=user(222, "bob")))
 
     assert bot.telegram.sent_texts() == [NOT_ADMIN]
 
 
 async def test_record_a_payment(bot: BotHarness) -> None:
-    ids = await members(bot, "shawn", "hw")
+    ids = await members(bot, "bob", "dave")
     card = await SettleCard(bot).open()
 
-    await card.tap("shawn")
-    assert "shawn" not in card.buttons()  # can't pay yourself
-    await card.tap("hw")
+    await card.tap("bob")
+    assert "bob" not in card.buttons()  # can't pay yourself
+    await card.tap("dave")
     await card.answer("lots")
     assert bot.telegram.last("sendMessage").params["text"].startswith("⚠️ Enter an amount")
     await card.answer("50")
@@ -81,25 +81,25 @@ async def test_record_a_payment(bot: BotHarness) -> None:
         ledger = await load_ledger(db, utc_now())
         audit = await db.scalar(select(AuditLog))
     assert (transfer.from_member_id, transfer.to_member_id, transfer.amount_cents) == (
-        ids["shawn"],
-        ids["hw"],
+        ids["bob"],
+        ids["dave"],
         5000,
     )
     assert transfer.invoice_line_id is None
-    assert ledger.balances == {ids["shawn"]: 5000, ids["hw"]: -5000}
+    assert ledger.balances == {ids["bob"]: 5000, ids["dave"]: -5000}
     assert audit.action == "transfer.add"
-    assert card.current["text"] == "✅ Recorded: shawn paid hw $50.00."
+    assert card.current["text"] == "✅ Recorded: bob paid dave $50.00."
     assert (
         bot.telegram.sent_texts(GROUP_ID)[-1]
-        == "💸 Admin recorded a payment: shawn paid hw $50.00."
+        == "💸 Admin recorded a payment: bob paid dave $50.00."
     )
 
 
 async def test_cancel_while_asked_for_the_amount_removes_the_prompt(bot: BotHarness) -> None:
-    await members(bot, "shawn", "hw")
+    await members(bot, "bob", "dave")
     card = await SettleCard(bot).open()
-    await card.tap("shawn")
-    await card.tap("hw")
+    await card.tap("bob")
+    await card.tap("dave")
     prompt = bot.telegram.last("sendMessage").message
 
     await card.tap("✖ Cancel")
@@ -110,13 +110,13 @@ async def test_cancel_while_asked_for_the_amount_removes_the_prompt(bot: BotHarn
 
 
 async def test_same_person_on_both_sides_is_refused(bot: BotHarness) -> None:
-    ids = await members(bot, "shawn", "hw")
+    ids = await members(bot, "bob", "dave")
     card = await SettleCard(bot).open()
-    await card.tap("shawn")
-    draft_id = card.buttons()["hw"].split(":")[1]
+    await card.tap("bob")
+    draft_id = card.buttons()["dave"].split(":")[1]
 
     await bot.send(
-        callback_update(f"st:{draft_id}:t:{ids['shawn']}", sender=ZY, on_message=card.message)
+        callback_update(f"st:{draft_id}:t:{ids['bob']}", sender=ALICE, on_message=card.message)
     )
 
     assert bot.telegram.last("answerCallbackQuery").params["text"] == "Pick two different people."
@@ -128,8 +128,8 @@ async def test_matching_invoice_line_is_marked_paid(bot: BotHarness) -> None:
     invoice_card_id = bot.telegram.last("sendMessage").message["message_id"]
     card = await SettleCard(bot).open()
 
-    await card.tap("nic")
-    await card.tap("zy")
+    await card.tap("carol")
+    await card.tap("alice")
     await card.answer("12.50")
     await card.tap("✅ Record")
 
@@ -142,4 +142,4 @@ async def test_matching_invoice_line_is_marked_paid(bot: BotHarness) -> None:
         for c in bot.telegram.calls_to("editMessageText")
         if c.params["message_id"] == invoice_card_id
     ][-1]
-    assert "✅ <s>nic → @zy_handle $12.50</s>" in invoice_edit.params["text"]
+    assert "✅ <s>carol → @alice_handle $12.50</s>" in invoice_edit.params["text"]

@@ -190,7 +190,7 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
   - A closed batch with no hours stays with its payer.
   - The open batch is excluded, and reports pending hours per member.
 - **Done when:**
-  - A regression test recreates the sheet's 16 Aug 2026 batch ($80 over 50h, i.e. zy $19.20 … yt $3.20).
+  - A regression test recreates the sheet's 16 Aug 2026 batch ($80 over 50h, i.e. alice $19.20 … frank $3.20).
   - Tests cover the batch boundary and the "Last session" start point.
 
 ### T12 · Debt simplification

@@ -4,7 +4,7 @@ from sqlalchemy import func, select
 
 from badminton.db.models import Booking, Draft, Member, Session
 from badminton.domain.timeutil import at_sgt, fmt_date
-from tests.bot.booking_helpers import SHAWN, ZY, book, future_day
+from tests.bot.booking_helpers import BOB, ALICE, book, future_day
 from tests.conftest import BotHarness
 from tests.fake_telegram import message, message_update
 
@@ -18,11 +18,11 @@ async def stored(bot: BotHarness) -> tuple[list[Session], list[Booking]]:
 
 async def test_confirm_stores_session_and_booking(bot: BotHarness) -> None:
     day = future_day(14)
-    wizard = await book(bot, SHAWN, day)
+    wizard = await book(bot, BOB, day)
     assert "How much did you pay?" in wizard.text
 
     await wizard.tap("$14.80")  # default $7.40/h × 2h
-    assert "💵 $14.80, paid by @shawn_t" in wizard.text
+    assert "💵 $14.80, paid by @bob_t" in wizard.text
     await wizard.tap("✅ Confirm")
 
     (session,), (booking,) = await stored(bot)
@@ -40,13 +40,13 @@ async def test_confirm_stores_session_and_booking(bot: BotHarness) -> None:
     assert booking.record_message_id == wizard.card["message_id"]
     async with bot.sessionmaker() as db:
         payer = await db.get(Member, booking.payer_member_id)
-        assert payer.telegram_user_id == SHAWN["id"]
+        assert payer.telegram_user_id == BOB["id"]
         assert booking.submitted_by_member_id == payer.id
         assert await db.scalar(select(func.count()).select_from(Draft)) == 0
 
     due = fmt_date(day - timedelta(days=2))
     assert wizard.text == (
-        "✅ <b>Court booked</b> by @shawn_t\n"
+        "✅ <b>Court booked</b> by @bob_t\n"
         f"📅 {fmt_date(day)}, 11:00–13:00 (2h) · $14.80\n"
         f"🗳 Attendance card goes up on {due}."
     )
@@ -54,33 +54,33 @@ async def test_confirm_stores_session_and_booking(bot: BotHarness) -> None:
 
 
 async def test_suggested_price_follows_the_last_booking(bot: BotHarness) -> None:
-    first = await book(bot, SHAWN, future_day(14))
+    first = await book(bot, BOB, future_day(14))
     await first.tap("Other…")
     prompt = bot.telegram.last("sendMessage").message
-    await bot.send(message_update(message(sender=SHAWN, text="16", reply_to=prompt)))
+    await bot.send(message_update(message(sender=BOB, text="16", reply_to=prompt)))
     await first.tap("✅ Confirm")
 
-    second = await book(bot, ZY, future_day(21), hours="1h")
+    second = await book(bot, ALICE, future_day(21), hours="1h")
 
     assert "$8.00" in second.buttons()
 
 
 async def test_other_price_is_validated(bot: BotHarness) -> None:
-    wizard = await book(bot, SHAWN, future_day(14))
+    wizard = await book(bot, BOB, future_day(14))
     await wizard.tap("Other…")
     prompt = bot.telegram.last("sendMessage")
     assert "how much did you pay" in prompt.params["text"]
 
-    await bot.send(message_update(message(sender=SHAWN, text="abc", reply_to=prompt.message)))
+    await bot.send(message_update(message(sender=BOB, text="abc", reply_to=prompt.message)))
     reprompt = bot.telegram.last("sendMessage")
     assert reprompt.params["text"].startswith("⚠️ Enter an amount like 14.80")
-    await bot.send(message_update(message(sender=SHAWN, text="15.5", reply_to=reprompt.message)))
+    await bot.send(message_update(message(sender=BOB, text="15.5", reply_to=reprompt.message)))
 
     assert "💵 $15.50" in wizard.text
 
 
 async def test_change_price_and_cancel_store_nothing(bot: BotHarness) -> None:
-    wizard = await book(bot, SHAWN, future_day(14))
+    wizard = await book(bot, BOB, future_day(14))
     await wizard.tap("$14.80")
 
     await wizard.tap("✏️ Change price")
@@ -93,7 +93,7 @@ async def test_change_price_and_cancel_store_nothing(bot: BotHarness) -> None:
 
 
 async def test_booking_inside_the_reminder_window_says_card_is_going_up(bot: BotHarness) -> None:
-    wizard = await book(bot, SHAWN, future_day(1), hour="20:00")
+    wizard = await book(bot, BOB, future_day(1), hour="20:00")
     await wizard.tap("$14.80")
     await wizard.tap("✅ Confirm")
 
@@ -101,13 +101,13 @@ async def test_booking_inside_the_reminder_window_says_card_is_going_up(bot: Bot
 
 
 async def test_going_back_withdraws_an_open_prompt(bot: BotHarness) -> None:
-    wizard = await book(bot, SHAWN, future_day(14))
+    wizard = await book(bot, BOB, future_day(14))
     await wizard.tap("Other…")
     prompt = bot.telegram.last("sendMessage").message
 
     await wizard.tap("‹ Change duration")
     await wizard.tap("‹ Change time")
-    await bot.send(message_update(message(sender=SHAWN, text="20", reply_to=prompt)))
+    await bot.send(message_update(message(sender=BOB, text="20", reply_to=prompt)))
 
     deleted = [call.params["message_id"] for call in bot.telegram.calls_to("deleteMessage")]
     assert prompt["message_id"] in deleted

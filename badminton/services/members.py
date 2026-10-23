@@ -93,7 +93,7 @@ def mention_html(member: Member) -> str:
 
 
 def member_label(member: Member) -> str:
-    """A member as listed to the admin: ``zy (@zy_handle)``, ``danish (guest, inactive)``.
+    """A member as listed to the admin: ``alice (@alice_handle)``, ``grace (guest, inactive)``.
     Plain text: escape it for HTML messages."""
     notes = [f"@{member.username}"] if member.username else []
     if member.telegram_user_id is None:

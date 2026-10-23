@@ -13,8 +13,8 @@ from badminton.services.drafts import create_draft
 from tests.conftest import BotHarness
 from tests.fake_telegram import GROUP_ID, message, text_update, user
 
-SHAWN = user(222, "shawn")
-NIC = user(333, "nic")
+BOB = user(222, "bob")
+CAROL = user(333, "carol")
 answers: list[str] = []
 
 
@@ -29,13 +29,13 @@ async def record_answer(
 
 @pytest.fixture
 async def asked(bot: BotHarness) -> AsyncIterator[dict]:
-    """A draft owned by shawn with an open prompt; yields the prompt message."""
+    """A draft owned by bob with an open prompt; yields the prompt message."""
     answers.clear()
     async with bot.sessionmaker() as db:
         draft = await create_draft(
-            db, kind="test", chat_id=GROUP_ID, user_id=SHAWN["id"], now=utc_now()
+            db, kind="test", chat_id=GROUP_ID, user_id=BOB["id"], now=utc_now()
         )
-        owner = Update.de_json(text_update("x", sender=SHAWN), bot.application.bot).effective_user
+        owner = Update.de_json(text_update("x", sender=BOB), bot.application.bot).effective_user
         await prompts.ask(bot.application.bot, draft, "how many?", owner=owner, field="hours")
         await db.commit()
     yield bot.telegram.last("sendMessage").message
@@ -50,7 +50,7 @@ async def test_prompt_is_a_selective_force_reply(bot: BotHarness, asked: dict) -
 
 
 async def test_owner_reply_is_handled_then_cleaned_up(bot: BotHarness, asked: dict) -> None:
-    reply = message(sender=SHAWN, text=" 3 ", reply_to=asked)
+    reply = message(sender=BOB, text=" 3 ", reply_to=asked)
 
     await bot.send({"update_id": 1, "message": reply})
 
@@ -64,7 +64,7 @@ async def test_owner_reply_is_handled_then_cleaned_up(bot: BotHarness, asked: di
 
 
 async def test_invalid_answer_asks_again(bot: BotHarness, asked: dict) -> None:
-    await bot.send({"update_id": 1, "message": message(sender=SHAWN, text="three", reply_to=asked)})
+    await bot.send({"update_id": 1, "message": message(sender=BOB, text="three", reply_to=asked)})
 
     assert answers == []
     reprompt = bot.telegram.last("sendMessage").params["text"]
@@ -72,14 +72,14 @@ async def test_invalid_answer_asks_again(bot: BotHarness, asked: dict) -> None:
     assert reprompt.endswith("how many?")
     new_prompt = bot.telegram.last("sendMessage").message
     await bot.send(
-        {"update_id": 2, "message": message(sender=SHAWN, text="4", reply_to=new_prompt)}
+        {"update_id": 2, "message": message(sender=BOB, text="4", reply_to=new_prompt)}
     )
     assert answers == ["hours=4"]
 
 
 async def test_replies_from_others_are_removed(bot: BotHarness, asked: dict) -> None:
     bot.telegram.clear()
-    intruder = message(sender=NIC, text="5", reply_to=asked)
+    intruder = message(sender=CAROL, text="5", reply_to=asked)
 
     await bot.send({"update_id": 1, "message": intruder})
 
@@ -89,7 +89,7 @@ async def test_replies_from_others_are_removed(bot: BotHarness, asked: dict) -> 
 
 async def test_replies_to_other_messages_are_removed(bot: BotHarness, asked: dict) -> None:
     bot.telegram.clear()
-    reply = message(sender=SHAWN, text="5", reply_to=message(sender=NIC, text="hello"))
+    reply = message(sender=BOB, text="5", reply_to=message(sender=CAROL, text="hello"))
 
     await bot.send({"update_id": 1, "message": reply})
 

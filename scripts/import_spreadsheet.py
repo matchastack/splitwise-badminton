@@ -5,7 +5,7 @@ how every balance tallies, and saves nothing. Run the database migrations first:
 
     DATABASE_URL='postgresql://…' uv run alembic upgrade head
     uv run --env-file .env scripts/import_spreadsheet.py Badminton.xlsx
-    uv run --env-file .env scripts/import_spreadsheet.py Badminton.xlsx --member zy=1 --apply
+    uv run --env-file .env scripts/import_spreadsheet.py Badminton.xlsx --member alice=1 --apply
 
 A player column matches the member with the same name or @username; anyone else is
 added as a guest, who the admin links to their Telegram account from /members later.
@@ -149,7 +149,7 @@ def _amount(value: Fraction, places: int, *, signed: bool = False) -> str:
 def member_choice(text: str) -> tuple[str, int]:
     name, sep, member_id = text.partition("=")
     if not sep or not name.strip() or not member_id.strip().isdigit():
-        raise argparse.ArgumentTypeError(f"expected NAME=MEMBER_ID, e.g. zy=1, not {text!r}")
+        raise argparse.ArgumentTypeError(f"expected NAME=MEMBER_ID, e.g. alice=1, not {text!r}")
     return name.strip(), int(member_id)
 
 

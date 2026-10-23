@@ -24,15 +24,15 @@ START = datetime(2026, 10, 4, 3, 0, tzinfo=UTC)  # Sun 4 Oct, 11:00 SGT
 
 
 async def add_members(db: AsyncSession) -> tuple[Member, Member]:
-    zy = Member(telegram_user_id=111, display_name="zy", username="zy_handle")
-    guest = Member(display_name="danish")
-    db.add_all([zy, guest])
+    alice = Member(telegram_user_id=111, display_name="alice", username="alice_handle")
+    guest = Member(display_name="grace")
+    db.add_all([alice, guest])
     await db.flush()
-    return zy, guest
+    return alice, guest
 
 
 async def test_round_trip_every_model(db: AsyncSession) -> None:
-    zy, guest = await add_members(db)
+    alice, guest = await add_members(db)
     session = Session(starts_at=START, ends_at=START + timedelta(hours=2))
     db.add(session)
     await db.flush()
@@ -40,33 +40,33 @@ async def test_round_trip_every_model(db: AsyncSession) -> None:
         [
             Booking(
                 session_id=session.id,
-                payer_member_id=zy.id,
-                submitted_by_member_id=zy.id,
+                payer_member_id=alice.id,
+                submitted_by_member_id=alice.id,
                 starts_at=START,
                 minutes=120,
                 amount_cents=1480,
                 photo_file_id="photo-1",
             ),
-            Attendance(session_id=session.id, member_id=zy.id, status="in"),
+            Attendance(session_id=session.id, member_id=alice.id, status="in"),
             Attendance(session_id=session.id, member_id=guest.id, status="out"),
-            ShuttleBatch(payer_member_id=zy.id, amount_cents=7679, starts_at=START),
+            ShuttleBatch(payer_member_id=alice.id, amount_cents=7679, starts_at=START),
             Draft(
                 kind="booking", chat_id=-100, user_id=111, data={"step": "date"}, expires_at=START
             ),
-            AuditLog(actor_member_id=zy.id, action="test", payload={"before": 1, "after": 2}),
+            AuditLog(actor_member_id=alice.id, action="test", payload={"before": 1, "after": 2}),
         ]
     )
     invoice = Invoice(period="2026-10")
     db.add(invoice)
     await db.flush()
     line = InvoiceLine(
-        invoice_id=invoice.id, from_member_id=guest.id, to_member_id=zy.id, amount_cents=740
+        invoice_id=invoice.id, from_member_id=guest.id, to_member_id=alice.id, amount_cents=740
     )
-    db.add_all([line, InvoiceBalance(invoice_id=invoice.id, member_id=zy.id, balance_cents=740)])
+    db.add_all([line, InvoiceBalance(invoice_id=invoice.id, member_id=alice.id, balance_cents=740)])
     await db.flush()
     db.add(
         Transfer(
-            from_member_id=guest.id, to_member_id=zy.id, amount_cents=740, invoice_line_id=line.id
+            from_member_id=guest.id, to_member_id=alice.id, amount_cents=740, invoice_line_id=line.id
         )
     )
     await db.commit()
@@ -79,7 +79,7 @@ async def test_round_trip_every_model(db: AsyncSession) -> None:
     assert loaded.status == "scheduled"
     assert loaded.starts_at == START
     assert [b.amount_cents for b in loaded.bookings] == [1480]
-    assert {a.member_id: a.status for a in loaded.attendance} == {zy.id: "in", guest.id: "out"}
+    assert {a.member_id: a.status for a in loaded.attendance} == {alice.id: "in", guest.id: "out"}
 
     member = await db.scalar(select(Member).where(Member.telegram_user_id == 111))
     assert member is not None
@@ -103,29 +103,29 @@ async def test_round_trip_every_model(db: AsyncSession) -> None:
 @pytest.mark.parametrize(
     "bad_row",
     [
-        lambda zy, guest: Transfer(from_member_id=zy.id, to_member_id=zy.id, amount_cents=100),
-        lambda zy, guest: Transfer(from_member_id=zy.id, to_member_id=guest.id, amount_cents=0),
-        lambda zy, guest: Session(starts_at=START, ends_at=START),
-        lambda zy, guest: Session(
+        lambda alice, guest: Transfer(from_member_id=alice.id, to_member_id=alice.id, amount_cents=100),
+        lambda alice, guest: Transfer(from_member_id=alice.id, to_member_id=guest.id, amount_cents=0),
+        lambda alice, guest: Session(starts_at=START, ends_at=START),
+        lambda alice, guest: Session(
             starts_at=START, ends_at=START + timedelta(hours=1), status="done"
         ),
     ],
     ids=["transfer-to-self", "zero-transfer", "empty-session", "unknown-status"],
 )
 async def test_check_constraints(db: AsyncSession, bad_row) -> None:
-    zy, guest = await add_members(db)
-    db.add(bad_row(zy, guest))
+    alice, guest = await add_members(db)
+    db.add(bad_row(alice, guest))
 
     with pytest.raises(IntegrityError):
         await db.flush()
 
 
 async def test_one_batch_per_start_time(db: AsyncSession) -> None:
-    zy, _ = await add_members(db)
+    alice, _ = await add_members(db)
     db.add_all(
         [
-            ShuttleBatch(payer_member_id=zy.id, amount_cents=8000, starts_at=START),
-            ShuttleBatch(payer_member_id=zy.id, amount_cents=7679, starts_at=START),
+            ShuttleBatch(payer_member_id=alice.id, amount_cents=8000, starts_at=START),
+            ShuttleBatch(payer_member_id=alice.id, amount_cents=7679, starts_at=START),
         ]
     )
 

@@ -12,7 +12,7 @@ from badminton.domain.ledger import (
 )
 from badminton.domain.timeutil import at_sgt
 
-ZY, SHAWN, NIC, HW, JY = 1, 2, 3, 4, 5
+ALICE, BOB, CAROL, DAVE, ERIN = 1, 2, 3, 4, 5
 START = at_sgt(date(2026, 10, 4), 11)
 END = START + timedelta(hours=2)
 AFTER = END + timedelta(days=1)
@@ -23,8 +23,8 @@ def session(
     session_id: int = 1,
     start: datetime = START,
     hours: float = 2,
-    bookings: tuple[tuple[int, int], ...] = ((ZY, 1480),),
-    attendees: tuple[int, ...] = (ZY, SHAWN, HW, JY),
+    bookings: tuple[tuple[int, int], ...] = ((ALICE, 1480),),
+    attendees: tuple[int, ...] = (ALICE, BOB, DAVE, ERIN),
     cancelled: bool = False,
 ) -> SessionFact:
     return SessionFact(
@@ -40,46 +40,46 @@ def session(
 def test_court_split_equally_and_booker_credited() -> None:
     ledger = compute_ledger(sessions=[session()], transfers=[], as_of=AFTER)
 
-    assert ledger.balances == {ZY: 1480 - 370, SHAWN: -370, HW: -370, JY: -370}
+    assert ledger.balances == {ALICE: 1480 - 370, BOB: -370, DAVE: -370, ERIN: -370}
     shares = [e for e in ledger.entries if e.kind is EntryKind.COURT_SHARE]
     assert {e.member_id: (e.amount_cents, e.minutes) for e in shares} == {
-        ZY: (-370, 120),
-        SHAWN: (-370, 120),
-        HW: (-370, 120),
-        JY: (-370, 120),
+        ALICE: (-370, 120),
+        BOB: (-370, 120),
+        DAVE: (-370, 120),
+        ERIN: (-370, 120),
     }
     assert all(e.at == END and e.session_id == 1 for e in ledger.entries)
 
 
 def test_leftover_cents_go_to_lowest_member_ids() -> None:
     ledger = compute_ledger(
-        sessions=[session(attendees=(JY, SHAWN, HW))], transfers=[], as_of=AFTER
+        sessions=[session(attendees=(ERIN, BOB, DAVE))], transfers=[], as_of=AFTER
     )
 
-    assert ledger.balance(SHAWN) == -494
-    assert ledger.balance(HW) == -493
-    assert ledger.balance(JY) == -493
-    assert ledger.balance(ZY) == 1480
+    assert ledger.balance(BOB) == -494
+    assert ledger.balance(DAVE) == -493
+    assert ledger.balance(ERIN) == -493
+    assert ledger.balance(ALICE) == 1480
 
 
 def test_booker_who_does_not_play_is_still_credited() -> None:
     ledger = compute_ledger(
-        sessions=[session(bookings=((NIC, 1480),), attendees=(ZY, SHAWN))],
+        sessions=[session(bookings=((CAROL, 1480),), attendees=(ALICE, BOB))],
         transfers=[],
         as_of=AFTER,
     )
 
-    assert ledger.balances == {NIC: 1480, ZY: -740, SHAWN: -740}
+    assert ledger.balances == {CAROL: 1480, ALICE: -740, BOB: -740}
 
 
 def test_multiple_bookings_add_up() -> None:
     ledger = compute_ledger(
-        sessions=[session(bookings=((HW, 740), (ZY, 740)), attendees=(ZY, SHAWN, NIC, HW))],
+        sessions=[session(bookings=((DAVE, 740), (ALICE, 740)), attendees=(ALICE, BOB, CAROL, DAVE))],
         transfers=[],
         as_of=AFTER,
     )
 
-    assert ledger.balances == {HW: 740 - 370, ZY: 740 - 370, SHAWN: -370, NIC: -370}
+    assert ledger.balances == {DAVE: 740 - 370, ALICE: 740 - 370, BOB: -370, CAROL: -370}
 
 
 def test_only_ended_sessions_count() -> None:
@@ -89,7 +89,7 @@ def test_only_ended_sessions_count() -> None:
         compute_ledger(sessions=sessions, transfers=[], as_of=END - timedelta(minutes=1)).balances
         == {}
     )
-    assert compute_ledger(sessions=sessions, transfers=[], as_of=END).balance(ZY) == 1110
+    assert compute_ledger(sessions=sessions, transfers=[], as_of=END).balance(ALICE) == 1110
 
 
 def test_cancelled_and_bookingless_sessions_are_ignored() -> None:
@@ -115,25 +115,25 @@ def test_session_without_attendees_is_excluded_and_flagged() -> None:
 
 
 def test_transfers_credit_sender_and_debit_receiver() -> None:
-    transfer = TransferFact(id=7, from_id=SHAWN, to_id=ZY, amount_cents=370, at=AFTER)
+    transfer = TransferFact(id=7, from_id=BOB, to_id=ALICE, amount_cents=370, at=AFTER)
 
     ledger = compute_ledger(sessions=[session()], transfers=[transfer], as_of=AFTER)
 
-    assert ledger.balance(SHAWN) == 0
-    assert ledger.balance(ZY) == 1110 - 370
+    assert ledger.balance(BOB) == 0
+    assert ledger.balance(ALICE) == 1110 - 370
     kinds = {(e.member_id, e.kind) for e in ledger.entries if e.transfer_id == 7}
-    assert kinds == {(SHAWN, EntryKind.TRANSFER_SENT), (ZY, EntryKind.TRANSFER_RECEIVED)}
+    assert kinds == {(BOB, EntryKind.TRANSFER_SENT), (ALICE, EntryKind.TRANSFER_RECEIVED)}
 
 
 def test_transfers_after_as_of_are_ignored() -> None:
-    transfer = TransferFact(id=7, from_id=SHAWN, to_id=ZY, amount_cents=370, at=AFTER)
+    transfer = TransferFact(id=7, from_id=BOB, to_id=ALICE, amount_cents=370, at=AFTER)
 
     assert compute_ledger(sessions=[], transfers=[transfer], as_of=END).balances == {}
 
 
 def test_entries_are_in_time_order() -> None:
     later = session(session_id=2, start=START + timedelta(days=7))
-    transfer = TransferFact(id=1, from_id=SHAWN, to_id=ZY, amount_cents=100, at=AFTER)
+    transfer = TransferFact(id=1, from_id=BOB, to_id=ALICE, amount_cents=100, at=AFTER)
 
     ledger = compute_ledger(
         sessions=[later, session()], transfers=[transfer], as_of=AFTER + timedelta(days=30)

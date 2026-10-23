@@ -9,9 +9,9 @@ from badminton.domain.timeutil import sgt_date, utc_now
 from tests.conftest import BotHarness
 from tests.fake_telegram import ADMIN_ID, callback_update, message_update, photo_message, user
 
-ZY = user(ADMIN_ID, "zy", "zy_handle")
-SHAWN = user(222, "shawn", "shawn_t")
-NIC = user(333, "nic")
+ALICE = user(ADMIN_ID, "alice", "alice_handle")
+BOB = user(222, "bob", "bob_t")
+CAROL = user(333, "carol")
 
 
 def future_day(days: int = 14) -> date:

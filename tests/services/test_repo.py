@@ -17,7 +17,7 @@ NOW = at_sgt(date(2026, 11, 1), 10)
 
 
 async def seed(db: AsyncSession) -> dict[str, int]:
-    names = ["zy", "shawn", "nic", "hw"]
+    names = ["alice", "bob", "carol", "dave"]
     members = [Member(display_name=name, telegram_user_id=100 + i) for i, name in enumerate(names)]
     db.add_all(members)
     await db.flush()
@@ -35,11 +35,11 @@ async def seed(db: AsyncSession) -> dict[str, int]:
     await db.flush()
 
     for session, payer, cents, cancelled_at in [
-        (first, "zy", 1480, None),
-        (second, "hw", 740, None),
-        (second, "zy", 740, None),
-        (second, "nic", 999, datetime(2026, 10, 1, tzinfo=UTC)),  # a cancelled booking
-        (cancelled, "zy", 1480, None),
+        (first, "alice", 1480, None),
+        (second, "dave", 740, None),
+        (second, "alice", 740, None),
+        (second, "carol", 999, datetime(2026, 10, 1, tzinfo=UTC)),  # a cancelled booking
+        (cancelled, "alice", 1480, None),
     ]:
         db.add(
             Booking(
@@ -53,23 +53,23 @@ async def seed(db: AsyncSession) -> dict[str, int]:
             )
         )
     for session, ins, outs in [
-        (first, ["zy", "shawn", "nic"], ["hw"]),
-        (second, ["shawn", "hw"], ["zy"]),
-        (cancelled, ["zy"], []),
+        (first, ["alice", "bob", "carol"], ["dave"]),
+        (second, ["bob", "dave"], ["alice"]),
+        (cancelled, ["alice"], []),
     ]:
         db.add_all(Attendance(session_id=session.id, member_id=ids[n], status="in") for n in ins)
         db.add_all(Attendance(session_id=session.id, member_id=ids[n], status="out") for n in outs)
     db.add_all(
         [
             ShuttleBatch(
-                payer_member_id=ids["zy"], amount_cents=6000, starts_at=at_sgt(date(2026, 10, 1), 0)
+                payer_member_id=ids["alice"], amount_cents=6000, starts_at=at_sgt(date(2026, 10, 1), 0)
             ),
             ShuttleBatch(
-                payer_member_id=ids["hw"],
+                payer_member_id=ids["dave"],
                 amount_cents=7000,
                 starts_at=at_sgt(date(2026, 10, 12), 0),
             ),
-            Transfer(from_member_id=ids["shawn"], to_member_id=ids["zy"], amount_cents=500),
+            Transfer(from_member_id=ids["bob"], to_member_id=ids["alice"], amount_cents=500),
         ]
     )
     await db.commit()
@@ -83,42 +83,42 @@ async def test_loads_facts_matching_the_database(db: AsyncSession) -> None:
 
     first, second, cancelled = facts.sessions
     assert first.id == ids["first"]
-    assert first.bookings == (BookingFact(ids["zy"], 1480),)
-    assert first.attendee_ids == {ids["zy"], ids["shawn"], ids["nic"]}
-    assert second.bookings == (BookingFact(ids["hw"], 740), BookingFact(ids["zy"], 740))
-    assert second.attendee_ids == {ids["shawn"], ids["hw"]}
+    assert first.bookings == (BookingFact(ids["alice"], 1480),)
+    assert first.attendee_ids == {ids["alice"], ids["bob"], ids["carol"]}
+    assert second.bookings == (BookingFact(ids["dave"], 740), BookingFact(ids["alice"], 740))
+    assert second.attendee_ids == {ids["bob"], ids["dave"]}
     assert cancelled.cancelled
     assert [(b.payer_id, b.amount_cents) for b in facts.batches] == [
-        (ids["zy"], 6000),
-        (ids["hw"], 7000),
+        (ids["alice"], 6000),
+        (ids["dave"], 7000),
     ]
     assert [(t.from_id, t.to_id, t.amount_cents) for t in facts.transfers] == [
-        (ids["shawn"], ids["zy"], 500)
+        (ids["bob"], ids["alice"], 500)
     ]
 
 
 async def test_ledger_from_database_matches_pure_ledger(db: AsyncSession) -> None:
     ids = await seed(db)
     facts = await load_facts(db)
-    zy, shawn, nic, hw = (ids[name] for name in ("zy", "shawn", "nic", "hw"))
+    alice, bob, carol, dave = (ids[name] for name in ("alice", "bob", "carol", "dave"))
     expected = compute_ledger(
         sessions=[
             SessionFact(
                 ids["first"],
                 at_sgt(date(2026, 10, 4), 11),
                 at_sgt(date(2026, 10, 4), 13),
-                (BookingFact(zy, 1480),),
-                frozenset({zy, shawn, nic}),
+                (BookingFact(alice, 1480),),
+                frozenset({alice, bob, carol}),
             ),
             SessionFact(
                 ids["second"],
                 at_sgt(date(2026, 10, 11), 11),
                 at_sgt(date(2026, 10, 11), 13),
-                (BookingFact(hw, 740), BookingFact(zy, 740)),
-                frozenset({shawn, hw}),
+                (BookingFact(dave, 740), BookingFact(alice, 740)),
+                frozenset({bob, dave}),
             ),
         ],
-        transfers=[TransferFact(1, shawn, zy, 500, facts.transfers[0].at)],
+        transfers=[TransferFact(1, bob, alice, 500, facts.transfers[0].at)],
         batches=[
             BatchFact(b.id, b.payer_id, b.amount_cents, b.starts_at, b.created_at)
             for b in facts.batches
@@ -142,8 +142,8 @@ async def test_last_hourly_rate(db: AsyncSession) -> None:
     db.add(
         Booking(
             session_id=ids["first"],
-            payer_member_id=ids["zy"],
-            submitted_by_member_id=ids["zy"],
+            payer_member_id=ids["alice"],
+            submitted_by_member_id=ids["alice"],
             starts_at=at_sgt(date(2026, 10, 4), 11),
             minutes=90,
             amount_cents=1200,

@@ -20,8 +20,8 @@ from tests.fake_telegram import (
     user,
 )
 
-ZY = user(ADMIN_ID, "zy", "zy_handle")
-SHAWN = user(222, "shawn")
+ALICE = user(ADMIN_ID, "alice", "alice_handle")
+BOB = user(222, "bob")
 
 
 async def reply_with_button(update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -38,17 +38,17 @@ async def test_records_sent_messages_and_button_taps(bot: BotHarness) -> None:
     bot.application.add_handler(CommandHandler("ping", reply_with_button), group=-1)
     bot.application.add_handler(CallbackQueryHandler(on_tap, pattern=r"^tap:"), group=-1)
 
-    await bot.send(text_update("/ping", sender=ZY))
+    await bot.send(text_update("/ping", sender=ALICE))
     sent = bot.telegram.last("sendMessage")
     assert sent.params["chat_id"] == GROUP_ID
     assert bot.telegram.sent_texts(GROUP_ID) == ["pong"]
     assert sent.message["reply_markup"]["inline_keyboard"][0][0]["callback_data"] == "tap:1"
 
-    await bot.send(callback_update("tap:1", sender=SHAWN, on_message=sent.message))
+    await bot.send(callback_update("tap:1", sender=BOB, on_message=sent.message))
     assert bot.telegram.last("answerCallbackQuery").params["text"] == "tapped"
     edit = bot.telegram.last("editMessageText")
     assert edit.params["message_id"] == sent.message["message_id"]
-    assert edit.params["text"] == "tapped by shawn"
+    assert edit.params["text"] == "tapped by bob"
 
 
 async def test_photo_caption_command_and_replies(bot: BotHarness) -> None:
@@ -60,9 +60,9 @@ async def test_photo_caption_command_and_replies(bot: BotHarness) -> None:
     # A separate group, so it sees updates the real handlers also consume.
     bot.application.add_handler(MessageHandler(filters.PHOTO | filters.REPLY, record), group=1)
 
-    await bot.send(message_update(photo_message(sender=ZY, caption="/book")))
-    prompt = message(sender=ZY, text="How many hours?")
-    await bot.send(text_update("3", sender=SHAWN, reply_to=prompt))
+    await bot.send(message_update(photo_message(sender=ALICE, caption="/book")))
+    prompt = message(sender=ALICE, text="How many hours?")
+    await bot.send(text_update("3", sender=BOB, reply_to=prompt))
 
     photo, reply = (update.effective_message for update in seen)
     assert photo.photo[-1].file_id == "photo-1280"
@@ -78,7 +78,7 @@ async def test_injected_failure_reaches_the_handler(bot: BotHarness) -> None:
     bot.telegram.fail("sendMessage", 403, "Forbidden: bot was blocked by the user")
 
     with pytest.raises(Forbidden):
-        await bot.send(text_update("/dm", sender=SHAWN))
+        await bot.send(text_update("/dm", sender=BOB))
     assert bot.telegram.calls_to("sendMessage")[0].result is None
 
 
@@ -89,4 +89,4 @@ async def test_unsupported_method_fails_loudly(bot: BotHarness) -> None:
     bot.application.add_handler(CommandHandler("chat", get_chat), group=-1)
 
     with pytest.raises(BadRequest, match="does not support getChat"):
-        await bot.send(text_update("/chat", sender=ZY))
+        await bot.send(text_update("/chat", sender=ALICE))

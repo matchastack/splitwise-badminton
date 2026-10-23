@@ -10,7 +10,7 @@ from badminton.domain.ledger import (
 )
 from badminton.domain.timeutil import at_sgt
 
-ZY, SHAWN, NIC, HW, JY, YT = 1, 2, 3, 4, 5, 6
+ALICE, BOB, CAROL, DAVE, ERIN, FRANK = 1, 2, 3, 4, 5, 6
 
 
 def sunday(
@@ -21,7 +21,7 @@ def sunday(
         id=session_id,
         starts_at=start,
         ends_at=start + timedelta(hours=hours),
-        bookings=(BookingFact(ZY, 740 * hours),),
+        bookings=(BookingFact(ALICE, 740 * hours),),
         attendee_ids=frozenset(attendees),
     )
 
@@ -42,17 +42,17 @@ def shuttle_shares(ledger, batch_id: int) -> dict[int, tuple[int, int]]:
 
 # Attendance from Badminton.xlsx between the 16 Aug and 18 Oct 2026 purchases.
 SHEET_SESSIONS = [
-    sunday(date(2026, 8, 16), attendees=(ZY, SHAWN, NIC, HW, JY), session_id=1),
-    sunday(date(2026, 8, 30), attendees=(ZY, SHAWN, HW, JY), session_id=2),
-    sunday(date(2026, 9, 6), attendees=(ZY, HW, JY), session_id=3),
-    sunday(date(2026, 9, 13), attendees=(ZY, SHAWN, HW, JY), session_id=4),
-    sunday(date(2026, 10, 4), attendees=(ZY, SHAWN, HW, JY), session_id=5),
-    sunday(date(2026, 10, 11), attendees=(ZY, SHAWN, NIC, HW, JY), session_id=6),
-    sunday(date(2026, 10, 18), attendees=(ZY, SHAWN, HW, JY, YT), session_id=7),
+    sunday(date(2026, 8, 16), attendees=(ALICE, BOB, CAROL, DAVE, ERIN), session_id=1),
+    sunday(date(2026, 8, 30), attendees=(ALICE, BOB, DAVE, ERIN), session_id=2),
+    sunday(date(2026, 9, 6), attendees=(ALICE, DAVE, ERIN), session_id=3),
+    sunday(date(2026, 9, 13), attendees=(ALICE, BOB, DAVE, ERIN), session_id=4),
+    sunday(date(2026, 10, 4), attendees=(ALICE, BOB, DAVE, ERIN), session_id=5),
+    sunday(date(2026, 10, 11), attendees=(ALICE, BOB, CAROL, DAVE, ERIN), session_id=6),
+    sunday(date(2026, 10, 18), attendees=(ALICE, BOB, DAVE, ERIN, FRANK), session_id=7),
 ]
-EARLIER = batch(1, JY, 3874, at_sgt(date(2026, 7, 20), 12))
-AUG_16 = batch(2, ZY, 8000, at_sgt(date(2026, 8, 16), 13))  # bought after that day's session
-OCT_18 = batch(3, YT, 7679, at_sgt(date(2026, 10, 18), 13))
+EARLIER = batch(1, ERIN, 3874, at_sgt(date(2026, 7, 20), 12))
+AUG_16 = batch(2, ALICE, 8000, at_sgt(date(2026, 8, 16), 13))  # bought after that day's session
+OCT_18 = batch(3, FRANK, 7679, at_sgt(date(2026, 10, 18), 13))
 
 
 def test_reproduces_the_sheets_16_aug_batch() -> None:
@@ -65,30 +65,30 @@ def test_reproduces_the_sheets_16_aug_batch() -> None:
 
     # $80 over 50 hours = $1.60/h, exactly as the sheet's SUMPRODUCT gives.
     assert shuttle_shares(ledger, AUG_16.id) == {
-        ZY: (1920, 720),
-        SHAWN: (1600, 600),
-        NIC: (320, 120),
-        HW: (1920, 720),
-        JY: (1920, 720),
-        YT: (320, 120),
+        ALICE: (1920, 720),
+        BOB: (1600, 600),
+        CAROL: (320, 120),
+        DAVE: (1920, 720),
+        ERIN: (1920, 720),
+        FRANK: (320, 120),
     }
     paid = [
         e for e in ledger.entries if e.kind is EntryKind.SHUTTLE_PAID and e.batch_id == AUG_16.id
     ]
-    assert [(e.member_id, e.amount_cents, e.at) for e in paid] == [(ZY, 8000, OCT_18.created_at)]
+    assert [(e.member_id, e.amount_cents, e.at) for e in paid] == [(ALICE, 8000, OCT_18.created_at)]
     # The 16 Aug session itself was the earlier batch's: $38.74 over 5 people, 2h each.
     assert shuttle_shares(ledger, EARLIER.id) == {
-        ZY: (775, 120),
-        SHAWN: (775, 120),
-        NIC: (775, 120),
-        HW: (775, 120),
-        JY: (774, 120),
+        ALICE: (775, 120),
+        BOB: (775, 120),
+        CAROL: (775, 120),
+        DAVE: (775, 120),
+        ERIN: (774, 120),
     }
     assert sum(ledger.balances.values()) == 0
 
 
 def test_open_batch_is_not_billed_but_reports_pending_hours() -> None:
-    sessions = [*SHEET_SESSIONS, sunday(date(2026, 10, 25), attendees=(ZY, NIC), session_id=8)]
+    sessions = [*SHEET_SESSIONS, sunday(date(2026, 10, 25), attendees=(ALICE, CAROL), session_id=8)]
 
     ledger = compute_ledger(
         sessions=sessions,
@@ -99,15 +99,15 @@ def test_open_batch_is_not_billed_but_reports_pending_hours() -> None:
 
     assert ledger.open_batch_id == OCT_18.id
     assert not [e for e in ledger.entries if e.batch_id == OCT_18.id]
-    assert ledger.pending_minutes(ZY) == 120
-    assert ledger.pending_minutes(NIC) == 120
-    assert ledger.pending_minutes(SHAWN) == 0
+    assert ledger.pending_minutes(ALICE) == 120
+    assert ledger.pending_minutes(CAROL) == 120
+    assert ledger.pending_minutes(BOB) == 0
 
 
 def test_session_starting_exactly_at_batch_start_uses_that_batch() -> None:
     """The "Last session" start point: the batch starts at that session's start."""
     last = SHEET_SESSIONS[-1]
-    bought_after = batch(3, YT, 7679, last.starts_at, created_at=last.ends_at + timedelta(hours=1))
+    bought_after = batch(3, FRANK, 7679, last.starts_at, created_at=last.ends_at + timedelta(hours=1))
 
     ledger = compute_ledger(
         sessions=SHEET_SESSIONS,
@@ -116,8 +116,8 @@ def test_session_starting_exactly_at_batch_start_uses_that_batch() -> None:
         as_of=at_sgt(date(2026, 10, 19), 0),
     )
 
-    assert ledger.batch_minutes[bought_after.id] == {ZY: 120, SHAWN: 120, HW: 120, JY: 120, YT: 120}
-    assert YT not in ledger.batch_minutes[AUG_16.id]
+    assert ledger.batch_minutes[bought_after.id] == {ALICE: 120, BOB: 120, DAVE: 120, ERIN: 120, FRANK: 120}
+    assert FRANK not in ledger.batch_minutes[AUG_16.id]
 
 
 def test_batch_closes_only_once_its_successor_is_recorded() -> None:
@@ -140,10 +140,10 @@ def test_batch_closes_only_once_its_successor_is_recorded() -> None:
 
 
 def test_backfilled_batch_closes_earlier_one_at_first_later_purchase() -> None:
-    first = batch(1, ZY, 6000, at_sgt(date(2026, 8, 1), 0))
-    third = batch(3, HW, 6000, at_sgt(date(2026, 10, 1), 0))
+    first = batch(1, ALICE, 6000, at_sgt(date(2026, 8, 1), 0))
+    third = batch(3, DAVE, 6000, at_sgt(date(2026, 10, 1), 0))
     backfilled = batch(
-        2, JY, 6000, at_sgt(date(2026, 9, 1), 0), created_at=at_sgt(date(2026, 10, 20), 0)
+        2, ERIN, 6000, at_sgt(date(2026, 9, 1), 0), created_at=at_sgt(date(2026, 10, 20), 0)
     )
 
     ledger = compute_ledger(
@@ -158,8 +158,8 @@ def test_backfilled_batch_closes_earlier_one_at_first_later_purchase() -> None:
 
 
 def test_closed_batch_nobody_played_stays_with_buyer() -> None:
-    unused = batch(1, ZY, 5000, at_sgt(date(2026, 1, 1), 0))
-    replacement = batch(2, HW, 5000, at_sgt(date(2026, 2, 1), 0))
+    unused = batch(1, ALICE, 5000, at_sgt(date(2026, 1, 1), 0))
+    replacement = batch(2, DAVE, 5000, at_sgt(date(2026, 2, 1), 0))
 
     ledger = compute_ledger(
         sessions=[], transfers=[], batches=[unused, replacement], as_of=at_sgt(date(2026, 3, 1), 0)

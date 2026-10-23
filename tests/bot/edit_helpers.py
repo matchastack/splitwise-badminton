@@ -7,7 +7,7 @@ from typing import Any
 from tests.conftest import BotHarness
 from tests.fake_telegram import ADMIN_ID, callback_update, text_update, user
 
-ZY = user(ADMIN_ID, "zy", "zy_handle")
+ALICE = user(ADMIN_ID, "alice", "alice_handle")
 
 
 class EditCard:
@@ -15,7 +15,7 @@ class EditCard:
         self.bot = bot
         self.message: dict[str, Any] = {}
 
-    async def open(self, sender: dict[str, Any] = ZY) -> EditCard:
+    async def open(self, sender: dict[str, Any] = ALICE) -> EditCard:
         await self.bot.send(text_update("/edit", sender=sender))
         self.message = self.bot.telegram.last("sendMessage").message
         return self
@@ -38,7 +38,7 @@ class EditCard:
         rows = self.current.get("reply_markup", {}).get("inline_keyboard", [])
         return {b["text"]: b["callback_data"] for row in rows for b in row}
 
-    async def tap(self, label: str, sender: dict[str, Any] = ZY) -> None:
+    async def tap(self, label: str, sender: dict[str, Any] = ALICE) -> None:
         data = self.buttons()[label]
         await self.bot.send(callback_update(data, sender=sender, on_message=self.message))
 

@@ -21,7 +21,7 @@ async def make_session(
     starts_at: datetime | None = None,
     minutes: int = 120,
     amount_cents: int = 1480,
-    payer_name: str = "zy",
+    payer_name: str = "alice",
     payer_telegram_id: int | None = 111,
 ) -> int:
     """A scheduled session with one booking; returns its ID."""
@@ -34,7 +34,7 @@ async def make_session(
             )
         if payer is None:
             payer = Member(
-                display_name=payer_name, telegram_user_id=payer_telegram_id, username="zy_handle"
+                display_name=payer_name, telegram_user_id=payer_telegram_id, username="alice_handle"
             )
             db.add(payer)
             await db.flush()
