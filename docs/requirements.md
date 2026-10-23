@@ -112,6 +112,11 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
   - Members without a username are shown as a text mention, i.e. a tappable name.
   - Guest members are shown by display name.
 - **FR-MEM-7:** `/help` must list the commands available to the caller. Admin commands are shown to the admin only.
+- **FR-MEM-8:** In `/members`, the admin can link a guest to a Telegram account. This covers someone who was a guest (for example, imported from the spreadsheet, FR-MIG-4) and has since joined, so the bot made them a second member record (FR-MEM-1).
+  - The admin taps 🔗 on the guest, picks the member the bot made for their account (newest first), and confirms. The confirmation shows both balances and their sum.
+  - The two records become one, with the guest's name and the account's Telegram identity. Everything the account did (bookings, attendance, shuttle purchases, payments, settle-up lines, stored balances) moves to the guest, so the linked balance is the two balances added together.
+  - If both records answered for the same session, the person counts once, as *in* if either answer was *in*. Payments and settle-up lines between the two records are dropped, because they would be to themselves.
+  - The link is announced in the group and audited.
 
 ### 4.2 Court bookings (BK)
 - **FR-BK-1:**
@@ -335,7 +340,7 @@ Worked examples:
 | `/shuttle <price>` | admin | any | Record a shuttle batch |
 | `/settle` | admin | any | Record a manual transfer |
 | `/addmember <name>` | admin | any | Add a guest member |
-| `/members` | admin | any | List, rename or deactivate members |
+| `/members` | admin | any | List, rename or deactivate members; link a guest to a Telegram account |
 | `/invoice` | admin | any | Generate the invoice now |
 
 ### 6.2 HTTP endpoints
@@ -383,9 +388,10 @@ Acceptance criteria are brief; the referenced FRs hold the detail.
   - After `/start` in DM, I receive monthly statements.
   - If I block the bot, delivery to me stops without errors.
 - **US-2.3:** As a member, I want to choose the name the bot shows for me. *(FR-MEM-4)*
-- **US-2.4:** As the admin, I want to add and manage members who aren't on Telegram, so that guests can be charged. *(FR-MEM-5)*
+- **US-2.4:** As the admin, I want to add and manage members who aren't on Telegram, so that guests can be charged. *(FR-MEM-5, FR-MEM-8)*
   - Guests appear in attendance editing and settle-ups.
   - Deactivated members disappear from pickers but keep their history.
+  - When a guest joins, I link them to their Telegram account, and their balance and history follow them.
 - **US-2.5:** As a member, I want to check my balance and upcoming sessions any time. *(FR-LED-8, FR-LED-9)*
 
 ### E3 — Court booking

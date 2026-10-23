@@ -169,7 +169,7 @@ The only effect of a daily cron is that the "🔒 locked" summary can arrive up 
 If the group kept its accounts in the spreadsheet, carry everyone's balance over before the bot's first settle-up. You need the `.env` from step 6.
 
 1. Make sure the database has every migration: `DATABASE_URL='postgresql://…' uv run alembic upgrade head`. Deploy after that, as usual.
-2. Optional: ask people already in the group to send `/start` to the bot first. They can then be matched to their member record instead of becoming a guest member.
+2. Optional: ask people already in the group to send `/start` to the bot first. They can then be matched to their member record instead of becoming a guest member you link later (see below).
 3. Do a dry run. It changes nothing:
 
    ```sh
@@ -194,6 +194,14 @@ What it carries over:
 - **The unused tube:** a shuttle row with no shares yet becomes the current shuttle batch. When the next `/shuttle` closes it, its buyer is credited and everyone is charged by hours played. Until then, its price isn't in its buyer's balance.
 
 It runs only once. It refuses, changing nothing, if the bot already has a shuttle batch, or a session on or before the sheet's last date.
+
+**When a guest joins the group.** The first time they use the bot (tap a card, send `/start` or `/balance`), it makes a new member record for their Telegram account, as for anyone. To link the two:
+1. Send `/members`.
+2. Tap **🔗 Link** next to the guest.
+3. Pick their Telegram account. The newest are listed first.
+4. Check the combined balance, and confirm.
+
+The records become one: the guest's name and carried-over balance, plus their Telegram account and anything they did with it. The link is announced in the group. They can change the name with `/name`.
 
 ### Environment variables
 
@@ -248,7 +256,7 @@ It runs only once. It refuses, changing nothing, if the bot already has a shuttl
 | `/edit` | admin | anywhere | Fix a session's attendance or bookings, or cancel it |
 | `/settle` | admin | anywhere | Record a payment made outside the bot |
 | `/addmember <name>` | admin | anywhere | Add a guest who isn't on Telegram |
-| `/members` | admin | anywhere | Rename or deactivate members |
+| `/members` | admin | anywhere | Rename or deactivate members; link a guest to their Telegram account |
 | `/invoice` | admin | anywhere | Post this month's settle-up now |
 
 ## Development

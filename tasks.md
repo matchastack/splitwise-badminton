@@ -75,6 +75,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T36 | Admin: manual transfer | `feat/t36-admin-manual-transfer` | E8 | T14, T16, T17 | ✅ | [#40](https://github.com/matchastack/splitwise-badminton/pull/40) |
 | T37 | Setup and deployment guide | `docs/t37-setup-guide` | E1 | T07, T32 | ✅ | [#35](https://github.com/matchastack/splitwise-badminton/pull/35) |
 | T38 | Opening balances and spreadsheet import | `feat/t38-spreadsheet-import` | E10 | T14, T16, T37 | ⬜ | |
+| T39 | Link a guest to a Telegram account | `feat/t39-link-guests` | E2 | T19, T38 | ⬜ | |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
@@ -431,3 +432,10 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
   - `scripts/import_spreadsheet.py`: dry run by default, `--member NAME=ID`, `--apply`, `--no-announce`. The unused tube becomes the open batch; unmatched players become guests.
   - The import checks the tally with the ledger before saving, and refuses a second import or one that would count something twice.
 - **Done when:** tests cover the sheet maths and each refused row, rounding to a zero sum, the import's matching and refusals, a rollback when the tally is off, and the unused tube being billed by hours once the next batch is bought.
+
+### T39 · Link a guest to a Telegram account
+`feat/t39-link-guests` · Stories US-2.4 · FR-MEM-8 · Depends on T19, T38
+- **Scope:**
+  - `link_guest`: move everything the Telegram member did onto the guest (bookings, attendance, batches, transfers, invoice lines and balances, opening balance, audit actor), then delete it and give the guest its Telegram identity.
+  - `/members`: a 🔗 button on guests → pick the Telegram member (newest first) → confirm with both balances → link, announce and audit.
+- **Done when:** tests cover each moved fact, a session both records answered, payments between the two, the linked balance being the sum, the admin linking their own account, stale or empty pickers, and refusal for non-admins.
