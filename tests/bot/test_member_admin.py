@@ -86,12 +86,19 @@ async def test_deactivate_and_reactivate(bot: BotHarness) -> None:
     await bot.send(callback_update(toggle, sender=ZY, on_message=card))
 
     assert not (await members(bot))["danish"].active
-    assert "• danish (guest, inactive)" in bot.telegram.last("editMessageText").params["text"]
+    closed = bot.telegram.last("editMessageText").message
+    assert closed["text"] == (
+        f"👥 <b>Members</b>\n• zy (@zy_handle)\n• danish (guest, inactive)\n\n{LIST_CLOSED}"
+    )
+    assert "reply_markup" not in closed  # closed, so a stray tap later changes nothing
     assert bot.telegram.sent_texts(GROUP_ID)[-1] == "🚫 Admin deactivated <b>danish</b>."
     async with bot.sessionmaker() as db:
         assert [m.display_name for m in await active_members(db)] == ["zy"]
 
-    await bot.send(callback_update(toggle, sender=ZY, on_message=card))
+    await bot.send(text_update("/members", sender=ZY))  # a fresh list for the next change
+    card = bot.telegram.last("sendMessage").message
+    assert buttons(card)[-1] == "↩️ Reactivate"
+    await bot.send(callback_update(button(card, "↩️"), sender=ZY, on_message=card))
 
     assert (await members(bot))["danish"].active
     assert bot.telegram.sent_texts(GROUP_ID)[-1] == "↩️ Admin reactivated <b>danish</b>."
@@ -118,7 +125,9 @@ async def test_rename_through_a_prompt(bot: BotHarness) -> None:
     assert (
         bot.telegram.sent_texts(GROUP_ID)[-1] == "✏️ Admin renamed <b>danish</b> to <b>Danish K</b>."
     )
-    assert "• Danish K (guest)" in bot.telegram.last("editMessageText").params["text"]
+    closed = bot.telegram.last("editMessageText").message
+    assert closed["text"].endswith(f"• Danish K (guest)\n\n{LIST_CLOSED}")
+    assert "reply_markup" not in closed
     async with bot.sessionmaker() as db:
         assert await db.scalar(select(func.count()).select_from(Draft)) == 0
 

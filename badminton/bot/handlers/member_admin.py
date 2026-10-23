@@ -42,7 +42,9 @@ LIST = "mem:list"
 NOBODY_TO_LINK = "Nobody has used the bot yet. Ask them to send /start to the bot first."
 LINK_GONE = "That's out of date: the guest is already linked or someone was removed."
 ALERT_LIMIT = 200  # characters Telegram shows in an alert
-LIST_CLOSED = "🔒 Linked. Send /members again to link someone else or make other changes."
+# Shown once a change is made: the list closes, so scrolling past it later can't tap a
+# button by accident. /members opens a fresh one.
+LIST_CLOSED = "🔒 Done. Send /members again to make more changes."
 
 
 def render_members(members: list[Member]) -> tuple[str, InlineKeyboardMarkup]:
@@ -59,6 +61,12 @@ def render_members(members: list[Member]) -> tuple[str, InlineKeyboardMarkup]:
         row.append(InlineKeyboardButton(toggle, callback_data=f"mem:act:{member.id}"))
         buttons.append(row)
     return "\n".join(lines), InlineKeyboardMarkup(buttons)
+
+
+async def closed_list(db: AsyncSession) -> str:
+    """The member list after a change: up to date, with no buttons."""
+    text, _ = render_members(await all_members(db))
+    return f"{text}\n\n{LIST_CLOSED}"
 
 
 @admin_only
@@ -111,9 +119,9 @@ async def toggle_active(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         name = html.escape(member.display_name)
         active = member.active
         await db.commit()
-        text, markup = render_members(await all_members(db))
+        text = await closed_list(db)
     await query.answer()
-    await query.edit_message_text(text, reply_markup=markup)
+    await query.edit_message_text(text)
     verb = "↩️ Admin reactivated" if active else "🚫 Admin deactivated"
     await announce(context.bot, settings_of(context), f"{verb} <b>{name}</b>.")
 
@@ -170,9 +178,8 @@ async def finish_rename(
         member_id=member.id,
     )
     await db.flush()
-    text_, markup = render_members(await all_members(db))
     await context.bot.edit_message_text(
-        text_, chat_id=draft.chat_id, message_id=draft.data["list_message_id"], reply_markup=markup
+        await closed_list(db), chat_id=draft.chat_id, message_id=draft.data["list_message_id"]
     )
     await delete_draft(context.bot, db, draft)
     await announce(
@@ -313,11 +320,10 @@ async def finish_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             },
         )
         await db.commit()
-        text, _ = render_members(await all_members(db))
+        text = await closed_list(db)
         name, mention = html.escape(guest_name), mention_html(guest)
         await query.answer()
-        # Closed, without buttons, so a stray tap can't link or change anyone else.
-        await query.edit_message_text(f"{text}\n\n{LIST_CLOSED}")
+        await query.edit_message_text(text)
         await announce(
             context.bot,
             settings_of(context),

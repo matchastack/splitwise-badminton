@@ -107,6 +107,7 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
   - list members with `/members`;
   - rename or deactivate any member.
   - Inactive members are hidden from pickers, but their history is kept.
+  - Once a change is made (rename, deactivate, reactivate or link, FR-MEM-8), the list closes: it shows the updated members without buttons, so scrolling past it later can't change anyone by accident. `/members` opens a fresh list.
 - **FR-MEM-6:**
   - Wherever the bot names someone a payment is owed to, it must show their @username.
   - Members without a username are shown as a text mention, i.e. a tappable name.
@@ -118,7 +119,7 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
   - If both records are marked *in* for a session that has ended, the link is refused, naming the sessions. Counting the person once there would re-split costs already in everyone's balance, so the admin first marks one of them out with `/edit`, which announces that correction (FR-ADM-3).
   - For other sessions, the person counts once: *in* if either answer was *in*. Payments and settle-up lines between the two records are dropped, because they would be to themselves.
   - Open wizards that hold the account's member ID expire. The latest invoice card is refreshed.
-  - The link is announced in the group and audited. The member list it was made from then closes, without buttons; the admin sends `/members` again to link someone else.
+  - The link is announced in the group and audited, and the member list closes (FR-MEM-5).
 
 ### 4.2 Court bookings (BK)
 - **FR-BK-1:**
