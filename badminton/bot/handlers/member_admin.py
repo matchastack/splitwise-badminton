@@ -20,14 +20,17 @@ from badminton.bot.admin import admin_only
 from badminton.bot.context import db_session, settings_of
 from badminton.db.models import Draft, Member
 from badminton.domain.money import fmt_signed
-from badminton.domain.timeutil import utc_now
+from badminton.domain.timeutil import fmt_date, sgt_date, utc_now
 from badminton.services import audit
 from badminton.services.drafts import create_draft, delete_draft
+from badminton.services.invoice import previous_invoice, refresh_invoice_card
 from badminton.services.members import (
+    LinkRefused,
     all_members,
     link_guest,
     member_label,
     mention_html,
+    sessions_both_played,
     upsert_from_telegram,
     validate_name,
 )
@@ -38,6 +41,7 @@ RENAME_KIND = "member_rename"
 LIST = "mem:list"
 NOBODY_TO_LINK = "Nobody has used the bot yet. Ask them to send /start to the bot first."
 LINK_GONE = "That's out of date: the guest is already linked or someone was removed."
+ALERT_LIMIT = 200  # characters Telegram shows in an alert
 
 
 def render_members(members: list[Member]) -> tuple[str, InlineKeyboardMarkup]:
@@ -206,7 +210,11 @@ async def pick_account(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await query.answer(NOBODY_TO_LINK, show_alert=True)
         return
     buttons = [
-        [InlineKeyboardButton(_label(account), callback_data=f"mem:lnk:{guest.id}:{account.id}")]
+        [
+            InlineKeyboardButton(
+                member_label(account), callback_data=f"mem:lnk:{guest.id}:{account.id}"
+            )
+        ]
         for account in accounts
     ]
     buttons.append([InlineKeyboardButton("‹ Back", callback_data=LIST)])
@@ -228,12 +236,24 @@ async def confirm_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             await query.answer(LINK_GONE, show_alert=True)
             return
         guest, account = pair
-        balances = await get_balances(db, utc_now())
-    guest_cents, account_cents = balances.get(guest.id, 0), balances.get(account.id, 0)
-    name = html.escape(guest.display_name)
+        now = utc_now()
+        shared = await sessions_both_played(db, guest, account, now)
+        balances = await get_balances(db, now)
+    name, account_name = html.escape(guest.display_name), html.escape(member_label(account))
+    back = InlineKeyboardButton("‹ Back", callback_data=f"mem:lnk:{guest.id}")
     await query.answer()
+    if shared:
+        days = ", ".join(fmt_date(sgt_date(session.starts_at)) for session in shared)
+        await query.edit_message_text(
+            f"⚠️ <b>{name}</b> and <b>{account_name}</b> are both marked in for {days}. "
+            "Linked, they would count once there, changing everyone's share of those "
+            "sessions. Use /edit to mark one of them out first.",
+            reply_markup=InlineKeyboardMarkup([[back]]),
+        )
+        return
+    guest_cents, account_cents = balances.get(guest.id, 0), balances.get(account.id, 0)
     await query.edit_message_text(
-        f"🔗 Link guest <b>{name}</b> to <b>{html.escape(_label(account))}</b>?\n"
+        f"🔗 Link guest <b>{name}</b> to <b>{account_name}</b>?\n"
         f"Their records become one, called {name}. Balances {fmt_signed(guest_cents)} and "
         f"{fmt_signed(account_cents)} make {fmt_signed(guest_cents + account_cents)}.",
         reply_markup=InlineKeyboardMarkup(
@@ -242,7 +262,7 @@ async def confirm_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                     InlineKeyboardButton(
                         "✅ Link", callback_data=f"mem:lnk:{guest.id}:{account.id}:ok"
                     ),
-                    InlineKeyboardButton("‹ Back", callback_data=f"mem:lnk:{guest.id}"),
+                    back,
                 ]
             ]
         ),
@@ -254,20 +274,25 @@ async def finish_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     query = update.callback_query
     guest_id, account_id = (int(part) for part in query.data.split(":")[2:4])
     async with db_session(context) as db:
-        pair = await _link_pair(db, guest_id, account_id)
+        pair = await _link_pair(db, guest_id, account_id, lock=True)
         if pair is None:
             await query.answer(LINK_GONE, show_alert=True)
             return
         guest, account = pair
         now = utc_now()
         before = await get_balances(db, now)
+        guest_cents, account_cents = before.get(guest.id, 0), before.get(account.id, 0)
         linked_from = {
             "id": account.id,
             "name": account.display_name,
             "telegram_user_id": account.telegram_user_id,
-            "balance_cents": before.get(account.id, 0),
+            "balance_cents": account_cents,
         }
-        await link_guest(db, guest, account)
+        try:
+            await link_guest(db, guest, account, now=now)
+        except LinkRefused as refusal:
+            await query.answer(str(refusal)[:ALERT_LIMIT], show_alert=True)
+            return
         # Only now: the admin may have just linked their own account.
         admin = await upsert_from_telegram(db, update.effective_user)
         audit.record(
@@ -275,39 +300,40 @@ async def finish_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             actor_member_id=admin.id,
             action="member.link",
             before={
-                "guest": {"id": guest.id, "balance_cents": before.get(guest.id, 0)},
+                "guest": {"id": guest.id, "balance_cents": guest_cents},
                 "account": linked_from,
             },
-            after={"id": guest.id, "balance_cents": (await get_balances(db, now)).get(guest.id, 0)},
+            after={"id": guest.id, "balance_cents": guest_cents + account_cents},
         )
         await db.commit()
         text, markup = render_members(await all_members(db))
         name, mention = html.escape(guest.display_name), mention_html(guest)
-    await query.answer()
-    await query.edit_message_text(text, reply_markup=markup)
-    await announce(
-        context.bot,
-        settings_of(context),
-        f"🔗 Admin linked guest <b>{name}</b> to {mention}. "
-        "Their balance and history are now one record.",
-    )
+        await query.answer()
+        await query.edit_message_text(text, reply_markup=markup)
+        await announce(
+            context.bot,
+            settings_of(context),
+            f"🔗 Admin linked guest <b>{name}</b> to {mention}. "
+            "Their balance and history are now one record.",
+        )
+        # Its lines may have moved to the guest, or gone if they were between the two.
+        if (latest := await previous_invoice(db)) is not None:
+            await refresh_invoice_card(context.bot, db, latest)
 
 
 async def _link_pair(
-    db: AsyncSession, guest_id: int, account_id: int
+    db: AsyncSession, guest_id: int, account_id: int, *, lock: bool = False
 ) -> tuple[Member, Member] | None:
-    """The guest and the Telegram member to link, if that still makes sense."""
-    guest = await db.get(Member, guest_id)
-    account = await db.get(Member, account_id)
+    """The guest and the Telegram member to link, if that still makes sense. With
+    ``lock``, both rows stay locked until the commit: a second tap on ✅ waits, then
+    finds the account gone."""
+    guest = await db.get(Member, guest_id, with_for_update=lock)
+    account = await db.get(Member, account_id, with_for_update=lock)
     if guest is None or account is None or guest.telegram_user_id is not None:
         return None
     if account.telegram_user_id is None:
         return None
     return guest, account
-
-
-def _label(member: Member) -> str:
-    return member.display_name + (f" (@{member.username})" if member.username else "")
 
 
 def register(application: Application) -> None:

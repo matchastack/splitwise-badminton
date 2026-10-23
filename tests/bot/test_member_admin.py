@@ -1,11 +1,22 @@
+import asyncio
+from datetime import timedelta
+
 from sqlalchemy import func, select, update
 
 from badminton.bot.admin import NOT_ADMIN
-from badminton.bot.handlers.member_admin import LINK_GONE, NOBODY_TO_LINK
-from badminton.db.models import AuditLog, Draft, Member, OpeningBalance
-from badminton.domain.timeutil import utc_now
+from badminton.bot.handlers.member_admin import LINK_GONE, NOBODY_TO_LINK, _link_pair
+from badminton.db.models import (
+    Attendance,
+    AuditLog,
+    Booking,
+    Draft,
+    Member,
+    OpeningBalance,
+    Session,
+)
+from badminton.domain.timeutil import fmt_date, sgt_date, utc_now
 from badminton.services.drafts import cleanup_expired_drafts
-from badminton.services.members import active_members, member_label
+from badminton.services.members import active_members, link_guest, member_label
 from badminton.services.tick import TickContext
 from tests.conftest import TEST_SETTINGS, BotHarness
 from tests.fake_telegram import ADMIN_ID, GROUP_ID, callback_update, message, text_update, user
@@ -280,3 +291,81 @@ def test_member_label_notes_the_handle_and_status() -> None:
     ) == ("zy (@zy_h)")
     assert member_label(Member(display_name="danish", active=False)) == "danish (guest, inactive)"
     assert member_label(Member(display_name="nic", telegram_user_id=2, active=True)) == "nic"
+
+
+async def played_together(bot: BotHarness, *names: str, days_ago: int = 3) -> None:
+    """A session that ended ``days_ago``, booked by zy, with ``names`` marked in."""
+    by_name = await members(bot)
+    start = utc_now() - timedelta(days=days_ago)
+    async with bot.sessionmaker() as db:
+        session = Session(starts_at=start, ends_at=start + timedelta(hours=2))
+        db.add(session)
+        await db.flush()
+        db.add(
+            Booking(
+                session_id=session.id,
+                payer_member_id=by_name["zy"].id,
+                submitted_by_member_id=by_name["zy"].id,
+                starts_at=start,
+                minutes=120,
+                amount_cents=1480,
+            )
+        )
+        db.add_all(
+            Attendance(session_id=session.id, member_id=by_name[name].id, status="in")
+            for name in names
+        )
+        await db.commit()
+
+
+async def test_the_confirm_step_refuses_a_session_both_records_played(bot: BotHarness) -> None:
+    card = await open_member_list(bot)
+    await bot.send(text_update("/balance", sender=DANISH))
+    await played_together(bot, "zy", "danish", "Danish K")
+
+    refused = await tap(bot, await tap(bot, card, "🔗"), "Danish K")
+
+    day = fmt_date(sgt_date(utc_now() - timedelta(days=3)))
+    assert refused["text"] == (
+        f"⚠️ <b>danish</b> and <b>Danish K (@danishk)</b> are both marked in for {day}. "
+        "Linked, they would count once there, changing everyone's share of those sessions. "
+        "Use /edit to mark one of them out first."
+    )
+    assert buttons(refused) == ["‹ Back"]
+
+
+async def test_linking_refreshes_the_latest_invoice_card(bot: BotHarness) -> None:
+    card = await open_member_list(bot)
+    await bot.send(text_update("/balance", sender=DANISH))
+    await played_together(bot, "zy", "Danish K")
+    await bot.send(text_update("/invoice", sender=ZY))
+    invoice_card = bot.telegram.last("sendMessage").message
+    assert buttons(invoice_card) == ["✅ Danish K → zy $7.40 paid"]
+
+    confirm = await tap(bot, await tap(bot, card, "🔗"), "Danish K")
+    await tap(bot, confirm, "✅ Link")
+
+    refreshed = [
+        call.message
+        for call in bot.telegram.calls_to("editMessageText")
+        if call.params["message_id"] == invoice_card["message_id"]
+    ]
+    assert buttons(refreshed[-1]) == ["✅ danish → zy $7.40 paid"]  # the line moved to danish
+    assert "• @danishk → @zy_handle $7.40" in refreshed[-1]["text"]
+
+
+async def test_a_second_tap_on_link_waits_then_finds_it_done(bot: BotHarness) -> None:
+    await bot.send(text_update("/addmember danish", sender=ZY))
+    await bot.send(text_update("/balance", sender=DANISH))
+    by_name = await members(bot)
+    ids = by_name["danish"].id, by_name["Danish K"].id
+
+    async with bot.sessionmaker() as first, bot.sessionmaker() as second:
+        guest, account = await _link_pair(first, *ids, lock=True)
+        await link_guest(first, guest, account, now=utc_now())
+        waiting = asyncio.create_task(_link_pair(second, *ids, lock=True))
+        await asyncio.sleep(0.3)
+        assert not waiting.done()  # held by the first tap's row locks
+        await first.commit()
+
+        assert await waiting is None  # so it answers LINK_GONE instead of linking again

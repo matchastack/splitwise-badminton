@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import html
 import re
+from datetime import datetime
+from typing import Any
 
-from sqlalchemy import ColumnElement, and_, delete, or_, select, update
+from sqlalchemy import ColumnElement, Select, and_, delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 from telegram import User
@@ -14,13 +16,16 @@ from badminton.db.models import (
     Attendance,
     AuditLog,
     Booking,
+    Draft,
     InvoiceBalance,
     InvoiceLine,
     Member,
     OpeningBalance,
+    Session,
     ShuttleBatch,
     Transfer,
 )
+from badminton.domain.timeutil import fmt_date, sgt_date
 
 MAX_NAME_LENGTH = 32
 
@@ -37,6 +42,10 @@ _MEMBER_COLUMNS = (
     InvoiceLine.to_member_id,
     AuditLog.actor_member_id,
 )
+# Where the wizards keep member IDs in a draft's state: /book's payer, a /members
+# rename, /settle's two sides, /shuttle's payer, and /edit's attendance toggles.
+_DRAFT_MEMBER_FIELDS = ("payer_member_id", "member_id", "from_id", "to_id", "payer_id")
+_DRAFT_MEMBER_LISTS = ("ins", "shown_ins")
 
 
 async def upsert_from_telegram(db: AsyncSession, user: User) -> Member:
@@ -103,19 +112,59 @@ async def all_members(db: AsyncSession) -> list[Member]:
     return list(await db.scalars(select(Member).order_by(Member.id)))
 
 
-async def link_guest(db: AsyncSession, guest: Member, account: Member) -> None:
+class LinkRefused(ValueError):
+    """The guest and the account can't be linked as they are. Nothing was changed."""
+
+
+async def sessions_both_played(
+    db: AsyncSession, guest: Member, account: Member, now: datetime
+) -> list[Session]:
+    """Ended sessions both records are marked in for. Linking would count the person
+    once there, re-splitting a cost already in everyone's balance."""
+
+    def played(member: Member) -> Select[tuple[int]]:
+        return select(Attendance.session_id).where(
+            Attendance.member_id == member.id, Attendance.status == "in"
+        )
+
+    return list(
+        await db.scalars(
+            select(Session)
+            .where(
+                Session.status == "scheduled",
+                Session.ends_at <= now,
+                Session.id.in_(played(guest)),
+                Session.id.in_(played(account)),
+            )
+            .order_by(Session.starts_at)
+        )
+    )
+
+
+async def link_guest(db: AsyncSession, guest: Member, account: Member, *, now: datetime) -> None:
     """Give a guest the Telegram account of ``account``: the member the bot created when
     that person first used it (FR-MEM-8).
 
-    Everything ``account`` did moves to ``guest`` and ``account`` is deleted, so the
-    linked member's balance is the two balances added together. The guest keeps its
-    name. The caller commits.
+    Everything ``account`` did moves to ``guest`` and ``account`` is deleted. Nobody
+    else's figures change, so the linked member's balance is the two balances added
+    together. The guest keeps its name. The caller commits.
     """
     if guest.telegram_user_id is not None:
-        raise ValueError(f"{guest.display_name} is already linked to a Telegram account.")
+        raise LinkRefused(f"{guest.display_name} is already linked to a Telegram account.")
     if account.telegram_user_id is None or account.id == guest.id:
-        raise ValueError(f"{account.display_name} has no Telegram account to link.")
+        raise LinkRefused(f"{account.display_name} has no Telegram account to link.")
+    if shared := await sessions_both_played(db, guest, account, now):
+        days = ", ".join(fmt_date(sgt_date(session.starts_at)) for session in shared)
+        raise LinkRefused(
+            f"{guest.display_name} and {account.display_name} are both marked in for {days}. "
+            "Use /edit to mark one of them out first."
+        )
     keep, gone = guest.id, account.id
+
+    # An open wizard holding the account's ID would point at nobody: let it expire.
+    for draft in (await db.scalars(select(Draft))).all():
+        if _mentions(draft.data, gone):
+            await db.delete(draft)
 
     # A payment or settle-up line between the two would become one to themselves.
     await db.execute(
@@ -127,7 +176,9 @@ async def link_guest(db: AsyncSession, guest: Member, account: Member) -> None:
         )
     )
 
-    # One answer per session: if either record was in, the person played.
+    # One answer per session: if either record was in, the person played. Both being
+    # in is left only for sessions not yet ended or cancelled, which aren't in anyone's
+    # balance, so nothing already charged is re-split.
     gone_in = select(Attendance.session_id).where(
         Attendance.member_id == gone, Attendance.status == "in"
     )
@@ -186,6 +237,13 @@ async def link_guest(db: AsyncSession, guest: Member, account: Member) -> None:
     guest.dm_enabled = dm_enabled
     guest.active = True
     await db.flush()
+
+
+def _mentions(data: dict[str, Any], member_id: int) -> bool:
+    """Whether a wizard's state holds ``member_id`` in one of its member fields."""
+    return any(data.get(field) == member_id for field in _DRAFT_MEMBER_FIELDS) or any(
+        member_id in (data.get(field) or ()) for field in _DRAFT_MEMBER_LISTS
+    )
 
 
 def _between(

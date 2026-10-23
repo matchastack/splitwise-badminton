@@ -7,7 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from badminton.db.models import (
     Attendance,
     AuditLog,
+    Base,
     Booking,
+    Draft,
     Invoice,
     InvoiceBalance,
     InvoiceLine,
@@ -18,7 +20,7 @@ from badminton.db.models import (
     Transfer,
 )
 from badminton.domain.timeutil import at_sgt
-from badminton.services.members import link_guest
+from badminton.services.members import _MEMBER_COLUMNS, LinkRefused, link_guest
 from badminton.services.repo import get_balances
 
 LATER = at_sgt(date(2026, 12, 1), 9)
@@ -105,7 +107,7 @@ async def test_linking_moves_everything_onto_the_guest(db: AsyncSession) -> None
     await db.commit()
     before = await get_balances(db, LATER)
 
-    await link_guest(db, guest, account)
+    await link_guest(db, guest, account, now=LATER)
     await db.commit()
 
     after = await get_balances(db, LATER)
@@ -143,18 +145,84 @@ async def test_linking_moves_everything_onto_the_guest(db: AsyncSession) -> None
     assert (await db.get(OpeningBalance, guest.id)).amount_cents == -494
 
 
-async def test_a_session_both_records_played_counts_them_once(db: AsyncSession) -> None:
+async def test_refuses_while_both_records_played_the_same_session(db: AsyncSession) -> None:
     zy, guest, account = await people(db)
     session_id = await add_session(db, 1, zy, {zy: "in", guest: "in", account: "in"})
     await db.commit()
+    account_id = account.id
+    before = await get_balances(db, LATER)
 
-    await link_guest(db, guest, account)
+    with pytest.raises(LinkRefused, match=r"yt and Yu Ting are both marked in for Sun 1 Nov\."):
+        await link_guest(db, guest, account, now=LATER)
+    await db.rollback()
+
+    # Counting yt once would re-split that session for zy too, so nothing changed.
+    assert await db.get(Member, account_id) is not None
+    rows = await db.scalars(select(Attendance).where(Attendance.session_id == session_id))
+    assert len(rows.all()) == 3
+    assert await get_balances(db, LATER) == before
+
+
+async def test_a_session_still_to_come_counts_them_once(db: AsyncSession) -> None:
+    zy, guest, account = await people(db)
+    session_id = await add_session(db, 1, zy, {zy: "in", guest: "in", account: "in"})
+    await db.commit()
+    before_it = at_sgt(date(2026, 11, 1), 9)
+    before = await get_balances(db, before_it)
+
+    await link_guest(db, guest, account, now=before_it)
     await db.commit()
 
     rows = await db.scalars(select(Attendance).where(Attendance.session_id == session_id))
     assert {(row.member_id, row.status) for row in rows} == {(zy.id, "in"), (guest.id, "in")}
-    balances = await get_balances(db, LATER)
-    assert balances == {zy.id: 494 + 1480 - 740, guest.id: -494 - 740}
+    assert await get_balances(db, before_it) == before  # nothing charged yet changes
+
+
+async def test_wizards_open_on_the_account_expire(db: AsyncSession) -> None:
+    zy, guest, account = await people(db)
+    expires = at_sgt(date(2026, 12, 31), 0)
+
+    def draft(kind: str, **data: object) -> Draft:
+        return Draft(kind=kind, chat_id=1, user_id=1, expires_at=expires, data=data)
+
+    db.add_all(
+        [
+            draft("booking", payer_member_id=account.id),
+            draft("settle", from_id=guest.id, to_id=account.id),
+            draft("edit", session_id=account.id + 100, ins=[zy.id, account.id], shown_ins=[zy.id]),
+            draft("member_rename", member_id=zy.id),
+            draft("edit", session_id=account.id, ins=[zy.id]),  # a session ID, not a member
+        ]
+    )
+    await db.commit()
+
+    await link_guest(db, guest, account, now=LATER)
+    await db.commit()
+
+    left = await db.scalars(select(Draft).order_by(Draft.id))
+    assert [(d.kind, d.data) for d in left] == [
+        ("member_rename", {"member_id": zy.id}),
+        ("edit", {"session_id": account.id, "ins": [zy.id]}),
+    ]
+
+
+def test_every_reference_to_a_member_is_moved_or_merged() -> None:
+    references = {
+        (fk.parent.table.name, fk.parent.name)
+        for table in Base.metadata.tables.values()
+        for fk in table.foreign_keys
+        if fk.column.table.name == Member.__tablename__
+    }
+    repointed = {(c.property.columns[0].table.name, c.key) for c in _MEMBER_COLUMNS}
+    merged_row_by_row = {
+        ("attendance", "member_id"),
+        ("invoice_balances", "member_id"),
+        ("opening_balances", "member_id"),
+    }
+
+    # A new column pointing at members must be added to link_guest, or the account
+    # can't be deleted after linking.
+    assert references == repointed | merged_row_by_row
 
 
 async def test_an_account_opening_balance_is_added_to_the_guests(db: AsyncSession) -> None:
@@ -164,7 +232,7 @@ async def test_an_account_opening_balance_is_added_to_the_guests(db: AsyncSessio
     db.add(OpeningBalance(member_id=account.id, amount_cents=400, created_at=zy_opening.created_at))
     await db.commit()
 
-    await link_guest(db, guest, account)
+    await link_guest(db, guest, account, now=LATER)
     await db.commit()
 
     assert (await db.get(OpeningBalance, guest.id)).amount_cents == -94
@@ -176,6 +244,6 @@ async def test_only_a_guest_can_be_linked_to_a_telegram_account(db: AsyncSession
     await db.commit()
 
     with pytest.raises(ValueError, match="zy is already linked"):
-        await link_guest(db, zy, account)
+        await link_guest(db, zy, account, now=LATER)
     with pytest.raises(ValueError, match="yt has no Telegram account"):
-        await link_guest(db, guest, guest)
+        await link_guest(db, guest, guest, now=LATER)
