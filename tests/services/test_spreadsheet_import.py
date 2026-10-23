@@ -12,6 +12,7 @@ from badminton.db.models import (
     OpeningBalance,
     Session,
     ShuttleBatch,
+    Transfer,
 )
 from badminton.domain.ledger import EntryKind
 from badminton.domain.money import allocate
@@ -22,6 +23,7 @@ from badminton.services.repo import load_ledger
 from badminton.services.spreadsheet import (
     ImportRefused,
     TallyMismatch,
+    check_can_import,
     cutoff,
     import_sheet,
     match_members,
@@ -174,6 +176,52 @@ async def test_refuses_when_a_shuttle_batch_is_already_recorded(db: AsyncSession
     with pytest.raises(ImportRefused, match="unused tube must become the first batch"):
         await run_import(db)
     assert await db.scalar(select(OpeningBalance.member_id)) is None
+
+
+async def test_refuses_a_batch_or_payment_from_the_time_the_sheet_covers(
+    db: AsyncSession,
+) -> None:
+    no_tube = read_items(HEADER, [(2, (datetime(2026, 10, 18), "court", 14.8, "zy", 1, 1, 1))])
+    zy = Member(display_name="zy", telegram_user_id=1)
+    yt = Member(display_name="yt", telegram_user_id=2)
+    db.add_all([zy, yt])
+    await db.flush()
+    later = ShuttleBatch(payer_member_id=zy.id, amount_cents=8000, starts_at=cutoff(no_tube))
+    db.add(later)
+    await db.commit()
+    # A batch from the bot's time is fine when the sheet has no unused tube.
+    await check_can_import(db, no_tube)
+
+    earlier = ShuttleBatch(
+        payer_member_id=zy.id, amount_cents=7679, starts_at=at_sgt(date(2026, 10, 18), 13)
+    )
+    db.add(earlier)
+    await db.commit()
+    with pytest.raises(ImportRefused, match="shuttle batch from Sun 18 Oct, which the sheet"):
+        await check_can_import(db, no_tube)
+
+    await db.delete(earlier)
+    db.add(
+        Transfer(
+            from_member_id=yt.id,
+            to_member_id=zy.id,
+            amount_cents=800,
+            created_at=at_sgt(date(2026, 10, 18), 20),
+        )
+    )
+    await db.commit()
+    with pytest.raises(ImportRefused, match=r"payment from Sun 18 Oct, .* new, empty database"):
+        await check_can_import(db, no_tube)
+
+
+async def test_names_match_whatever_their_case(db: AsyncSession) -> None:
+    strauss = Member(display_name="Strauss", telegram_user_id=1)
+    db.add(strauss)
+    await db.commit()
+
+    [match] = await match_members(db, ("STRAUß",), {})
+
+    assert (match.member, match.how) == (strauss, "same name")
 
 
 async def test_refuses_when_the_bot_has_a_session_the_sheet_covers(db: AsyncSession) -> None:

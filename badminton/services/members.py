@@ -58,6 +58,17 @@ def mention_html(member: Member) -> str:
     return name
 
 
+def member_label(member: Member) -> str:
+    """A member as listed to the admin: ``zy (@zy_handle)``, ``danish (guest, inactive)``.
+    Plain text: escape it for HTML messages."""
+    notes = [f"@{member.username}"] if member.username else []
+    if member.telegram_user_id is None:
+        notes.append("guest")
+    if not member.active:
+        notes.append("inactive")
+    return member.display_name + (f" ({', '.join(notes)})" if notes else "")
+
+
 async def active_members(db: AsyncSession) -> list[Member]:
     """Members to offer in pickers; deactivated ones keep their history but are hidden."""
     return list(await db.scalars(select(Member).where(Member.active).order_by(Member.id)))

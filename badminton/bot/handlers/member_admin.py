@@ -19,7 +19,12 @@ from badminton.db.models import Draft, Member
 from badminton.domain.timeutil import utc_now
 from badminton.services import audit
 from badminton.services.drafts import create_draft, delete_draft
-from badminton.services.members import all_members, upsert_from_telegram, validate_name
+from badminton.services.members import (
+    all_members,
+    member_label,
+    upsert_from_telegram,
+    validate_name,
+)
 from badminton.services.notify import announce
 
 RENAME_KIND = "member_rename"
@@ -29,15 +34,7 @@ def render_members(members: list[Member]) -> tuple[str, InlineKeyboardMarkup]:
     lines = ["👥 <b>Members</b>"]
     buttons = []
     for member in members:
-        name = html.escape(member.display_name)
-        notes = []
-        if member.username:
-            notes.append(f"@{html.escape(member.username)}")
-        if member.telegram_user_id is None:
-            notes.append("guest")
-        if not member.active:
-            notes.append("inactive")
-        lines.append(f"• {name}" + (f" ({', '.join(notes)})" if notes else ""))
+        lines.append(f"• {html.escape(member_label(member))}")
         toggle = "↩️ Reactivate" if not member.active else "🚫 Deactivate"
         buttons.append(
             [

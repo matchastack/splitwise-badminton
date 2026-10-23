@@ -4,7 +4,7 @@ from badminton.bot.admin import NOT_ADMIN
 from badminton.db.models import AuditLog, Draft, Member
 from badminton.domain.timeutil import utc_now
 from badminton.services.drafts import cleanup_expired_drafts
-from badminton.services.members import active_members
+from badminton.services.members import active_members, member_label
 from badminton.services.tick import TickContext
 from tests.conftest import TEST_SETTINGS, BotHarness
 from tests.fake_telegram import ADMIN_ID, GROUP_ID, callback_update, message, text_update, user
@@ -129,3 +129,11 @@ async def test_member_buttons_are_admin_only(bot: BotHarness) -> None:
 
     assert bot.telegram.last("answerCallbackQuery").params["text"] == NOT_ADMIN
     assert all(m.active for m in (await members(bot)).values())
+
+
+def test_member_label_notes_the_handle_and_status() -> None:
+    assert member_label(
+        Member(display_name="zy", username="zy_h", telegram_user_id=1, active=True)
+    ) == ("zy (@zy_h)")
+    assert member_label(Member(display_name="danish", active=False)) == "danish (guest, inactive)"
+    assert member_label(Member(display_name="nic", telegram_user_id=2, active=True)) == "nic"

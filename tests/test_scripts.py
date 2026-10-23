@@ -12,7 +12,8 @@ from badminton.bot.app import build_application
 from badminton.bot.commands import ADMIN_COMMANDS, MEMBER_COMMANDS
 from badminton.db.models import Member
 from badminton.domain.sheet import SheetError
-from badminton.services.spreadsheet import ImportResult, Match
+from badminton.services.spreadsheet import ImportRefused, ImportResult, Match
+from scripts import import_spreadsheet
 from scripts.import_spreadsheet import announcement, parse_args, read_workbook, report
 from scripts.setup_telegram import configure, webhook_url
 from tests.conftest import TEST_SETTINGS
@@ -101,7 +102,7 @@ def write_sheet(path: Path) -> Path:
 
 def test_import_reads_the_items_sheet_and_reports_the_tally(tmp_path: Path) -> None:
     summary = read_workbook(write_sheet(tmp_path / "Badminton.xlsx"))
-    zy = Member(id=1, display_name="Zhen Yi", username="zzyi", telegram_user_id=111)
+    zy = Member(id=1, display_name="Zhen Yi", username="zzyi", telegram_user_id=111, active=True)
 
     lines = report(summary, [Match("zy", zy, "same name"), Match("yt", None, "new guest")], [zy])
 
@@ -151,6 +152,52 @@ def test_import_announces_each_carried_over_balance(tmp_path: Path) -> None:
         "🏸 The $76.79 tube yt bought is shuttle batch #1. "
         "It's billed by hours played once the next one is bought."
     )
+
+
+def use_test_bot_and_database(monkeypatch: pytest.MonkeyPatch, database_url: str) -> FakeTelegram:
+    """Point the import script at the test database and a fake Telegram."""
+    env = {
+        "BOT_TOKEN": TEST_SETTINGS.bot_token,
+        "WEBHOOK_SECRET": "test-secret",
+        "CRON_SECRET": "test-cron",
+        "ADMIN_TELEGRAM_IDS": str(ADMIN_ID),
+        "GROUP_CHAT_ID": str(GROUP_ID),
+        "DATABASE_URL": database_url,
+    }
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    telegram = FakeTelegram()
+    monkeypatch.setattr(import_spreadsheet, "Bot", lambda token: Bot(token, request=telegram))
+    return telegram
+
+
+async def test_import_announces_the_balances_as_html(
+    engine: object, migrated_database_url: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    telegram = use_test_bot_and_database(monkeypatch, migrated_database_url)
+
+    await import_spreadsheet.main([str(write_sheet(tmp_path / "Badminton.xlsx")), "--apply"])
+
+    post = telegram.last("sendMessage").params
+    assert (post["chat_id"], post["parse_mode"]) == (GROUP_ID, "HTML")
+    assert post["text"].startswith("📒 <b>Balances carried over from the spreadsheet</b>")
+
+
+async def test_import_dry_run_is_refused_like_apply(
+    engine: object,
+    migrated_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    use_test_bot_and_database(monkeypatch, migrated_database_url)
+    path = str(write_sheet(tmp_path / "Badminton.xlsx"))
+    await import_spreadsheet.main([path, "--apply", "--no-announce"])
+    capsys.readouterr()
+
+    with pytest.raises(ImportRefused, match="already been carried over"):
+        await import_spreadsheet.main([path])
+    assert capsys.readouterr().out == ""  # no report inviting --apply
 
 
 def test_import_member_choices_are_name_equals_id() -> None:

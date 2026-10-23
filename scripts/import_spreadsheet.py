@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import openpyxl
 from telegram import Bot
+from telegram.constants import ParseMode
 from telegram.error import TelegramError
 
 from badminton.config import Settings
@@ -33,13 +34,14 @@ from badminton.db.models import Member
 from badminton.domain.money import fmt_sgd, fmt_signed
 from badminton.domain.sheet import SheetError, SheetSummary, read_items
 from badminton.domain.timeutil import fmt_date, sgt_date, utc_now
-from badminton.services.members import all_members
+from badminton.services.members import all_members, member_label
 from badminton.services.notify import announce
 from badminton.services.spreadsheet import (
     ImportRefused,
     ImportResult,
     Match,
     TallyMismatch,
+    check_can_import,
     cutoff,
     import_sheet,
     match_members,
@@ -66,11 +68,13 @@ def read_workbook(path: Path) -> SheetSummary:
 def report(summary: SheetSummary, matches: Sequence[Match], members: Sequence[Member]) -> list[str]:
     """Who each player becomes, and how their balance tallies with the sheet."""
     lines = ["Bot members now:"]
-    lines += [f"  #{m.id} {_who(m)}" for m in members] or ["  (none yet)"]
+    lines += [f"  #{m.id} {member_label(m)}" for m in members] or ["  (none yet)"]
     lines += ["", "Player columns:"]
     for match in matches:
         target = (
-            "new guest member" if match.member is None else f"{_who(match.member)}, {match.how}"
+            "new guest member"
+            if match.member is None
+            else f"{member_label(match.member)}, {match.how}"
         )
         lines.append(f"  {match.name:<8} → {target}")
 
@@ -133,13 +137,6 @@ def announcement(summary: SheetSummary, result: ImportResult, names: dict[int, s
     return "\n".join(lines)
 
 
-def _who(member: Member) -> str:
-    notes = [f"@{member.username}"] if member.username else []
-    if member.telegram_user_id is None:
-        notes.append("guest")
-    return member.display_name + (f" ({', '.join(notes)})" if notes else "")
-
-
 def _row(*cells: str) -> str:
     name, paid, spend, surplus, tube, opening = cells
     return f"{name:<8} {paid:>10} {spend:>12} {surplus:>10} {tube:>8} {opening:>9}"
@@ -183,6 +180,7 @@ async def main(argv: list[str] | None = None) -> None:
     engine = create_engine(settings.database_url)
     try:
         async with create_sessionmaker(engine)() as db:
+            await check_can_import(db, summary)  # so a dry run is refused like --apply
             matches = await match_members(db, summary.players, dict(args.member))
             print("\n".join(report(summary, matches, await all_members(db))))
             if not args.apply:
@@ -206,7 +204,9 @@ async def main(argv: list[str] | None = None) -> None:
         return
     try:
         async with Bot(settings.bot_token) as bot:
-            await announce(bot, settings, announcement(summary, result, names))
+            # A plain Bot has no default parse mode; the bot app sets HTML for all its messages.
+            text = announcement(summary, result, names)
+            await announce(bot, settings, text, parse_mode=ParseMode.HTML)
     except TelegramError as error:
         print(f"The import is saved, but posting in the group failed: {error}", file=sys.stderr)
         return
