@@ -147,7 +147,8 @@ async def link_guest(db: AsyncSession, guest: Member, account: Member, *, now: d
 
     Everything ``account`` did moves to ``guest`` and ``account`` is deleted. Nobody
     else's figures change, so the linked member's balance is the two balances added
-    together. The guest keeps its name. The caller commits.
+    together. It takes the account's name, as for anyone who joined normally: their
+    Telegram first name, or what they set with /name. The caller commits.
     """
     if guest.telegram_user_id is not None:
         raise LinkRefused(f"{guest.display_name} is already linked to a Telegram account.")
@@ -225,14 +226,16 @@ async def link_guest(db: AsyncSession, guest: Member, account: Member, *, now: d
             await db.delete(mine)
     await db.flush()  # before deleting the account those rows pointed at
 
-    telegram_user_id, username, dm_enabled = (
+    telegram_user_id, display_name, username, dm_enabled = (
         account.telegram_user_id,
+        account.display_name,
         account.username,
         account.dm_enabled,
     )
     await db.delete(account)
     await db.flush()  # frees the Telegram user ID, which is unique
     guest.telegram_user_id = telegram_user_id
+    guest.display_name = display_name
     guest.username = username
     guest.dm_enabled = dm_enabled
     guest.active = True
