@@ -9,11 +9,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from badminton.db.models import Booking, Session, ShuttleBatch, Transfer
+from badminton.db.models import Booking, OpeningBalance, Session, ShuttleBatch, Transfer
 from badminton.domain.ledger import (
     BatchFact,
     BookingFact,
     Ledger,
+    OpeningFact,
     SessionFact,
     TransferFact,
     compute_ledger,
@@ -25,10 +26,15 @@ class LedgerFacts:
     sessions: tuple[SessionFact, ...]
     batches: tuple[BatchFact, ...]
     transfers: tuple[TransferFact, ...]
+    openings: tuple[OpeningFact, ...] = ()
 
     def ledger(self, as_of: datetime) -> Ledger:
         return compute_ledger(
-            sessions=self.sessions, transfers=self.transfers, batches=self.batches, as_of=as_of
+            sessions=self.sessions,
+            transfers=self.transfers,
+            batches=self.batches,
+            openings=self.openings,
+            as_of=as_of,
         )
 
 
@@ -40,6 +46,7 @@ async def load_facts(db: AsyncSession) -> LedgerFacts:
     )
     batches = await load_batches(db)
     transfers = await db.scalars(select(Transfer).order_by(Transfer.created_at, Transfer.id))
+    openings = await db.scalars(select(OpeningBalance).order_by(OpeningBalance.member_id))
     return LedgerFacts(
         sessions=tuple(session_fact(session) for session in sessions),
         batches=batches,
@@ -47,6 +54,7 @@ async def load_facts(db: AsyncSession) -> LedgerFacts:
             TransferFact(t.id, t.from_member_id, t.to_member_id, t.amount_cents, t.created_at)
             for t in transfers
         ),
+        openings=tuple(OpeningFact(o.member_id, o.amount_cents, o.created_at) for o in openings),
     )
 
 

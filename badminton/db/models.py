@@ -159,6 +159,17 @@ class Transfer(Base):
     created_at: Mapped[datetime] = _created_at()
 
 
+class OpeningBalance(Base):
+    """A member's balance carried over from the spreadsheet the bot replaced (FR-MIG-2)."""
+
+    __tablename__ = "opening_balances"
+    __table_args__ = (CheckConstraint("amount_cents <> 0", name="amount_nonzero"),)
+
+    member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), primary_key=True)
+    amount_cents: Mapped[int]  # signed: credit > 0, debit < 0
+    created_at: Mapped[datetime] = _created_at()
+
+
 class Invoice(Base):
     __tablename__ = "invoices"
 

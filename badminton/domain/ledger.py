@@ -65,6 +65,15 @@ class TransferFact:
     at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class OpeningFact:
+    """A balance carried over from the spreadsheet (FR-MIG-2): signed like an entry."""
+
+    member_id: int
+    amount_cents: int
+    at: datetime
+
+
 class EntryKind(StrEnum):
     COURT_PAID = "court_paid"
     COURT_SHARE = "court_share"
@@ -72,6 +81,7 @@ class EntryKind(StrEnum):
     SHUTTLE_SHARE = "shuttle_share"
     TRANSFER_SENT = "transfer_sent"
     TRANSFER_RECEIVED = "transfer_received"
+    OPENING_BALANCE = "opening_balance"
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,11 +126,13 @@ def compute_ledger(
     transfers: Iterable[TransferFact],
     as_of: datetime,
     batches: Iterable[BatchFact] = (),
+    openings: Iterable[OpeningFact] = (),
 ) -> Ledger:
     """All entries up to ``as_of``, and the resulting balance per member.
 
     Only batches recorded by ``as_of`` exist; a batch counts as closed once any
-    later-starting batch has been recorded.
+    later-starting batch has been recorded. Opening balances sum to zero, so the
+    balances still do.
     """
     known_batches = sorted(
         (batch for batch in batches if batch.created_at <= as_of),
@@ -151,6 +163,12 @@ def compute_ledger(
     for transfer in sorted(transfers, key=lambda t: (t.at, t.id)):
         if transfer.at <= as_of:
             entries.extend(_transfer_entries(transfer))
+
+    entries.extend(
+        Entry(opening.member_id, opening.at, EntryKind.OPENING_BALANCE, opening.amount_cents)
+        for opening in sorted(openings, key=lambda o: (o.at, o.member_id))
+        if opening.at <= as_of
+    )
 
     entries.sort(key=lambda entry: entry.at)
     return Ledger(

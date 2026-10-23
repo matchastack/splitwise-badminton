@@ -164,6 +164,37 @@ The only effect of a daily cron is that the "🔒 locked" summary can arrive up 
    - In the first week of a month, before the scheduled run has posted the previous month's invoice, `/invoice` posts that one instead.
    - Anything that happens after a manual invoice is included in the next one, because balances carry over.
 
+### 10. Optional: carry over balances from Badminton.xlsx
+
+If the group kept its accounts in the spreadsheet, carry everyone's balance over before the bot's first settle-up. You need the `.env` from step 6.
+
+1. Make sure the database has every migration: `DATABASE_URL='postgresql://…' uv run alembic upgrade head`. Deploy after that, as usual.
+2. Optional: ask people already in the group to send `/start` to the bot first. They can then be matched to their member record instead of becoming a guest member.
+3. Do a dry run. It changes nothing:
+
+   ```sh
+   uv run --env-file .env scripts/import_spreadsheet.py Badminton.xlsx
+   ```
+
+   It prints:
+   - the bot's members, with their IDs;
+   - which member each player column becomes. A column matches the member with the same name or @username. Anyone else becomes a guest member;
+   - a reconciliation table: Paid, Spend and Surplus per player, as on the `Total` sheet, and the opening balance the bot carries over. The opening balances sum to $0.00.
+4. If a column matched the wrong person, or none, pick the member yourself with `--member NAME=ID`, e.g. `--member zy=1`. Repeat it for each column.
+5. Import, with the same options plus `--apply`:
+
+   ```sh
+   uv run --env-file .env scripts/import_spreadsheet.py Badminton.xlsx --member zy=1 --apply
+   ```
+
+   Before saving, it checks with the ledger that every balance moved by exactly its opening balance. Then it posts the balances in the group. Add `--no-announce` to skip the post.
+
+What it carries over:
+- **One opening balance per player:** Paid − Spend, rounded to cents so the balances still sum to zero. The history isn't copied; the sheet stays the record of it. The first monthly statement shows it as "Carried over from the spreadsheet".
+- **The unused tube:** a shuttle row with no shares yet becomes the current shuttle batch. When the next `/shuttle` closes it, its buyer is credited and everyone is charged by hours played. Until then, its price isn't in its buyer's balance.
+
+It runs only once. It refuses, changing nothing, if the bot already has a shuttle batch, or a session on or before the sheet's last date.
+
 ### Environment variables
 
 | Variable | Required | Where to get it | What it does |
