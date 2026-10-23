@@ -118,7 +118,7 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
   - If both records are marked *in* for a session that has ended, the link is refused, naming the sessions. Counting the person once there would re-split costs already in everyone's balance, so the admin first marks one of them out with `/edit`, which announces that correction (FR-ADM-3).
   - For other sessions, the person counts once: *in* if either answer was *in*. Payments and settle-up lines between the two records are dropped, because they would be to themselves.
   - Open wizards that hold the account's member ID expire. The latest invoice card is refreshed.
-  - The link is announced in the group and audited.
+  - The link is announced in the group and audited. The member list it was made from then closes, without buttons; the admin sends `/members` again to link someone else.
 
 ### 4.2 Court bookings (BK)
 - **FR-BK-1:**

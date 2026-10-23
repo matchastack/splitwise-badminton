@@ -201,7 +201,7 @@ It runs only once, and the dry run is refused in the same cases as `--apply`, ch
 1. Send `/members`.
 2. Tap **🔗 Link** next to the guest.
 3. Pick their Telegram account. The newest are listed first.
-4. Check the combined balance, and confirm.
+4. Check the combined balance, and confirm. The list then closes, so a stray tap can't link anyone else; send `/members` again to link the next person.
 
 The records become one: the guest's carried-over balance, plus their Telegram account and anything they did with it. The bot then shows them by their Telegram name, like anyone who joined normally, and they can change it with `/name`. Nobody else's balance changes. The link is announced in the group.
 
