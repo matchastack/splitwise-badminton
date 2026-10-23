@@ -76,7 +76,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T37 | Setup and deployment guide | `docs/t37-setup-guide` | E1 | T07, T32 | ✅ | [#35](https://github.com/matchastack/splitwise-badminton/pull/35) |
 | T38 | Opening balances and spreadsheet import | `feat/t38-spreadsheet-import` | E10 | T14, T16, T37 | ✅ | [#61](https://github.com/matchastack/splitwise-badminton/pull/61) |
 | T39 | Link a guest to a Telegram account | `feat/t39-link-guests` | E2 | T19, T38 | ✅ | [#62](https://github.com/matchastack/splitwise-badminton/pull/62) |
-| T40 | A linked guest takes their Telegram name | `feat/t40-linked-guest-name` | E2 | T39 | ⬜ | |
+| T40 | A linked guest takes their Telegram name | `feat/t40-linked-guest-name` | E2 | T39 | ✅ | [#64](https://github.com/matchastack/splitwise-badminton/pull/64) |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
