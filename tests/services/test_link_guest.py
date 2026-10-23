@@ -71,7 +71,10 @@ async def test_linking_moves_everything_onto_the_guest(db: AsyncSession) -> None
     tapped_in = await add_session(db, 8, account, {zy: "in", guest: "out", account: "in"})
     only_account = await add_session(db, 15, zy, {zy: "in", account: "in"})
     batch = ShuttleBatch(
-        payer_member_id=account.id, amount_cents=7679, starts_at=at_sgt(date(2026, 11, 2), 0)
+        payer_member_id=account.id,
+        amount_cents=7679,
+        starts_at=at_sgt(date(2026, 11, 2), 0),
+        opened_at=at_sgt(date(2026, 11, 2), 0),
     )
     invoice = Invoice(period="2026-11", created_at=at_sgt(date(2026, 11, 20), 9))
     db.add_all([batch, invoice])

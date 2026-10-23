@@ -61,7 +61,10 @@ async def test_summary_names_the_shuttle_batch(bot: BotHarness) -> None:
     async with bot.sessionmaker() as db:
         payer = await db.scalar(select(Member.id).where(Member.display_name == "zy"))
         batch = ShuttleBatch(
-            payer_member_id=payer, amount_cents=8000, starts_at=START - timedelta(days=30)
+            payer_member_id=payer,
+            amount_cents=8000,
+            starts_at=START - timedelta(days=30),
+            opened_at=START - timedelta(days=30),
         )
         db.add(batch)
         await db.commit()

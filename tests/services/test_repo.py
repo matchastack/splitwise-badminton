@@ -6,6 +6,7 @@ from badminton.db.models import Attendance, Booking, Member, Session, ShuttleBat
 from badminton.domain.ledger import (
     BatchFact,
     BookingFact,
+    EntryKind,
     SessionFact,
     TransferFact,
     compute_ledger,
@@ -62,13 +63,18 @@ async def seed(db: AsyncSession) -> dict[str, int]:
     db.add_all(
         [
             ShuttleBatch(
-                payer_member_id=ids["zy"], amount_cents=6000, starts_at=at_sgt(date(2026, 10, 1), 0)
+                payer_member_id=ids["zy"],
+                amount_cents=6000,
+                starts_at=at_sgt(date(2026, 10, 1), 0),
+                opened_at=at_sgt(date(2026, 10, 1), 0),
             ),
             ShuttleBatch(
                 payer_member_id=ids["hw"],
                 amount_cents=7000,
                 starts_at=at_sgt(date(2026, 10, 12), 0),
+                opened_at=at_sgt(date(2026, 10, 12), 0),
             ),
+            ShuttleBatch(payer_member_id=ids["nic"], amount_cents=7679),  # still waiting
             Transfer(from_member_id=ids["shawn"], to_member_id=ids["zy"], amount_cents=500),
         ]
     )
@@ -120,7 +126,7 @@ async def test_ledger_from_database_matches_pure_ledger(db: AsyncSession) -> Non
         ],
         transfers=[TransferFact(1, shawn, zy, 500, facts.transfers[0].at)],
         batches=[
-            BatchFact(b.id, b.payer_id, b.amount_cents, b.starts_at, b.created_at)
+            BatchFact(b.id, b.payer_id, b.amount_cents, b.starts_at, b.opened_at)
             for b in facts.batches
         ],
         as_of=NOW,
@@ -131,8 +137,10 @@ async def test_ledger_from_database_matches_pure_ledger(db: AsyncSession) -> Non
     assert ledger.balances == expected.balances
     assert await get_balances(db, NOW) == expected.balances
     assert sum(ledger.balances.values()) == 0
-    # Batches were created "now" in the test, so the first one is already closed.
+    # The second batch closed the first when it was opened; the waiting one isn't a fact.
     assert ledger.open_batch_id == facts.batches[-1].id
+    paid = [e.batch_id for e in ledger.entries if e.kind is EntryKind.SHUTTLE_PAID]
+    assert paid == [facts.batches[0].id]
 
 
 async def test_last_hourly_rate(db: AsyncSession) -> None:

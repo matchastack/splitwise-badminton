@@ -1,7 +1,9 @@
-"""/shuttle <price>: the admin records a shuttlecock purchase (FR-SH-1 to FR-SH-3).
+"""/shuttle <price>: a member records a shuttlecock purchase (FR-SH-1, FR-SH-5, FR-SH-6).
 
-Recording a batch closes the previous one, and the announcement shows how that
-batch was split by hours played.
+The purchase waits until the admin finishes the batch in use with /shuttle_finished,
+so recording it closes nothing. Only one purchase can wait at a time. The sender is
+the payer; the admin picks the payer instead, to record a purchase for someone else.
+Until it is in use, its payer or the admin can cancel it from its card.
 """
 
 from __future__ import annotations
@@ -9,22 +11,27 @@ from __future__ import annotations
 import html
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
-from badminton.bot.admin import admin_only
 from badminton.bot.context import db_session, settings_of
 from badminton.bot.keyboards import decode, encode
-from badminton.db.models import Draft, Member, Session, ShuttleBatch
+from badminton.db.models import Draft, Member, ShuttleBatch
 from badminton.domain.money import fmt_sgd, parse_amount
-from badminton.domain.timeutil import fmt_date, fmt_hours, sgt_date, utc_now
+from badminton.domain.timeutil import utc_now
 from badminton.services import audit
 from badminton.services.drafts import create_draft, delete_draft, get_draft, update_data
 from badminton.services.members import active_members, upsert_from_telegram
 from badminton.services.notify import announce
-from badminton.services.repo import load_ledger
-from badminton.services.shuttle import closed_batch, split_as_of, start_options
+from badminton.services.shuttle import (
+    current_batch,
+    describe,
+    member_names,
+    remove_waiting,
+    waiting_batch,
+)
 
 KIND = "shuttle"
 CALLBACK_KIND = "sh"
@@ -32,19 +39,43 @@ MAX_SHUTTLE_CENTS = 100_000
 USAGE = "Usage: /shuttle &lt;price&gt;, e.g. /shuttle 76.79"
 
 PAYER = "pay"
-START_NEXT = "next"
-START_LAST = "last"
 RECORD = "ok"
 CANCEL = "x"
+
+ASK = "shc"
+YES = "shcy"
+KEEP = "shck"
+
+IN_USE = (
+    "Batch #{batch_id} is already in use, so it can't be cancelled. "
+    "The admin can correct it with /shuttle_edit."
+)
 
 
 def _button(text: str, draft: Draft, action: str, value: str = "") -> InlineKeyboardButton:
     return InlineKeyboardButton(text, callback_data=encode(CALLBACK_KIND, draft.id, action, value))
 
 
+async def already_waiting(db: AsyncSession, waiting: ShuttleBatch) -> str:
+    """The warning when a purchase is refused because another one waits (FR-SH-5)."""
+    return (
+        f"⚠️ Batch {describe(waiting, await member_names(db))} is already waiting to be "
+        "used. Only one purchase can wait at a time, so record this one after the admin "
+        "finishes the current batch with /shuttle_finished."
+    )
+
+
+async def use_note(db: AsyncSession) -> str:
+    """When a waiting purchase goes into use."""
+    current = await current_batch(db)
+    if current is None:
+        return "It goes into use when the admin starts it with /shuttle_finished."
+    return f"It goes into use when the admin finishes batch #{current.id}."
+
+
 async def render(db: AsyncSession, draft: Draft) -> tuple[str, InlineKeyboardMarkup]:
     data = draft.data
-    lines = [f"🏸 <b>New shuttle batch</b>: {fmt_sgd(data['amount_cents'])}"]
+    lines = [f"🏸 <b>New shuttle purchase</b>: {fmt_sgd(data['amount_cents'])}"]
     rows: list[list[InlineKeyboardButton]] = []
     if "payer_id" not in data:
         lines.append("Who paid?")
@@ -54,25 +85,19 @@ async def render(db: AsyncSession, draft: Draft) -> tuple[str, InlineKeyboardMar
     else:
         payer = await db.get(Member, data["payer_id"])
         lines.append(f"Paid by {html.escape(payer.display_name)}")
-        if "start" not in data:
-            lines.append("Which session is the first to use it?")
-            options = await start_options(db, utc_now())
-            if options.next_session is not None:
-                label = f"Next session ({fmt_date(sgt_date(options.next_session.starts_at))})"
-            else:
-                label = "From the next session on"
-            rows.append([_button(label, draft, START_NEXT)])
-            if options.last_session is not None:
-                label = f"Last session ({fmt_date(sgt_date(options.last_session.starts_at))})"
-                rows.append([_button(label, draft, START_LAST, str(options.last_session.id))])
-        else:
-            lines.append(f"Used from: {html.escape(data['start_label'])}")
-            rows.append([_button("✅ Record", draft, RECORD)])
+        lines.append(await use_note(db))
+        rows.append([_button("✅ Record", draft, RECORD)])
     rows.append([_button("✖ Cancel", draft, CANCEL)])
     return "\n".join(lines), InlineKeyboardMarkup(rows)
 
 
-@admin_only
+def cancel_markup(batch_id: int) -> InlineKeyboardMarkup:
+    """The button on a recorded purchase that lets its payer or the admin cancel it."""
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton("🗑 Cancel purchase", callback_data=f"{ASK}:{batch_id}")]]
+    )
+
+
 async def start_shuttle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
     try:
@@ -81,13 +106,21 @@ async def start_shuttle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await message.reply_text(USAGE)
         return
     async with db_session(context) as db:
+        sender = await upsert_from_telegram(db, update.effective_user)
+        await db.commit()
+        if (waiting := await waiting_batch(db)) is not None:
+            await message.reply_text(await already_waiting(db, waiting))
+            return
+        data = {"amount_cents": amount}
+        if not settings_of(context).is_admin(update.effective_user.id):
+            data["payer_id"] = sender.id
         draft = await create_draft(
             db,
             kind=KIND,
             chat_id=message.chat_id,
             user_id=update.effective_user.id,
             now=utc_now(),
-            data={"amount_cents": amount},
+            data=data,
         )
         text, markup = await render(db, draft)
         card = await message.reply_text(text, reply_markup=markup)
@@ -95,7 +128,6 @@ async def start_shuttle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await db.commit()
 
 
-@admin_only
 async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     callback = decode(query.data)
@@ -103,6 +135,10 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         draft = await get_draft(db, callback.draft_id, now=utc_now())
         if draft is None:
             await query.answer("This form has expired. Use /shuttle again.", show_alert=True)
+            return
+        if draft.user_id != update.effective_user.id:
+            owner = await db.scalar(select(Member).where(Member.telegram_user_id == draft.user_id))
+            await query.answer(f"Only {owner.display_name} can fill this in.", show_alert=True)
             return
         await query.answer()
         if callback.action == CANCEL:
@@ -115,12 +151,6 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             return
         if callback.action == PAYER:
             update_data(draft, payer_id=int(callback.value))
-        elif callback.action == START_NEXT:
-            update_data(draft, start="next", start_label="the next session")
-        elif callback.action == START_LAST:
-            session = await db.get(Session, int(callback.value))
-            label = f"{fmt_date(sgt_date(session.starts_at))} (the last session)"
-            update_data(draft, start="last", start_session_id=session.id, start_label=label)
         text, markup = await render(db, draft)
         await db.commit()
         await query.edit_message_text(text, reply_markup=markup)
@@ -130,74 +160,132 @@ async def _record(
     update: Update, context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft
 ) -> None:
     data = draft.data
-    now = utc_now()
-    if data["start"] == "last":
-        starts_at = (await db.get(Session, data["start_session_id"])).starts_at
-    else:
-        starts_at = now
-    previous = await db.scalar(
-        select(ShuttleBatch)
-        .where(ShuttleBatch.starts_at < starts_at)
-        .order_by(ShuttleBatch.starts_at.desc())
-        .limit(1)
-    )
-    batch = ShuttleBatch(
-        payer_member_id=data["payer_id"], amount_cents=data["amount_cents"], starts_at=starts_at
-    )
-    db.add(batch)
-    admin = await upsert_from_telegram(db, update.effective_user)
-    await db.flush()
+    query = update.callback_query
+    batch = None
+    if await waiting_batch(db) is None:
+        batch = ShuttleBatch(payer_member_id=data["payer_id"], amount_cents=data["amount_cents"])
+        db.add(batch)
+        try:
+            await db.flush()
+        except IntegrityError:  # another purchase was recorded at the same moment
+            await db.rollback()
+            batch = None
+            draft = await db.get(Draft, draft.id)
+    if batch is None:
+        if draft is not None:
+            await delete_draft(context.bot, db, draft)
+            await db.commit()
+        waiting = await waiting_batch(db)
+        await query.edit_message_text(
+            await already_waiting(db, waiting)
+            if waiting
+            else "Something changed. Use /shuttle again."
+        )
+        return
+
+    sender = await upsert_from_telegram(db, update.effective_user)
     audit.record(
         db,
-        actor_member_id=admin.id,
+        actor_member_id=sender.id,
         action="shuttle.add",
         after={
             "batch_id": batch.id,
             "payer_id": batch.payer_member_id,
             "amount_cents": batch.amount_cents,
-            "starts_at": starts_at,
         },
     )
     await delete_draft(context.bot, db, draft)
     await db.commit()
 
-    names = {m.id: m.display_name for m in await db.scalars(select(Member))}
-    lines = [
-        f"🏸 <b>New shuttle batch #{batch.id}</b>: {fmt_sgd(batch.amount_cents)}, "
-        f"paid by {html.escape(names[batch.payer_member_id])}. "
-        f"It's used from {html.escape(data['start_label'])}."
-    ]
-    if previous is not None:
-        lines.append("")
-        lines.extend(await _closed_lines(db, previous, batch, names))
-    await update.callback_query.edit_message_text(f"✅ Recorded shuttle batch #{batch.id}.")
-    await announce(context.bot, settings_of(context), "\n".join(lines))
+    names = await member_names(db)
+    payer = html.escape(names[batch.payer_member_id])
+    await query.edit_message_text(
+        f"✅ Recorded shuttle purchase #{batch.id}.", reply_markup=cancel_markup(batch.id)
+    )
+    await announce(
+        context.bot,
+        settings_of(context),
+        f"🛍 <b>New shuttle batch #{batch.id}</b>: {fmt_sgd(batch.amount_cents)}, "
+        f"paid by {payer}. {await use_note(db)}",
+    )
 
 
-async def _closed_lines(
-    db: AsyncSession, previous: ShuttleBatch, batch: ShuttleBatch, names: dict[int, str]
-) -> list[str]:
-    # A session in progress belongs to the closed batch, so count it as played.
-    as_of = await split_as_of(db, batch.starts_at, utc_now())
-    split = closed_batch(await load_ledger(db, as_of), previous.id)
-    if split is None or not split.shares:
-        payer = html.escape(names[previous.payer_member_id])
-        return [
-            f"Batch #{previous.id} is finished. Nobody played with it, so it stays with {payer}."
-        ]
-    per_hour = fmt_sgd(round(split.amount_cents * 60 / split.minutes))
-    lines = [
-        f"Batch #{previous.id} is finished: {fmt_sgd(split.amount_cents)} over "
-        f"{fmt_hours(split.minutes)} = {per_hour}/h"
-    ]
-    lines += [
-        f"• {html.escape(names[member_id])} {fmt_hours(minutes)} — {fmt_sgd(cents)}"
-        for member_id, minutes, cents in split.shares
-    ]
-    lines.append("These amounts go on the next monthly invoice.")
-    return lines
+async def on_cancel_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    action, batch_id = query.data.split(":")
+    async with db_session(context) as db:
+        batch = await db.get(ShuttleBatch, int(batch_id))
+        if batch is None:
+            await query.answer("This purchase is already cancelled.", show_alert=True)
+            await query.edit_message_reply_markup(None)
+            return
+        payer = await db.get(Member, batch.payer_member_id)
+        user_id = update.effective_user.id
+        if user_id != payer.telegram_user_id and not settings_of(context).is_admin(user_id):
+            await query.answer(
+                f"Only {payer.display_name} or the admin can cancel this purchase.",
+                show_alert=True,
+            )
+            return
+        if not batch.waiting:
+            await query.answer(IN_USE.format(batch_id=batch.id), show_alert=True)
+            await query.edit_message_reply_markup(None)
+            return
+
+        if action == ASK:
+            await query.answer()
+            await query.edit_message_reply_markup(
+                InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                "Yes, cancel it", callback_data=f"{YES}:{batch.id}"
+                            ),
+                            InlineKeyboardButton("Keep it", callback_data=f"{KEEP}:{batch.id}"),
+                        ]
+                    ]
+                )
+            )
+            return
+        if action == KEEP:
+            await query.answer()
+            await query.edit_message_reply_markup(cancel_markup(batch.id))
+            return
+
+        names = await member_names(db)
+        if not await remove_waiting(db, batch):
+            await query.answer(IN_USE.format(batch_id=batch.id), show_alert=True)
+            await query.edit_message_reply_markup(None)
+            return
+        actor = await upsert_from_telegram(db, update.effective_user)
+        audit.record(
+            db,
+            actor_member_id=actor.id,
+            action="shuttle.cancel",
+            before={
+                "batch_id": batch.id,
+                "payer_id": batch.payer_member_id,
+                "amount_cents": batch.amount_cents,
+            },
+        )
+        await db.commit()
+
+        who = html.escape(actor.display_name)
+        await query.answer("Purchase cancelled.")
+        await query.edit_message_text(
+            f"🗑 <s>Shuttle purchase {describe(batch, names)}</s>\nCancelled by {who}."
+        )
+        await announce(
+            context.bot,
+            settings_of(context),
+            f"🗑 {who} cancelled shuttle purchase {describe(batch, names)}. "
+            "It wasn't in use yet, so nobody is charged for it.",
+        )
 
 
 def register(application: Application) -> None:
     application.add_handler(CommandHandler("shuttle", start_shuttle))
     application.add_handler(CallbackQueryHandler(on_button, pattern=rf"^{CALLBACK_KIND}:\d+:"))
+    application.add_handler(
+        CallbackQueryHandler(on_cancel_button, pattern=rf"^({ASK}|{YES}|{KEEP}):\d+$")
+    )

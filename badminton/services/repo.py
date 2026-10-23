@@ -59,10 +59,15 @@ async def load_facts(db: AsyncSession) -> LedgerFacts:
 
 
 async def load_batches(db: AsyncSession) -> tuple[BatchFact, ...]:
-    """Every shuttle batch, sorted by start."""
-    batches = await db.scalars(select(ShuttleBatch).order_by(ShuttleBatch.starts_at))
+    """Every shuttle batch that has been put in use, sorted by start. A purchase still
+    waiting isn't billed and covers no session yet (FR-SH-5)."""
+    batches = await db.scalars(
+        select(ShuttleBatch)
+        .where(ShuttleBatch.opened_at.is_not(None))
+        .order_by(ShuttleBatch.starts_at)
+    )
     return tuple(
-        BatchFact(b.id, b.payer_member_id, b.amount_cents, b.starts_at, b.created_at)
+        BatchFact(b.id, b.payer_member_id, b.amount_cents, b.starts_at, b.opened_at)
         for b in batches
     )
 

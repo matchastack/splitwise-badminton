@@ -7,6 +7,7 @@ from telegram import BotCommand
 
 MEMBER_COMMANDS: tuple[BotCommand, ...] = (
     BotCommand("book", "Send as the caption of your booking screenshot"),
+    BotCommand("shuttle", "Record a shuttlecock purchase"),
     BotCommand("balance", "Your balance and pending shuttle hours"),
     BotCommand("upcoming", "Upcoming sessions"),
     BotCommand("name", "Set the name I show for you"),
@@ -16,7 +17,8 @@ MEMBER_COMMANDS: tuple[BotCommand, ...] = (
 ADMIN_COMMANDS: tuple[BotCommand, ...] = (
     *MEMBER_COMMANDS,
     BotCommand("edit", "Correct a session's attendance or bookings"),
-    BotCommand("shuttle", "Record a shuttlecock purchase"),
+    BotCommand("shuttle_finished", "Finish the current shuttle batch"),
+    BotCommand("shuttle_edit", "Correct a shuttle batch"),
     BotCommand("settle", "Record a payment made outside the bot"),
     BotCommand("addmember", "Add a member who isn't on Telegram"),
     BotCommand("members", "List, rename or deactivate members"),

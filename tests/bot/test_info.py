@@ -65,7 +65,10 @@ async def test_balance_shows_pending_shuttle_hours(bot: BotHarness) -> None:
     async with bot.sessionmaker() as db:
         payer = await db.scalar(select(Member.id).where(Member.telegram_user_id == ADMIN_ID))
         batch = ShuttleBatch(
-            payer_member_id=payer, amount_cents=7679, starts_at=utc_now() - timedelta(days=1)
+            payer_member_id=payer,
+            amount_cents=7679,
+            starts_at=utc_now() - timedelta(days=1),
+            opened_at=utc_now() - timedelta(days=1),
         )
         db.add(batch)
         await db.commit()
@@ -76,6 +79,30 @@ async def test_balance_shows_pending_shuttle_hours(bot: BotHarness) -> None:
     assert text.splitlines()[1] == (
         f"🏸 Current shuttle batch #{batch.id}: 2h played so far. "
         "It's billed once the batch is finished."
+    )
+
+
+async def test_balance_shows_a_waiting_batch(bot: BotHarness) -> None:
+    shawn = await member_id(bot, SHAWN["id"], "shawn")
+    async with bot.sessionmaker() as db:
+        waiting = ShuttleBatch(payer_member_id=shawn, amount_cents=7679)
+        db.add(waiting)
+        await db.commit()
+
+    nothing_in_use = await reply(bot, "/balance", SHAWN)
+    async with bot.sessionmaker() as db:
+        start = utc_now() - timedelta(days=1)
+        db.add(
+            ShuttleBatch(payer_member_id=shawn, amount_cents=8000, starts_at=start, opened_at=start)
+        )
+        await db.commit()
+    one_in_use = await reply(bot, "/balance", SHAWN)
+
+    assert nothing_in_use.splitlines()[1] == (
+        f"🛍 Batch #{waiting.id} ($76.79, paid by shawn) is waiting to be put in use."
+    )
+    assert one_in_use.splitlines()[2] == (
+        f"🛍 Batch #{waiting.id} ($76.79, paid by shawn) is waiting to take over."
     )
 
 

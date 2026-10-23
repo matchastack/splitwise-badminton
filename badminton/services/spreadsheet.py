@@ -22,7 +22,7 @@ from badminton.services import audit
 from badminton.services.members import all_members, clean_name
 from badminton.services.repo import get_balances
 
-# Batches and payments can't be removed in the bot, so there's no undoing them here.
+# Batches in use and payments can't be removed in the bot, so there's no undoing them here.
 FRESH_DATABASE = "Import into a new, empty database instead."
 
 
@@ -107,7 +107,8 @@ async def check_can_import(db: AsyncSession, summary: SheetSummary) -> None:
     if await db.scalar(select(OpeningBalance.member_id).limit(1)) is not None:
         raise ImportRefused("Balances have already been carried over from the spreadsheet.")
     first_batch = await db.scalar(select(func.min(ShuttleBatch.starts_at)))
-    if summary.pending is not None and first_batch is not None:
+    any_batch = await db.scalar(select(ShuttleBatch.id).limit(1))  # waiting ones too
+    if summary.pending is not None and any_batch is not None:
         raise ImportRefused(
             "A shuttle batch is already recorded, but the sheet's unused tube must become "
             f"the first batch. {FRESH_DATABASE}"
@@ -166,6 +167,7 @@ async def import_sheet(
             payer_member_id=member_ids[summary.pending.payer],
             amount_cents=summary.pending.amount_cents,
             starts_at=cutoff(summary),
+            opened_at=now,
             created_at=now,
         )
         db.add(batch)

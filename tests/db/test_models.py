@@ -49,7 +49,9 @@ async def test_round_trip_every_model(db: AsyncSession) -> None:
             ),
             Attendance(session_id=session.id, member_id=zy.id, status="in"),
             Attendance(session_id=session.id, member_id=guest.id, status="out"),
-            ShuttleBatch(payer_member_id=zy.id, amount_cents=7679, starts_at=START),
+            ShuttleBatch(
+                payer_member_id=zy.id, amount_cents=7679, starts_at=START, opened_at=START
+            ),
             Draft(
                 kind="booking", chat_id=-100, user_id=111, data={"step": "date"}, expires_at=START
             ),
@@ -124,10 +126,35 @@ async def test_one_batch_per_start_time(db: AsyncSession) -> None:
     zy, _ = await add_members(db)
     db.add_all(
         [
-            ShuttleBatch(payer_member_id=zy.id, amount_cents=8000, starts_at=START),
-            ShuttleBatch(payer_member_id=zy.id, amount_cents=7679, starts_at=START),
+            ShuttleBatch(
+                payer_member_id=zy.id, amount_cents=8000, starts_at=START, opened_at=START
+            ),
+            ShuttleBatch(
+                payer_member_id=zy.id,
+                amount_cents=7679,
+                starts_at=START,
+                opened_at=START + timedelta(days=1),
+            ),
         ]
     )
+
+    with pytest.raises(IntegrityError):
+        await db.flush()
+
+
+async def test_only_one_batch_waits(db: AsyncSession) -> None:
+    zy, _ = await add_members(db)
+    db.add(ShuttleBatch(payer_member_id=zy.id, amount_cents=8000))
+    await db.flush()
+    db.add(ShuttleBatch(payer_member_id=zy.id, amount_cents=7679))
+
+    with pytest.raises(IntegrityError):
+        await db.flush()
+
+
+async def test_a_batch_starts_when_it_is_opened(db: AsyncSession) -> None:
+    zy, _ = await add_members(db)
+    db.add(ShuttleBatch(payer_member_id=zy.id, amount_cents=8000, starts_at=START))
 
     with pytest.raises(IntegrityError):
         await db.flush()

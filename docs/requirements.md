@@ -50,8 +50,8 @@ Out of scope for v1 is listed in [§8](#8-out-of-scope-v1).
 | **Session** | One or more bookings on the same day that overlap or run back-to-back, played as one block. Start = earliest booking start; end = latest booking end. |
 | **Attendance** | A member's answer for a session: *in* or *out*. No answer counts as *out*. |
 | **Share** | 1 hour played = 1 share. Used to split shuttle batches. |
-| **Shuttle batch** | One shuttlecock purchase. It covers every session that starts on or after the batch's start point, until the next batch starts. |
-| **Open / closed batch** | The most recent batch is *open*. A batch *closes* when a newer batch is recorded. |
+| **Shuttle batch** | One shuttlecock purchase. Once in use, it covers every session that starts on or after the batch's start point, until the next batch starts. |
+| **Waiting / open / closed batch** | A new purchase *waits* until the admin finishes the batch in use; at most one batch waits. The batch in use is *open*. It *closes* when the admin finishes it, and the waiting batch becomes the open one. |
 | **Balance** | Credits − debits for a member over all time. Positive = the group owes them; negative = they owe the group. |
 | **Settle-up** | A list of transfers that brings every balance back to (about) zero. |
 | **SGT** | Singapore Time, UTC+8. Every user-facing date and time is in SGT. |
@@ -59,8 +59,8 @@ Out of scope for v1 is listed in [§8](#8-out-of-scope-v1).
 ## 2. Users and stakeholders
 | Role | Needs |
 |---|---|
-| **Member** | Report bookings quickly, answer attendance with one tap, know what they owe and to whom. |
-| **Admin** | Stop manual bookkeeping, record shuttle purchases, fix mistakes, keep the group's trust through transparency. |
+| **Member** | Report bookings and shuttle purchases quickly, answer attendance with one tap, know what they owe and to whom. |
+| **Admin** | Stop manual bookkeeping, say when a shuttle batch is finished, fix mistakes, keep the group's trust through transparency. |
 | **Guest** (non-Telegram) | Be charged correctly when the admin adds them to a session. |
 
 ## 3. Operating environment and constraints
@@ -177,15 +177,30 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
   - The admin is notified by DM so they can fix the attendance or cancel the session.
 
 ### 4.4 Shuttlecock batches (SH)
-- **FR-SH-1:** `/shuttle <price>` (admin) records a purchase. The admin then picks:
-  - the payer, from a list of members;
-  - the start point: **[Next session]** (default) or **[Last session]**, the latter for shuttles already used in the most recent session.
-- **FR-SH-2:** Recording a batch closes the previous open batch.
-- **FR-SH-3:** The group announcement must include:
-  - the new batch: price and payer;
-  - the batch that just closed: total hours, price per hour, and each player's hours and amount.
+- **FR-SH-1:** Any member records a shuttlecock purchase with `/shuttle <price>`.
+  - The sender is the payer, as for a booking (FR-BK-1). The admin picks the payer from a list of members instead, to record a purchase for someone else.
+  - The card shows the price and payer with **[✅ Record] [✖ Cancel]**. Only the sender can operate it.
+  - The purchase becomes the *waiting* batch, for when the batch in use runs out. Nothing closes and nothing is billed. It is announced in the group.
+- **FR-SH-2:** `/shuttle_finished` (admin) finishes the open batch: it closes, and the waiting batch becomes the open one. The admin picks the waiting batch's start point: **[Next session]** (default) or **[Last session]**, the latter for shuttles already used in the most recent session.
+  - With no waiting batch, `/shuttle_finished` is refused: the next purchase must be recorded first.
+  - With no open batch yet (the very first purchase), it puts the waiting batch in use.
+- **FR-SH-3:** The group announcement when a batch is finished must include:
+  - the batch that just closed: total hours, price per hour, and each player's hours and amount;
+  - the batch now in use: price, payer and start point.
 - **FR-SH-4:** A session belongs to the batch with the latest start point at or before the session's start.
   - Sessions before the first batch have no shuttle cost.
+- **FR-SH-5:** At most one batch waits.
+  - `/shuttle <price>` while a batch is waiting is refused with a warning that names it.
+  - The database enforces this too, so two purchases recorded at the same moment can't both wait.
+- **FR-SH-6:** While a purchase is waiting, its payer or the admin can cancel it from its card. A second tap confirms.
+  - Anyone else gets an alert.
+  - Once the batch is in use it can't be cancelled; the admin corrects it instead (FR-SH-7).
+  - The cancellation is announced in the group and audited.
+- **FR-SH-7:** `/shuttle_edit` (admin) lists the waiting batch, the open batch and the most recent closed ones. For a chosen batch the admin can:
+  - change its price or payer; for a closed batch, the announcement shows the recalculated split;
+  - remove it, while it is waiting;
+  - undo `/shuttle_finished`, on the open batch: it goes back to waiting and the batch before it is open again, so that batch's split is withdrawn. This is refused while another batch is waiting (FR-SH-5).
+  - Every change is announced and audited (FR-ADM-3, FR-ADM-5).
 
 ### 4.5 Cost rules and balances (LED)
 - **FR-LED-1:**
@@ -201,12 +216,13 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
 - **FR-LED-4:**
   - An **open** batch is not billed: the payer is not credited and no one is debited.
   - Members can see their hours in it so far as "pending".
+  - A **waiting** batch is not billed either, and covers no session yet.
 - **FR-LED-5:** A **transfer** credits the sender and debits the receiver.
 - **FR-LED-6:** Balance = credits − debits over all time. The sum of all members' balances must always be zero.
 - **FR-LED-7:**
   - Costs and shares are derived from stored facts (bookings, attendance, batches, transfers, and the opening balances carried over from the spreadsheet, FR-MIG-2). They are never stored.
   - Any correction therefore flows through to every figure automatically.
-- **FR-LED-8:** `/balance` shows the caller's balance, their pending hours in the open batch, and any unpaid settle-up lines involving them.
+- **FR-LED-8:** `/balance` shows the caller's balance, their pending hours in the open batch, the waiting batch (if any), and any unpaid settle-up lines involving them.
 - **FR-LED-9:** `/upcoming` lists scheduled sessions with their date, time, hours and payer(s).
 
 Worked examples:
@@ -260,7 +276,7 @@ Worked examples:
 - **FR-ADM-4:**
   - `/settle` (admin) records a manual transfer: from, to and amount.
   - It is announced in the group.
-- **FR-ADM-5:** Every admin change and every booking cancellation is written to an audit log: who, what, before and after, and when.
+- **FR-ADM-5:** Every admin change, every shuttle purchase, and every booking or purchase cancellation is written to an audit log: who, what, before and after, and when.
 - **FR-ADM-6:** Admin commands work in the group or in a private chat with the bot. Announcements always go to the group.
 
 ### 4.8 Group moderation (MOD)
@@ -319,7 +335,7 @@ Worked examples:
     - a session before the batch start;
     - a shuttle batch starting, or a payment recorded, before the batch start;
     - any shuttle batch, when the sheet has an unused tube.
-  - Batches and payments can't be removed in the bot, so the refusal says to import into a new, empty database.
+  - Batches in use and payments can't be removed in the bot, so the refusal says to import into a new, empty database.
 
 ## 5. Non-functional requirements
 | ID | Category | Requirement |
@@ -342,12 +358,14 @@ Worked examples:
 | `/start` | anyone | DM | Link account, enable DM statements |
 | `/help` | anyone | any | List available commands |
 | `/book` (photo caption) | member | group | Start the booking wizard |
+| `/shuttle <price>` | member | any | Record a shuttle purchase; it waits until the current batch is finished |
 | `/balance` | member | any | Balance, pending shuttle hours, unpaid lines |
 | `/upcoming` | member | any | Scheduled sessions |
 | `/name <name>` | member | any | Set display name |
 | `/chatid` | anyone | any | Show chat ID (setup) |
 | `/edit` | admin | any | Correct a session's attendance, bookings, or cancel it |
-| `/shuttle <price>` | admin | any | Record a shuttle batch |
+| `/shuttle_finished` | admin | any | Finish the open shuttle batch; the waiting one takes over |
+| `/shuttle_edit` | admin | any | Correct a shuttle batch's price or payer, remove a waiting one, or undo a finish |
 | `/settle` | admin | any | Record a manual transfer |
 | `/addmember <name>` | admin | any | Add a guest member |
 | `/members` | admin | any | List, rename or deactivate members; link a guest to a Telegram account |
@@ -369,7 +387,7 @@ Worked examples:
 | Session | starts_at, ends_at, status (scheduled / cancelled), card message ref, card_sent_at, locked_at |
 | Booking | session, payer, starts_at, minutes, amount_cents, photo_file_id, submitted_by |
 | Attendance | session, member, status (in / out) |
-| ShuttleBatch | payer, amount_cents, starts_at |
+| ShuttleBatch | payer, amount_cents, starts_at and opened_at (both empty while waiting; at most one waits) |
 | Transfer | from, to, amount_cents, invoice line (optional), recorded_by |
 | OpeningBalance | member (one each), amount_cents (signed), created_at |
 | Invoice / InvoiceLine / InvoiceBalance | period (unique), lines, per-member closing balance |
@@ -425,9 +443,13 @@ Acceptance criteria are brief; the referenced FRs hold the detail.
 - **US-4.5:** As the admin, I want to be told when a session ends with nobody marked in, so that I can fix it. *(FR-ATT-7)*
 
 ### E5 — Shuttlecock batches
-- **US-5.1:** As the admin, I want to record a shuttle purchase and who paid, so that its cost is shared by usage. *(FR-SH-1, FR-SH-4)*
-- **US-5.2:** As a member, when a new batch is bought I want to see how the old batch was split, so that the shuttle cost is transparent. *(FR-SH-2, FR-SH-3, FR-LED-3)*
-- **US-5.3:** As a member, I want to see my hours so far in the current batch. *(FR-LED-4, FR-LED-8)*
+- **US-5.1:** As a member who bought shuttlecocks, I want to record the purchase myself, so that its cost is shared by usage. *(FR-SH-1, FR-SH-4)*
+  - I can record it before the current batch runs out; it waits until then.
+- **US-5.2:** As a member, when a batch is finished I want to see how it was split, so that the shuttle cost is transparent. *(FR-SH-2, FR-SH-3, FR-LED-3)*
+- **US-5.3:** As a member, I want to see my hours so far in the current batch, and whether a new one is waiting. *(FR-LED-4, FR-LED-8)*
+- **US-5.4:** As the admin, I want to say when the current batch is finished, so that later sessions count towards the next one. *(FR-SH-2, FR-SH-5)*
+  - Only one purchase can wait, so there is never doubt about which batch comes next.
+- **US-5.5:** As a member, I want to cancel a purchase I recorded by mistake, before it is used. *(FR-SH-6)*
 
 ### E6 — Cost engine
 - **US-6.1:** As a member, I want court costs split equally among the people who played, and the booker credited. *(FR-LED-2)*
@@ -449,6 +471,7 @@ Acceptance criteria are brief; the referenced FRs hold the detail.
 - **US-8.2:** As the admin, I want to correct a booking's price, payer or hours, or cancel a session. *(FR-ADM-2, FR-ADM-3)*
 - **US-8.3:** As the admin, I want to record a payment made outside the bot. *(FR-ADM-4)*
 - **US-8.4:** As the group, we want every admin change logged, and non-admins unable to make admin changes. *(FR-ADM-1, FR-ADM-5, FR-ADM-6)*
+- **US-8.5:** As the admin, I want to correct a shuttle batch's price or payer, remove a mistaken purchase, or undo a mistaken finish. *(FR-SH-7, FR-ADM-3)*
 
 ### E9 — Group moderation
 - **US-9.1:** As the admin, I want the group to contain only bot activity, so that cards and settle-ups are easy to find. *(FR-MOD-1, FR-MOD-3)*

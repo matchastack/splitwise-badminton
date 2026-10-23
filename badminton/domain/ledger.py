@@ -45,15 +45,15 @@ class SessionFact:
 
 @dataclass(frozen=True, slots=True)
 class BatchFact:
-    """A shuttlecock purchase. It covers sessions starting at or after ``starts_at``
-    until the next batch's start (FR-SH-4), and closes when a later-starting batch
-    is recorded (FR-SH-2)."""
+    """A shuttlecock batch that has been put in use (a purchase still waiting is not a
+    fact yet). It covers sessions starting at or after ``starts_at`` until the next
+    batch's start (FR-SH-4), and closes when a later-starting batch is opened (FR-SH-2)."""
 
     id: int
     payer_id: int
     amount_cents: int
     starts_at: datetime
-    created_at: datetime
+    opened_at: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,12 +130,12 @@ def compute_ledger(
 ) -> Ledger:
     """All entries up to ``as_of``, and the resulting balance per member.
 
-    Only batches recorded by ``as_of`` exist; a batch counts as closed once any
-    later-starting batch has been recorded. Opening balances sum to zero, so the
+    Only batches opened by ``as_of`` exist; a batch counts as closed once any
+    later-starting batch has been opened. Opening balances sum to zero, so the
     balances still do.
     """
     known_batches = sorted(
-        (batch for batch in batches if batch.created_at <= as_of),
+        (batch for batch in batches if batch.opened_at <= as_of),
         key=lambda batch: batch.starts_at,
     )
     entries: list[Entry] = []
@@ -157,7 +157,7 @@ def compute_ledger(
     for index, batch in enumerate(known_batches):
         later = known_batches[index + 1 :]
         if later:
-            closed_at = min(successor.created_at for successor in later)
+            closed_at = min(successor.opened_at for successor in later)
             entries.extend(_shuttle_entries(batch, batch_minutes[batch.id], closed_at))
 
     for transfer in sorted(transfers, key=lambda t: (t.at, t.id)):
