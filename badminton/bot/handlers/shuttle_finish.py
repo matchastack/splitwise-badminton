@@ -112,7 +112,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     callback = decode(query.data)
     async with db_session(context) as db:
-        draft = await get_draft(db, callback.draft_id, now=utc_now())
+        draft = await get_draft(db, callback.draft_id, now=utc_now(), lock=True)
         if draft is None:
             await query.answer(
                 "This form has expired. Use /shuttle_finished again.", show_alert=True

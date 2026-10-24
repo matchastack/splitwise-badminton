@@ -2,6 +2,7 @@ from datetime import timedelta
 
 import pytest
 from sqlalchemy import select, update
+from sqlalchemy.exc import SAWarning
 
 from badminton.bot.handlers import shuttle as shuttle_handler
 from badminton.bot.handlers.shuttle import ALREADY_CANCELLED, IN_THE_GROUP, IN_USE
@@ -22,9 +23,10 @@ from tests.bot.shuttle_helpers import (
     seed_members,
 )
 from tests.conftest import BotHarness
-from tests.fake_telegram import GROUP_ID, text_update, user
+from tests.fake_telegram import GROUP_ID, callback_update, text_update, user
 
 USAGE = "Usage: /shuttle &lt;price&gt;, e.g. /shuttle 76.79"
+EXPIRED = "This form has expired. Use /shuttle again."
 
 
 async def test_shuttle_needs_a_price(bot: BotHarness) -> None:
@@ -111,6 +113,40 @@ async def test_a_purchase_recorded_while_the_form_was_open_wins(bot: BotHarness)
     (waiting,) = await batches(bot)
     assert waiting.amount_cents == 7679
     assert late.text.startswith(f"⚠️ Batch #{waiting.id} ($76.79, paid by bob) is already")
+
+
+async def test_a_second_record_tap_keeps_the_receipt(bot: BotHarness) -> None:
+    """The second tap of a double-tap waits for the first, then finds the form gone."""
+    card = await Card.open(bot, "/shuttle 76.79", BOB)
+    record = callback_update(card.buttons()["✅ Record"], sender=BOB, on_message=card.message)
+    await bot.send(record)
+    edits = len(bot.telegram.calls_to("editMessageText"))
+
+    await bot.send(record)
+
+    (batch,) = await batches(bot)
+    assert card.last_alert() == EXPIRED
+    assert len(bot.telegram.calls_to("editMessageText")) == edits
+    assert card.text == f"✅ Recorded shuttle purchase #{batch.id}."
+    assert set(card.buttons()) == {"🗑 Cancel purchase"}
+
+
+async def test_a_double_tap_on_record_records_once(
+    bot: BotHarness, recwarn: pytest.WarningsRecorder
+) -> None:
+    card = await Card.open(bot, "/shuttle 76.79", BOB)
+
+    await bot.double_tap(
+        callback_update(card.buttons()["✅ Record"], sender=BOB, on_message=card.message)
+    )
+
+    (batch,) = await batches(bot)
+    answers = [call.params.get("text") for call in bot.telegram.calls_to("answerCallbackQuery")]
+    assert sorted(answers, key=str) == [None, EXPIRED]  # one went through
+    assert card.text == f"✅ Recorded shuttle purchase #{batch.id}."
+    assert set(card.buttons()) == {"🗑 Cancel purchase"}
+    assert not any("already waiting" in text for text in bot.telegram.sent_texts())
+    assert not [w for w in recwarn if issubclass(w.category, SAWarning)]
 
 
 async def test_members_record_in_the_group_only(bot: BotHarness) -> None:

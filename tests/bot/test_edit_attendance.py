@@ -7,9 +7,9 @@ from badminton.db.models import Attendance, AuditLog, Member, Session
 from badminton.domain.timeutil import at_sgt, fmt_date, fmt_session, fmt_time, sgt_date, utc_now
 from badminton.services.attendance import set_attendance
 from tests.bot.attendance_helpers import make_session, post
-from tests.bot.edit_helpers import EditCard
+from tests.bot.edit_helpers import ALICE, EditCard
 from tests.conftest import BotHarness
-from tests.fake_telegram import GROUP_ID, text_update, user
+from tests.fake_telegram import GROUP_ID, callback_update, text_update, user
 
 START = at_sgt(date(2026, 10, 4), 11)
 WHEN = fmt_session(START, START + timedelta(hours=2))
@@ -115,6 +115,27 @@ async def test_change_attendance_announces_and_audits(bot: BotHarness) -> None:
         ["bob", "dave"],
         ["bob", "carol"],
     )
+
+
+async def test_a_second_save_tap_keeps_the_result(bot: BotHarness) -> None:
+    """The second tap of a double-tap waits for the first, then finds the form gone."""
+    await setup(bot)
+    card = await EditCard(bot).open()
+    await card.tap_starting(fmt_date(date(2026, 10, 4)))
+    await card.tap("👥 Attendance")
+    await card.tap("⬜ carol")
+    save = callback_update(card.buttons()["💾 Save"], sender=ALICE, on_message=card.message)
+    await bot.send(save)
+    edits = len(edits_of(bot, card.message["message_id"]))
+
+    await bot.send(save)
+
+    alert = bot.telegram.last("answerCallbackQuery").params["text"]
+    assert alert == "This form has expired. Use /edit again."
+    assert len(edits_of(bot, card.message["message_id"])) == edits
+    assert card.text == f"✅ Saved attendance for {WHEN}."
+    async with bot.sessionmaker() as db:
+        assert len((await db.scalars(select(AuditLog))).all()) == 1
 
 
 async def test_saving_keeps_answers_given_while_editing(bot: BotHarness) -> None:

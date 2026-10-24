@@ -19,7 +19,7 @@ from tests.bot.shuttle_helpers import (
     seed_members,
 )
 from tests.conftest import BotHarness
-from tests.fake_telegram import GROUP_ID, text_update
+from tests.fake_telegram import GROUP_ID, callback_update, text_update
 
 
 async def finish(bot: BotHarness, start: str = "From the next session on") -> Card:
@@ -74,6 +74,27 @@ async def test_finishing_puts_the_waiting_batch_in_use_and_shows_the_split(
         audit = await db.scalar(select(AuditLog).where(AuditLog.action == "shuttle.finish"))
     assert ledger.open_batch_id == new
     assert audit.payload["before"] == {"in_use": old}
+
+
+async def test_a_second_finish_tap_keeps_the_result(bot: BotHarness) -> None:
+    """The second tap of a double-tap waits for the first, then finds the form gone."""
+    await purchase(bot, "76.79")
+    card = await Card.open(bot, "/shuttle_finished")
+    await card.tap("From the next session on")
+    finish_tap = callback_update(
+        card.buttons()["✅ Start batch #1"], sender=ALICE, on_message=card.message
+    )
+    await bot.send(finish_tap)
+    edits = len(bot.telegram.calls_to("editMessageText"))
+
+    await bot.send(finish_tap)
+
+    assert card.last_alert() == "This form has expired. Use /shuttle_finished again."
+    assert len(bot.telegram.calls_to("editMessageText")) == edits
+    assert card.text == "✅ Batch #1 is in use."
+    async with bot.sessionmaker() as db:
+        finished = await db.scalars(select(AuditLog).where(AuditLog.action == "shuttle.finish"))
+        assert len(finished.all()) == 1
 
 
 async def test_split_counts_a_session_in_progress(bot: BotHarness) -> None:

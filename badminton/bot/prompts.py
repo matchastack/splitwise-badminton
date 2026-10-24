@@ -86,6 +86,7 @@ async def handle_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             chat_id=message.chat_id,
             prompt_message_id=message.reply_to_message.message_id,
             now=utc_now(),
+            lock=True,
         )
         if draft is None or draft.user_id != update.effective_user.id:
             await guard.delete_unless_exempt(update, context)

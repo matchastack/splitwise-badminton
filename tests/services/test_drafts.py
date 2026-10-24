@@ -1,8 +1,10 @@
+import asyncio
 from datetime import UTC, datetime
 
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
+from badminton.db.engine import create_sessionmaker
 from badminton.db.models import Draft
 from badminton.services.drafts import (
     DRAFT_TTL,
@@ -36,6 +38,46 @@ async def test_draft_lifecycle(db: AsyncSession) -> None:
     later = NOW + DRAFT_TTL
     assert await get_draft(db, draft.id, now=later) is None
     assert await find_by_prompt(db, chat_id=GROUP_ID, prompt_message_id=55, now=later) is None
+
+
+async def test_a_second_tap_waits_for_the_first_then_finds_the_draft_gone(
+    engine: AsyncEngine,
+) -> None:
+    sessionmaker = create_sessionmaker(engine)
+    async with sessionmaker() as db:
+        draft_id = (await create_draft(db, kind="shuttle", chat_id=GROUP_ID, user_id=1, now=NOW)).id
+        await db.commit()
+
+    async with sessionmaker() as first, sessionmaker() as second:
+        draft = await get_draft(first, draft_id, now=NOW, lock=True)
+        waiting = asyncio.create_task(get_draft(second, draft_id, now=NOW, lock=True))
+        await asyncio.sleep(0.3)
+        assert not waiting.done()  # held by the first tap's row lock
+        await first.delete(draft)  # the first tap finishes the wizard
+        await first.commit()
+
+        assert await waiting is None  # so it answers like an expired form
+
+
+async def test_a_second_answer_waits_for_the_first_then_finds_the_prompt_closed(
+    engine: AsyncEngine,
+) -> None:
+    sessionmaker = create_sessionmaker(engine)
+    async with sessionmaker() as db:
+        draft = await create_draft(db, kind="settle", chat_id=GROUP_ID, user_id=1, now=NOW)
+        draft.prompt_message_id = 55
+        await db.commit()
+    find = {"chat_id": GROUP_ID, "prompt_message_id": 55, "now": NOW, "lock": True}
+
+    async with sessionmaker() as first, sessionmaker() as second:
+        draft = await find_by_prompt(first, **find)
+        waiting = asyncio.create_task(find_by_prompt(second, **find))
+        await asyncio.sleep(0.3)
+        assert not waiting.done()
+        draft.prompt_message_id = None  # the first answer closes the prompt
+        await first.commit()
+
+        assert await waiting is None
 
 
 async def test_deleting_a_draft_removes_its_open_prompt(bot: BotHarness) -> None:
