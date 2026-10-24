@@ -7,7 +7,7 @@ A Telegram bot that tracks court bookings, attendance and shuttlecock batches fo
 
 ## What it does
 
-- **Bookings:** a member sends the court booking screenshot with the caption `/book`, then taps through date, time, hours and price. The sender is recorded as the payer.
+- **Bookings:** a member sends `/book`, then their ActiveSG booking screenshot. The bot reads the date, time, venue and court off it with OCR (Tesseract, no LLM), and shows the booking with a suggested price to confirm or edit. Once confirmed, it posts the screenshot with the booking and pins it until the session is played. The sender is recorded as the payer.
 - **Attendance:** 2 days before each session the bot posts a card with **[✅ I'm in] [❌ I'm out]**. People can change their answer until the session ends; no answer counts as out.
 - **Locking:** when the session ends, attendance locks and the bot posts the split. Everyone who played shares the court cost and gets hours added to the current shuttle batch (1 hour = 1 share).
 - **Shuttles:** the admin records each purchase with `/shuttle`. That closes the previous batch, which is then split by hours played.
@@ -122,7 +122,7 @@ It prints the webhook URL when done.
 ### 7. Set up the Telegram group
 
 1. Create the group, or use an existing one, and add the bot as a member (search for its username).
-2. Make the bot an **admin** with the **Delete messages** right. It needs this to keep the group commands-only. Other rights can be off. On mobile: group → *Edit → Administrators → Add Admin*.
+2. Make the bot an **admin** with the **Delete messages** and **Pin messages** rights. It deletes messages to keep the group commands-only, and pins each booking until it's played. Other rights can be off. On mobile: group → *Edit → Administrators → Add Admin*.
 3. Send `/chatid` in the group. The bot replies with a negative number like `-1001234567890`. This is `GROUP_CHAT_ID`.
 4. Add `GROUP_CHAT_ID` in Vercel (**Settings → Environment Variables**) and **redeploy**. Add it to your `.env` too.
 5. Run the setup script from step 6 again, so the admin command menu also appears for you in the group.
@@ -149,7 +149,7 @@ The only effect of a daily cron is that the "🔒 locked" summary can arrive up 
 ### 9. Check that it works
 
 1. In the group, send `/help`. The bot should reply. As the admin you also see admin commands.
-2. Post a booking screenshot with the caption `/book` and go through the wizard. If the session is within 2 days, the attendance card appears straight away.
+2. Send `/book`, reply to the bot's prompt with a booking screenshot, and confirm. The bot posts the screenshot with the booking and pins it. If the session is within 2 days, the attendance card appears straight away.
 3. Tap **✅ I'm in** and check the card updates.
 4. Send a normal text message from a non-admin account. The bot should delete it.
 5. Trigger the scheduler by hand:
@@ -241,6 +241,8 @@ If both records are marked in for a session that has already ended, the bot won'
     - `500` means look at Vercel's **Logs** tab; often `DATABASE_URL` is wrong or migrations weren't run.
 - **The bot replies in DMs but ignores the group.** `GROUP_CHAT_ID` is missing or wrong, or you didn't redeploy after setting it. As the admin, run `/chatid` in the group again.
 - **Messages aren't deleted.** The bot isn't an admin, or lacks *Delete messages*.
+- **Bookings aren't pinned.** The bot lacks *Pin messages*. The bookings are still recorded.
+- **The bot asks for the date and time instead of reading them.** It couldn't read them off the screenshot: send the ActiveSG *Booking confirmed* screen, with the *When* list in view, as a photo rather than a file. Anything else it misread can be fixed with ✏️ Edit before confirming.
 - **Someone doesn't get statements.** They haven't pressed **Start** in a private chat with the bot, or they blocked it. Pressing Start again turns statements back on.
 - **The setup script says Telegram refused an admin command menu (`Chat not found`).** The webhook and member menu are already set, so the bot works. Telegram only accepts an admin's menu once that person has started a chat with the bot. Open the bot, press **Start**, and run the script again. If it still fails, check that the ID in `ADMIN_TELEGRAM_IDS` is your own user ID (step 4), not the bot's or a group's. For the group menu, the admin must also be a member of the group.
 - **I ran the local polling script and now the deployed bot is silent.** Polling removes the webhook. Run `scripts/setup_telegram.py` again (step 6).
@@ -249,7 +251,7 @@ If both records are marked in for a session that has already ended, the bot won'
 
 | Command | Who | Where | What |
 |---|---|---|---|
-| `/book` (as a photo caption) | anyone | group | Record a court booking |
+| `/book` | anyone | group | Record a court booking: send it, then your booking screenshot (or send the screenshot with the caption `/book`) |
 | `/balance` | anyone | anywhere | Your balance, shuttle hours so far and unpaid settle-ups |
 | `/upcoming` | anyone | anywhere | Booked sessions |
 | `/name <name>` | anyone | anywhere | Change the name the bot shows for you |
@@ -285,6 +287,8 @@ uv run --env-file .env scripts/dev_polling.py   # long polling + the scheduler e
 ```
 
 Polling removes the bot's webhook. Run `scripts/setup_telegram.py` again before going back to the deployed version.
+
+**OCR:** booking screenshots are read with Tesseract through [tesserocr](https://github.com/sirfz/tesserocr), whose wheels include Tesseract itself, so nothing needs installing on Vercel or your computer. The English model is in `badminton/tessdata` (see its README).
 
 **CI:** GitHub Actions runs lint, formatting and tests against Postgres 16 on every pull request (`.github/workflows/ci.yml`).
 

@@ -47,6 +47,8 @@ async def record_booking(
     record_chat_id: int | None,
     record_message_id: int | None,
     session_id: int | None = None,
+    venue: str | None = None,
+    courts: str | None = None,
 ) -> Booking:
     """Store a booking, in ``session_id`` if given, otherwise in a new session.
     The submitter is the payer (FR-BK-1)."""
@@ -64,6 +66,8 @@ async def record_booking(
         minutes=minutes,
         amount_cents=amount_cents,
         photo_file_id=photo_file_id,
+        venue=venue,
+        courts=courts,
         record_chat_id=record_chat_id,
         record_message_id=record_message_id,
     )

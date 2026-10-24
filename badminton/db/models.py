@@ -108,6 +108,8 @@ class Booking(Base):
     minutes: Mapped[int]
     amount_cents: Mapped[int]
     photo_file_id: Mapped[str | None] = mapped_column(String(255))
+    venue: Mapped[str | None] = mapped_column(String(64))
+    courts: Mapped[str | None] = mapped_column(String(64))  # e.g. "11", or "11, 12"
     record_chat_id: Mapped[int | None] = mapped_column(BigInteger)
     record_message_id: Mapped[int | None]
     cancelled_at: Mapped[datetime | None]

@@ -4,7 +4,7 @@
 |---|---|
 | Status | Draft v1 |
 | Owner | Admin (group organiser) |
-| Last updated | 2026-10-23 |
+| Last updated | 2026-10-24 |
 | Task breakdown | [`tasks.md`](../tasks.md) |
 
 ## 1. Introduction
@@ -80,13 +80,14 @@ Out of scope for v1 is listed in [§8](#8-out-of-scope-v1).
 | C-2 | A bot can't message a user who hasn't opened a chat with it (`/start`). | Settle-ups are always posted in the group. Personal DM statements are a bonus for members who have run `/start`. |
 | C-3 | A bot can't list the members of a group. | Members are registered when they interact with the bot (FR-MEM-1). |
 | C-4 | Inline-button `callback_data` is limited to 64 bytes. | Callbacks carry short IDs only. |
-| C-5 | A bot can delete other users' messages only if it is an admin with delete rights. | The setup guide makes the bot an admin (FR-OPS-4). |
+| C-5 | A bot can delete other users' messages, or pin messages, only if it is an admin with those rights. | The setup guide makes the bot an admin with both (FR-OPS-4). |
 | C-6 | Serverless functions keep no memory between requests. | Wizard state is stored in the database (FR-BK-9). |
 
 ### 3.3 Assumptions
 - Courts are bookable in whole-hour slots, as on ActiveSG. The hours entered are still free-form for flexibility.
 - Everyone marked *in* plays for the whole session. There is no partial attendance.
 - Members trust each other: whoever pays a settle-up line, or receives it, may mark it paid.
+- Courts are booked on ActiveSG. Its confirmation screenshot lists the venue, and each one-hour slot with its date, start time and court (FR-BK-12).
 - Phone numbers are already shared between friends privately. The bot shows Telegram handles only.
 
 ## 4. Functional requirements
@@ -123,35 +124,45 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
 
 ### 4.2 Court bookings (BK)
 - **FR-BK-1:**
-  - A member starts a booking by sending the booking screenshot in the group with the caption `/book`.
+  - A member starts a booking by sending `/book` in the group. The bot asks for the booking screenshot with a reply prompt, and the member replies with it.
+  - Sending the screenshot with the caption `/book` does both at once.
   - The sender is the payer, whether or not they play.
   - The photo's Telegram `file_id` is stored as proof.
 - **FR-BK-2:**
-  - The bot must reply with a booking wizard: one message that is edited at each step.
+  - The bot must reply to the screenshot with a booking wizard: one message that is edited at each step.
   - Only the submitter can operate it. Anyone else who taps gets an alert.
-- **FR-BK-3:** Step 1 — **date**: a calendar keyboard.
+- **FR-BK-3:** The bot reads the date, start time and hours off the screenshot (FR-BK-12). If it can't, it asks for them, starting with the **date**: a calendar keyboard.
   - It shows one month, with ‹ › buttons to move between months.
   - Past days are disabled.
-- **FR-BK-4:** Step 2 — **start time**: an hour grid from 07:00 to 22:00.
-- **FR-BK-5:** Step 3 — **duration**: buttons **[1h] [2h] [Other]**.
+- **FR-BK-4:** Then the **start time**: an hour grid from 07:00 to 22:00.
+- **FR-BK-5:** Then the **duration**: buttons **[1h] [2h] [Other]**.
   - *Other* asks for the hours with a reply prompt.
   - It accepts a positive number in 0.5-hour steps, up to 6.
-- **FR-BK-6:** Step 4 — **price**:
-  - A suggested-price button = the last recorded hourly rate × hours. The default rate is $7.40/h.
-  - **[Other]** asks for an amount with a reply prompt. It accepts $0.01–$500.00 with up to 2 decimal places.
+- **FR-BK-6:** **Price**: the screenshot shows none, so the bot suggests one.
+  - The suggestion is the last recorded hourly rate × hours × courts booked at once. The default rate is $7.40/h.
+  - The member can type another amount with ✏️ Edit (FR-BK-8). It accepts $0.01–$500.00 with up to 2 decimal places, and stays if the hours change.
 - **FR-BK-7:**
   - If the new booking is on the same date as an existing scheduled session, and the times overlap or run back-to-back, the wizard must offer **[Add to <existing session>]** or **[Separate session]**.
   - Adding the booking re-derives the session's start and end.
+  - Changing the date, time or hours asks again.
 - **FR-BK-8:**
-  - Step 5 — **confirm**: a summary (date, start–end, hours, price, payer) with **[✅ Confirm] [✖ Cancel]**.
-  - On confirm, the wizard message becomes a permanent booking record. It shows when the attendance card will be posted.
+  - **Confirm**: the booking (date, start–end, hours, venue and courts, price and payer) with **[✅ Confirm] [✏️ Edit] [✖ Cancel]**.
+  - **✏️ Edit** changes the date, time or hours (as in FR-BK-3 to FR-BK-5), or the venue, courts or price (reply prompts).
+  - On confirm, the bot posts the screenshot captioned with the booking: its permanent record, which also shows when the attendance card will be posted.
+  - The bot pins the record without notifying anyone (FR-ATT-4), and deletes the wizard and the member's screenshot.
 - **FR-BK-9:**
   - Wizard state is stored in the database.
-  - A wizard that isn't finished within 24 hours expires, and its message is deleted.
+  - A wizard that isn't finished within 24 hours expires. Its message, and the member's booking screenshot, are deleted.
 - **FR-BK-10:** The submitter or the admin can cancel a booking before its session starts.
+  - Its record is unpinned.
   - A session left with no bookings is cancelled.
   - The cancellation is announced in the group.
 - **FR-BK-11:** If a session starts within the reminder window (FR-ATT-1), confirming a booking for it posts the attendance card straight away.
+- **FR-BK-12:** The bot reads the screenshot with OCR: Tesseract, run by the bot itself. No LLM or external service is involved.
+  - It reads the venue (*Where*) and each one-hour slot (*When*: date, start time and court). It ignores the name: the sender is the payer (FR-BK-1).
+  - The screenshot shows no year. It is the one in which the date falls on the weekday shown.
+  - The date, start time and hours are filled in only when the slots run back to back on one day. Otherwise the bot asks for them (FR-BK-3).
+  - Anything else it can't read can be added with ✏️ Edit.
 
 ### 4.3 Attendance and locking (ATT)
 - **FR-ATT-1:**
@@ -169,9 +180,10 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
 - **FR-ATT-5:** Attendance locks at the session's end time.
   - Any tap at or after that time is refused with an alert. That tap also triggers finalisation (FR-ATT-6) if it hasn't happened yet.
   - Members who never answered count as *out*.
-- **FR-ATT-6:** Finalisation does two things, exactly once per session:
+- **FR-ATT-6:** Finalisation does three things, exactly once per session:
   - It removes the card's buttons and marks it 🔒.
   - It posts a summary: number of players, court cost each, and hours added to the current shuttle batch each.
+  - It unpins the session's booking records (FR-BK-8).
 - **FR-ATT-7:**
   - A session that ends with no one *in* is left out of all calculations.
   - The admin is notified by DM so they can fix the attendance or cancel the session.
@@ -271,8 +283,9 @@ Worked examples:
     - a reply to an active bot prompt.
   - This covers plain text, stickers, media, unknown commands and forwards.
 - **FR-MOD-2:**
-  - A reply to a bot prompt (FR-BK-5, FR-BK-6 and the admin wizards) is processed.
+  - A reply to a bot prompt (FR-BK-1, FR-BK-5, FR-BK-8 and the admin wizards) is processed.
   - After processing, both the reply and the prompt are deleted, so the group only holds bot cards.
+  - The exception is the booking screenshot: it stays until the booking is confirmed or cancelled, so it can be checked against (FR-BK-8).
 - **FR-MOD-3:** Messages from the admin and service messages (joins, leaves, pins, title changes) are never deleted.
 - **FR-MOD-4:** The bot ignores updates from any chat other than the configured group and private chats.
 
@@ -290,7 +303,7 @@ Worked examples:
   - publish the command list to Telegram.
 - **FR-OPS-4:** The README must explain the full setup:
   - BotFather;
-  - adding the bot to the group as an admin with *Delete messages*;
+  - adding the bot to the group as an admin with *Delete messages* and *Pin messages*;
   - finding the group ID with `/chatid`;
   - Neon and migrations;
   - Vercel environment variables;
@@ -328,7 +341,7 @@ Worked examples:
 | NFR-2 | Correctness | Money is integer cents. Splits add up exactly. All balances sum to zero, which is tested. |
 | NFR-3 | Reliability | Scheduled steps and card/invoice posting are idempotent: they claim their work atomically in the database before sending. If a scheduled run is missed, the next one catches up. |
 | NFR-4 | Security | The webhook secret, cron bearer token and admin ID list are configured as environment variables. Secrets are never logged. Updates from other chats are ignored. |
-| NFR-5 | Privacy | Only Telegram user ID, first name, @username and booking photo `file_id`s are stored. No phone numbers or payment details. |
+| NFR-5 | Privacy | Only Telegram user ID, first name, @username, booking photo `file_id`s, and the venue and courts read from them are stored. Screenshots are read in memory and not kept. No phone numbers or payment details. |
 | NFR-6 | Transparency | Every change that affects someone's money is visible in the group and recorded in the audit log. |
 | NFR-7 | Usability | Each wizard is one message edited in place. Buttons are preferred over typing. Messages are short. All times are in SGT, e.g. "Sun 4 Oct, 11:00–13:00". |
 | NFR-8 | Performance | A typical webhook update is handled within 3 seconds, allowing for a Neon cold start. |
@@ -341,7 +354,7 @@ Worked examples:
 |---|---|---|---|
 | `/start` | anyone | DM | Link account, enable DM statements |
 | `/help` | anyone | any | List available commands |
-| `/book` (photo caption) | member | group | Start the booking wizard |
+| `/book` | member | group | Start the booking wizard; then send the screenshot (or send it captioned `/book`) |
 | `/balance` | member | any | Balance, pending shuttle hours, unpaid lines |
 | `/upcoming` | member | any | Scheduled sessions |
 | `/name <name>` | member | any | Set display name |
@@ -367,7 +380,7 @@ Worked examples:
 |---|---|
 | Member | telegram_user_id (nullable for guests), display_name, username, dm_enabled, active |
 | Session | starts_at, ends_at, status (scheduled / cancelled), card message ref, card_sent_at, locked_at |
-| Booking | session, payer, starts_at, minutes, amount_cents, photo_file_id, submitted_by |
+| Booking | session, payer, starts_at, minutes, amount_cents, photo_file_id, venue, courts, record message ref, submitted_by |
 | Attendance | session, member, status (in / out) |
 | ShuttleBatch | payer, amount_cents, starts_at |
 | Transfer | from, to, amount_cents, invoice line (optional), recorded_by |
@@ -408,12 +421,14 @@ Acceptance criteria are brief; the referenced FRs hold the detail.
 - **US-3.1:** As a member who booked a court, I want to submit the booking screenshot with `/book`, so that the group knows I paid. *(FR-BK-1, FR-BK-2)*
   - I'm recorded as payer even if I don't play.
   - Only I can operate my wizard.
-- **US-3.2:** As a member, I want to enter the date, time, hours and price with taps rather than typing, so that submitting is quick and error-free. *(FR-BK-3 to FR-BK-6, FR-BK-8)*
-  - Calendar, hour grid, [1h][2h][Other], suggested price or [Other], then confirm.
+- **US-3.2:** As a member, I want the bot to read my booking off the screenshot, so that submitting is quick and error-free. *(FR-BK-3 to FR-BK-6, FR-BK-8, FR-BK-12)*
+  - It shows the date, time, venue, court and a suggested price. I confirm, or fix anything with ✏️ Edit.
+  - If it can't read the date and time, I pick them with taps: calendar, hour grid, [1h][2h][Other].
 - **US-3.3:** As a member, I want consecutive or overlapping bookings on the same day to count as one session, so that we don't get two polls for one game. *(FR-BK-7)*
 - **US-3.4:** As a member, I want unfinished wizards to clean themselves up, so that the group stays tidy. *(FR-BK-9)*
 - **US-3.5:** As the submitter or the admin, I want to cancel a booking before it happens, so that refunded courts aren't charged. *(FR-BK-10)*
 - **US-3.6:** As a member, I want a session booked at short notice to get its attendance card straight away. *(FR-BK-11)*
+- **US-3.7:** As a member, I want upcoming bookings pinned in the group, with their screenshot, so that I can see when and where we play. *(FR-BK-8, FR-BK-10, FR-ATT-6)*
 
 ### E4 — Attendance and locking
 - **US-4.1:** As a member, I want an attendance card 2 days before each session, so that I can say whether I'm playing with one tap. *(FR-ATT-1, FR-ATT-2)*
@@ -462,7 +477,6 @@ Acceptance criteria are brief; the referenced FRs hold the detail.
 - **US-10.2:** As a member, I want a tube bought but not yet used before the switch to be split by hours played, like any other batch. *(FR-MIG-3)*
 
 ## 8. Out of scope (v1)
-- OCR of booking screenshots.
 - More than one group.
 - A "+1 guest" button on the attendance card. Guests are added by the admin instead.
 - Partial attendance within a session.

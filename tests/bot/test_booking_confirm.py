@@ -1,12 +1,12 @@
 from datetime import timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from badminton.db.models import Booking, Draft, Member, Session
 from badminton.domain.timeutil import at_sgt, fmt_date
-from tests.bot.booking_helpers import ALICE, BOB, book, future_day
+from tests.bot.booking_helpers import ALICE, BOB, Wizard, activesg_text, book, future_day
 from tests.conftest import BotHarness
-from tests.fake_telegram import message, message_update
+from tests.fake_telegram import GROUP_ID, message, message_update
 
 
 async def stored(bot: BotHarness) -> tuple[list[Session], list[Booking]]:
@@ -16,13 +16,10 @@ async def stored(bot: BotHarness) -> tuple[list[Session], list[Booking]]:
     return sessions, bookings
 
 
-async def test_confirm_stores_session_and_booking(bot: BotHarness) -> None:
+async def test_confirm_posts_the_screenshot_with_the_booking_and_pins_it(bot: BotHarness) -> None:
     day = future_day(14)
     wizard = await book(bot, BOB, day)
-    assert "How much did you pay?" in wizard.text
 
-    await wizard.tap("$14.80")  # default $7.40/h × 2h
-    assert "💵 $14.80, paid by @bob_t" in wizard.text
     await wizard.tap("✅ Confirm")
 
     (session,), (booking,) = await stored(bot)
@@ -32,88 +29,130 @@ async def test_confirm_stores_session_and_booking(bot: BotHarness) -> None:
         start + timedelta(hours=2),
         "scheduled",
     )
-    assert (booking.minutes, booking.amount_cents, booking.photo_file_id) == (
-        120,
-        1480,
-        "photo-1280",
-    )
-    assert booking.record_message_id == wizard.card["message_id"]
+    photo_id = wizard.photo["photo"][-1]["file_id"]
+    assert (booking.minutes, booking.amount_cents, booking.photo_file_id) == (120, 1480, photo_id)
+    assert (booking.venue, booking.courts) == ("Hougang Sport Hall", "11")
     async with bot.sessionmaker() as db:
         payer = await db.get(Member, booking.payer_member_id)
         assert payer.telegram_user_id == BOB["id"]
         assert booking.submitted_by_member_id == payer.id
         assert await db.scalar(select(func.count()).select_from(Draft)) == 0
 
+    posted = bot.telegram.last("sendPhoto").params
+    assert (posted["chat_id"], posted["photo"]) == (GROUP_ID, photo_id)
+    record = wizard.record()
+    assert booking.record_message_id == record.card["message_id"]
     due = fmt_date(day - timedelta(days=2))
-    assert wizard.text == (
-        "✅ <b>Court booked</b> by @bob_t\n"
-        f"📅 {fmt_date(day)}, 11:00–13:00 (2h) · $14.80\n"
+    assert record.text == (
+        f"📅 {fmt_date(day)}, 11:00–13:00 (2h)\n"
+        "📍 Hougang Sport Hall · Court 11\n"
+        "💵 $14.80, paid by @bob_t\n"
         f"🗳 Attendance card goes up on {due}."
     )
-    assert wizard.buttons() == {"🗑 Cancel booking": f"bkc:{booking.id}"}
+    assert record.buttons() == {"🗑 Cancel booking": f"bkc:{booking.id}"}
+
+    pinned = bot.telegram.last("pinChatMessage").params
+    assert pinned == {
+        "chat_id": GROUP_ID,
+        "message_id": record.card["message_id"],
+        "disable_notification": True,
+    }
+    deleted = {call.params["message_id"] for call in bot.telegram.calls_to("deleteMessage")}
+    assert {wizard.card["message_id"], wizard.photo["message_id"]} <= deleted
+
+
+async def test_a_booking_without_venue_or_court_is_recorded_without_them(bot: BotHarness) -> None:
+    wizard = await Wizard(bot, BOB).start()
+    await wizard.pick_date(future_day(14))
+    await wizard.tap("11:00")
+    await wizard.tap("1h")
+
+    await wizard.tap("✅ Confirm")
+
+    (booking,) = (await stored(bot))[1]
+    assert (booking.venue, booking.courts) == (None, None)
+    assert "📍" not in wizard.record().text
+
+
+async def test_a_pin_the_bot_may_not_make_still_records_the_booking(bot: BotHarness) -> None:
+    wizard = await book(bot, BOB, future_day(14))
+    bot.telegram.fail("pinChatMessage", 400, "Bad Request: not enough rights to pin a message")
+
+    await wizard.tap("✅ Confirm")
+
+    (booking,) = (await stored(bot))[1]
+    assert booking.record_message_id == wizard.record().card["message_id"]
+    deleted = [call.params["message_id"] for call in bot.telegram.calls_to("deleteMessage")]
+    assert wizard.card["message_id"] in deleted
 
 
 async def test_suggested_price_follows_the_last_booking(bot: BotHarness) -> None:
     first = await book(bot, BOB, future_day(14))
-    await first.tap("Other…")
+    await first.tap("✏️ Edit")
+    await first.tap("💵 Price")
     prompt = bot.telegram.last("sendMessage").message
     await bot.send(message_update(message(sender=BOB, text="16", reply_to=prompt)))
     await first.tap("✅ Confirm")
 
     second = await book(bot, ALICE, future_day(21), hours="1h")
 
-    assert "$8.00" in second.buttons()
+    assert "💵 $8.00, paid by @alice_handle" in second.text
 
 
-async def test_other_price_is_validated(bot: BotHarness) -> None:
-    wizard = await book(bot, BOB, future_day(14))
-    await wizard.tap("Other…")
-    prompt = bot.telegram.last("sendMessage")
-    assert "how much did you pay" in prompt.params["text"]
+async def test_two_courts_at_once_are_priced_as_two(bot: BotHarness) -> None:
+    day = future_day(14)
+    screenshot = activesg_text(day, hours=1) + "\n" + activesg_text(day, hours=1, court="12")
 
-    await bot.send(message_update(message(sender=BOB, text="abc", reply_to=prompt.message)))
-    reprompt = bot.telegram.last("sendMessage")
-    assert reprompt.params["text"].startswith("⚠️ Enter an amount like 14.80")
-    await bot.send(message_update(message(sender=BOB, text="15.5", reply_to=reprompt.message)))
+    wizard = await Wizard(bot, BOB, screenshot).start()
 
-    assert "💵 $15.50" in wizard.text
+    assert wizard.text.startswith(
+        f"📅 {fmt_date(day)}, 11:00–12:00 (1h)\n"
+        "📍 Hougang Sport Hall · Courts 11, 12\n"
+        "💵 $14.80, paid by @bob_t"
+    )
 
 
-async def test_change_price_and_cancel_store_nothing(bot: BotHarness) -> None:
-    wizard = await book(bot, BOB, future_day(14))
-    await wizard.tap("$14.80")
+async def test_a_screenshot_of_a_past_booking_cannot_be_confirmed(bot: BotHarness) -> None:
+    wizard = await book(bot, BOB, future_day(-7))
 
-    await wizard.tap("✏️ Change price")
-    assert "How long" in wizard.text
-    await wizard.tap("1h")
-    await wizard.tap("$7.40")
-    await wizard.tap("✖ Cancel")
+    assert wizard.text.endswith("⚠️ That time has passed.\nIs this right?")
 
+    await wizard.tap("✅ Confirm")
+
+    assert wizard.last_alert() == "That time has passed. Change the date or time first."
     assert await stored(bot) == ([], [])
 
 
 async def test_booking_inside_the_reminder_window_says_card_is_going_up(bot: BotHarness) -> None:
     wizard = await book(bot, BOB, future_day(1), hour="20:00")
-    await wizard.tap("$14.80")
     await wizard.tap("✅ Confirm")
 
-    assert wizard.text.endswith("🗳 The attendance card is going up now.")
+    assert wizard.record().text.endswith("🗳 The attendance card is going up now.")
 
 
-async def test_going_back_withdraws_an_open_prompt(bot: BotHarness) -> None:
+async def test_cancel_stores_nothing(bot: BotHarness) -> None:
     wizard = await book(bot, BOB, future_day(14))
-    await wizard.tap("Other…")
-    prompt = bot.telegram.last("sendMessage").message
+    await wizard.tap("✏️ Edit")
+    await wizard.tap("⏱ Hours")
+    await wizard.tap("1h")
 
-    await wizard.tap("‹ Change duration")
-    await wizard.tap("‹ Change time")
-    await bot.send(message_update(message(sender=BOB, text="20", reply_to=prompt)))
+    await wizard.tap("✖ Cancel")
 
-    deleted = [call.params["message_id"] for call in bot.telegram.calls_to("deleteMessage")]
-    assert prompt["message_id"] in deleted
-    assert "What time does it start?" in wizard.text
+    assert await stored(bot) == ([], [])
+    assert bot.telegram.calls_to("sendPhoto") == []
+
+
+async def test_a_session_that_was_cancelled_meanwhile_is_not_joined(bot: BotHarness) -> None:
+    day = future_day(14)
+    first = await book(bot, ALICE, day)
+    await first.tap("✅ Confirm")
+    wizard = await book(bot, BOB, day, hour="13:00", hours="1h")
+    await wizard.tap("➕ Add to 11:00–13:00")
     async with bot.sessionmaker() as db:
-        draft = await db.scalar(select(Draft))
-    assert draft.prompt_message_id is None
-    assert "awaiting" not in draft.data
-    assert "amount_cents" not in draft.data
+        await db.execute(update(Session).values(status="cancelled"))
+        await db.commit()
+
+    await wizard.tap("✅ Confirm")
+
+    sessions, _ = await stored(bot)
+    assert sorted(s.status for s in sessions) == ["cancelled", "scheduled"]

@@ -65,7 +65,13 @@ async def test_update_data_removes_none_values(db: AsyncSession) -> None:
 async def test_cleanup_deletes_expired_drafts_and_their_messages(bot: BotHarness) -> None:
     async with bot.sessionmaker() as db:
         old = await create_draft(
-            db, kind="booking", chat_id=GROUP_ID, user_id=1, now=NOW - DRAFT_TTL, message_id=10
+            db,
+            kind="booking",
+            chat_id=GROUP_ID,
+            user_id=1,
+            now=NOW - DRAFT_TTL,
+            message_id=10,
+            data={"photo_message_id": 9},
         )
         old.prompt_message_id = 11
         await create_draft(db, kind="booking", chat_id=GROUP_ID, user_id=2, now=NOW, message_id=20)
@@ -76,7 +82,7 @@ async def test_cleanup_deletes_expired_drafts_and_their_messages(bot: BotHarness
     await cleanup_expired_drafts(context)
 
     deleted = [call.params["message_id"] for call in bot.telegram.calls_to("deleteMessage")]
-    assert deleted == [10, 11]  # the first failed and was ignored
+    assert deleted == [10, 9, 11]  # card, screenshot, prompt; the first failed and was ignored
     async with bot.sessionmaker() as db:
         remaining = await db.scalars(select(Draft.message_id))
         assert remaining.all() == [20]

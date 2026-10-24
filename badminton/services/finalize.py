@@ -1,7 +1,8 @@
 """Locking attendance when a session ends (FR-ATT-5 to FR-ATT-7).
 
 Finalising happens exactly once per session, triggered by the tick or by a tap
-after the end: the card loses its buttons and a summary is posted.
+after the end: the card loses its buttons, a summary is posted, and the bookings'
+records are unpinned.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from badminton.db.models import Session
 from badminton.domain.ledger import batch_of
 from badminton.domain.timeutil import fmt_hours, fmt_session
 from badminton.services.attendance import CardView, load_card_view, refresh_card
-from badminton.services.notify import announce, dm_admins
+from badminton.services.notify import announce, dm_admins, unpin
 from badminton.services.repo import load_batches
 from badminton.services.tick import TickContext, for_each
 
@@ -62,6 +63,9 @@ async def finalize_session(
             f"⚠️ Nobody was marked in for <b>{when}</b>, so it's left out of the costs. "
             "Use /edit to fix the attendance or cancel the session.",
         )
+    for booking in view.session.bookings:  # pinned while upcoming (FR-BK-8)
+        if booking.cancelled_at is None:
+            await unpin(bot, booking.record_chat_id, booking.record_message_id)
     return True
 
 

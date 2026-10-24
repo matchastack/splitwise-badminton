@@ -119,18 +119,16 @@ async def test_one_failing_card_does_not_hold_up_the_rest(bot: BotHarness) -> No
 
 async def test_booking_inside_the_window_posts_its_card_at_once(bot: BotHarness) -> None:
     wizard = await book(bot, BOB, future_day(1), hour="20:00")
-    await wizard.tap("$14.80")
     await wizard.tap("✅ Confirm")
 
     assert len(cards_sent(bot)) == 1
-    record_edit = bot.telegram.last("editMessageText")
+    record = bot.telegram.last("sendPhoto")
     card = bot.telegram.last("sendMessage")
-    assert bot.telegram.calls.index(record_edit) < bot.telegram.calls.index(card)
+    assert bot.telegram.calls.index(record) < bot.telegram.calls.index(card)
 
 
 async def test_booking_outside_the_window_waits(bot: BotHarness) -> None:
     wizard = await book(bot, BOB, future_day(10))
-    await wizard.tap("$14.80")
     await wizard.tap("✅ Confirm")
 
     assert cards_sent(bot) == []  # the tick posts it two days before

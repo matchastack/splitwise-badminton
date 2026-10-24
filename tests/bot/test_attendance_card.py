@@ -122,13 +122,11 @@ async def test_cancelled_session(bot: BotHarness) -> None:
 async def test_card_lists_each_payer_when_several_booked(bot: BotHarness) -> None:
     day = future_day(1)
     first = await book(bot, ALICE, day, hour="20:00", hours="1h")
-    await first.tap("$7.40")
     await first.tap("✅ Confirm")  # the session's card goes up in T26; post it by hand here
     async with bot.sessionmaker() as db:
         session_id = await db.scalar(select(Session.id))
     card = await post(bot, session_id)
     second = await book(bot, BOB, day, hour="21:00", hours="1h")
-    await second.tap("$7.40")
     await second.tap("➕ Add to 20:00–21:00")
     await second.tap("✅ Confirm")
 
