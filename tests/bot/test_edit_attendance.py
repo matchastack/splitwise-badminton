@@ -107,13 +107,13 @@ async def test_change_attendance_announces_and_audits(bot: BotHarness) -> None:
         for c in bot.telegram.calls_to("editMessageText")
         if c.params["message_id"] == card_message["message_id"]
     ]
-    assert "✅ In (2): carol, bob" in refreshed[-1].params["text"]
+    assert "✅ In (2): bob, carol" in refreshed[-1].params["text"]
     async with bot.sessionmaker() as db:
         row = await db.scalar(select(AuditLog))
     assert (row.action, row.payload["before"], row.payload["after"]) == (
         "attendance.edit",
-        ["dave", "bob"],
-        ["carol", "bob"],
+        ["bob", "dave"],
+        ["bob", "carol"],
     )
 
 

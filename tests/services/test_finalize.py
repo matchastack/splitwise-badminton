@@ -49,7 +49,7 @@ async def test_ended_session_is_locked_with_a_summary(bot: BotHarness) -> None:
     assert locked_card["text"].endswith("🔒 Attendance is locked.")
     assert "reply_markup" not in locked_card
     assert summaries(bot) == [
-        f"🔒 <b>{WHEN}</b> is locked.\n👥 3 played: dave, erin, bob\n💵 Court $4.93–$4.94 each"
+        f"🔒 <b>{WHEN}</b> is locked.\n👥 3 played: bob, dave, erin\n💵 Court $4.93–$4.94 each"
     ]
     async with bot.sessionmaker() as db:
         assert (await db.get(Session, session_id)).locked_at == AFTER

@@ -215,13 +215,13 @@ async def test_refuses_a_batch_or_payment_from_the_time_the_sheet_covers(
 
 
 async def test_names_match_whatever_their_case(db: AsyncSession) -> None:
-    heidi = Member(display_name="Heidi", telegram_user_id=1)
-    db.add(heidi)
+    weiss = Member(display_name="Weiss", telegram_user_id=1)
+    db.add(weiss)
     await db.commit()
 
-    [match] = await match_members(db, ("STRAUß",), {})
+    [match] = await match_members(db, ("WEIß",), {})
 
-    assert (match.member, match.how) == (heidi, "same name")
+    assert (match.member, match.how) == (weiss, "same name")
 
 
 async def test_refuses_when_the_bot_has_a_session_the_sheet_covers(db: AsyncSession) -> None:
