@@ -6,7 +6,7 @@ from __future__ import annotations
 from telegram import BotCommand
 
 MEMBER_COMMANDS: tuple[BotCommand, ...] = (
-    BotCommand("book", "Record a court booking from your screenshot"),
+    BotCommand("court", "Record a court booking from your screenshot"),
     BotCommand("shuttle", "Record a shuttlecock purchase"),
     BotCommand("balance", "Your balance and pending shuttle hours"),
     BotCommand("upcoming", "Upcoming sessions"),

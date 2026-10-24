@@ -20,7 +20,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await db.commit()
     await update.effective_message.reply_text(
         f"👋 Hi <b>{html.escape(name)}</b>! I'll send your monthly statement here.\n\n"
-        "In the group, send /book and then your court booking screenshot. "
+        "In the group, send /court and then your court booking screenshot. "
         "Type /help to see everything I can do."
     )
 

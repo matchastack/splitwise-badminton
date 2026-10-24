@@ -66,10 +66,10 @@ async def test_help_shows_admin_commands_only_to_admin(bot: BotHarness) -> None:
     await bot.send(text_update("/help", sender=ALICE))
 
     member_help, admin_help = bot.telegram.sent_texts()
-    assert "/book — " in member_help
+    assert "/court — " in member_help
     assert "/edit" not in member_help
     assert "/edit — " in admin_help
-    assert admin_help.count("/book — ") == 1
+    assert admin_help.count("/court — ") == 1
 
 
 async def test_chatid_replies_with_the_chat_id(bot: BotHarness) -> None:
