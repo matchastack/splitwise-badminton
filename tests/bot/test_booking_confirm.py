@@ -1,9 +1,11 @@
+import dataclasses
 from datetime import timedelta
 
 import pytest
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import SAWarning
 
+from badminton.bot.context import SETTINGS_KEY
 from badminton.bot.handlers.booking import EXPIRED, UNREAD
 from badminton.db.models import Booking, Draft, Member, Session
 from badminton.domain.timeutil import at_sgt, fmt_date
@@ -122,17 +124,28 @@ async def test_a_double_tap_on_confirm_books_once(
     assert not [w for w in recwarn if issubclass(w.category, SAWarning)]
 
 
-async def test_suggested_price_follows_the_last_booking(bot: BotHarness) -> None:
+async def test_the_suggestion_is_the_court_rate_whatever_the_last_price(bot: BotHarness) -> None:
+    """An off-peak or bought-through-someone booking is priced with ✏️ Edit, and doesn't
+    change what the next booking suggests."""
     first = await book(bot, BOB, future_day(14))
     await first.tap("✏️ Edit")
     await first.tap("💵 Price")
     prompt = bot.telegram.last("sendMessage").message
-    await bot.send(message_update(message(sender=BOB, text="16", reply_to=prompt)))
+    await bot.send(message_update(message(sender=BOB, text="6", reply_to=prompt)))
     await first.tap("✅ Confirm")
 
     second = await book(bot, ALICE, future_day(21), hours="1h")
 
-    assert "💵 $8.00, paid by @alice_handle" in second.text
+    assert "💵 $7.40, paid by @alice_handle" in second.text
+
+
+async def test_the_court_rate_is_the_setting(bot: BotHarness) -> None:
+    rate = dataclasses.replace(bot.settings, default_court_rate_cents=800)
+    bot.application.bot_data[SETTINGS_KEY] = rate
+
+    wizard = await book(bot, BOB, future_day(14))
+
+    assert "💵 $16.00, paid by @bob_t" in wizard.text  # 2h × $8.00
 
 
 async def test_two_courts_at_once_are_priced_as_two(bot: BotHarness) -> None:
@@ -200,20 +213,6 @@ async def test_a_session_that_was_cancelled_meanwhile_is_not_joined(bot: BotHarn
 
     sessions, _ = await stored(bot)
     assert sorted(s.status for s in sessions) == ["cancelled", "scheduled"]
-
-
-async def test_a_two_court_booking_does_not_raise_the_next_suggestion(bot: BotHarness) -> None:
-    """The suggestion is per court-hour, so a booking of two courts at once isn't taken
-    for a dearer court."""
-    day = future_day(14)
-    two_courts = activesg_text(day, hours=1, courts=("11", "12"))
-    first = await Wizard(bot, BOB, two_courts).start()
-    assert "💵 $14.80" in first.text  # 2 courts × 1h × $7.40
-    await first.tap("✅ Confirm")
-
-    second = await book(bot, ALICE, future_day(21), hours="1h")
-
-    assert "💵 $7.40, paid by @alice_handle" in second.text
 
 
 async def test_a_network_error_pinning_still_finishes_the_booking(bot: BotHarness) -> None:

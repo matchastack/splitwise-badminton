@@ -218,7 +218,7 @@ If both records are marked in for a session that has already ended, the bot won'
 | `ADMIN_TELEGRAM_IDS` | yes | @userinfobot or `/chatid` in a DM (step 4) | Comma-separated user IDs allowed to run admin commands |
 | `GROUP_CHAT_ID` | after step 7 | `/chatid` in the group | The one group the bot works in. Until it's set, only `/chatid` and private chats work |
 | `REMINDER_DAYS_BEFORE` | no (default `2`) | — | How many days before a session the attendance card goes up |
-| `DEFAULT_COURT_RATE_CENTS` | no (default `740`) | — | Hourly court rate used to suggest a price before any booking exists ($7.40/h) |
+| `DEFAULT_COURT_RATE_CENTS` | no (default `740`) | — | Hourly court rate: a booking's suggested price is this × its court hours ($7.40/h). Members change the price of a booking that cost something else |
 | `TEST_DATABASE_URL` | tests only | Local Postgres or a Neon branch | Throwaway database for `pytest` (its schema is dropped) |
 
 ### Troubleshooting

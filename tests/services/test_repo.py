@@ -12,7 +12,7 @@ from badminton.domain.ledger import (
     compute_ledger,
 )
 from badminton.domain.timeutil import at_sgt
-from badminton.services.repo import get_balances, last_hourly_rate, load_facts, load_ledger
+from badminton.services.repo import get_balances, load_facts, load_ledger
 
 NOW = at_sgt(date(2026, 11, 1), 10)
 
@@ -141,22 +141,3 @@ async def test_ledger_from_database_matches_pure_ledger(db: AsyncSession) -> Non
     assert ledger.open_batch_id == facts.batches[-1].id
     paid = [e.batch_id for e in ledger.entries if e.kind is EntryKind.SHUTTLE_PAID]
     assert paid == [facts.batches[0].id]
-
-
-async def test_last_hourly_rate(db: AsyncSession) -> None:
-    assert await last_hourly_rate(db, 740) == 740
-
-    ids = await seed(db)
-    db.add(
-        Booking(
-            session_id=ids["first"],
-            payer_member_id=ids["alice"],
-            submitted_by_member_id=ids["alice"],
-            starts_at=at_sgt(date(2026, 10, 4), 11),
-            minutes=90,
-            amount_cents=1200,
-        )
-    )
-    await db.commit()
-
-    assert await last_hourly_rate(db, 740) == 800

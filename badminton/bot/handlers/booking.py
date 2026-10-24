@@ -82,7 +82,6 @@ from badminton.services.drafts import (
 )
 from badminton.services.members import mention_html, upsert_from_telegram
 from badminton.services.notify import pin, unpin
-from badminton.services.repo import last_hourly_rate
 from badminton.services.sessions import find_mergeable_session, record_booking
 
 KIND = "booking"
@@ -586,19 +585,18 @@ async def _reschedule(
         changes.setdefault("court_minutes", None)
     update_data(draft, **changes, merge_candidate_id=None, merge_session_id=None, separate=None)
     if "minutes" in changes:
-        update_data(draft, suggested_cents=await _suggested_price(context, db, draft.data))
+        update_data(draft, suggested_cents=_suggested_price(context, draft.data))
     if (step := _missing_step(draft.data)) is not None:
         update_data(draft, step=step)
     else:
         update_data(draft, **await _summary(db, draft))
 
 
-async def _suggested_price(
-    context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, data: dict[str, Any]
-) -> int:
-    """The last hourly rate × the court time: the screenshot's slots, or else the hours,
-    one court at a time (FR-BK-6)."""
-    rate = await last_hourly_rate(db, settings_of(context).default_court_rate_cents)
+def _suggested_price(context: ContextTypes.DEFAULT_TYPE, data: dict[str, Any]) -> int:
+    """The court rate × the court time: the screenshot's slots, or else the hours, one court
+    at a time (FR-BK-6). Courts nearly always cost the same; when one didn't (off-peak, or
+    bought through someone else), the member changes the price with ✏️ Edit."""
+    rate = settings_of(context).default_court_rate_cents
     court_minutes = data.get("court_minutes") or data["minutes"]
     return (rate * court_minutes + 30) // 60
 
