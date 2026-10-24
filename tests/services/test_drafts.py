@@ -1,8 +1,11 @@
 import asyncio
 from datetime import UTC, datetime
 
+import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.error import BadRequest
 
 from badminton.db.engine import create_sessionmaker
 from badminton.db.models import Draft
@@ -13,6 +16,7 @@ from badminton.services.drafts import (
     delete_draft,
     find_by_prompt,
     get_draft,
+    show_draft,
     update_data,
 )
 from badminton.services.tick import TickContext
@@ -92,6 +96,36 @@ async def test_deleting_a_draft_removes_its_open_prompt(bot: BotHarness) -> None
         assert await db.scalar(select(func.count()).select_from(Draft)) == 0
     deleted = bot.telegram.last("deleteMessage").params
     assert (deleted["chat_id"], deleted["message_id"]) == (GROUP_ID, 55)
+
+
+def card_draft() -> Draft:
+    return Draft(kind="settle", chat_id=GROUP_ID, user_id=1, message_id=42, data={})
+
+
+CARD = InlineKeyboardMarkup([[InlineKeyboardButton("✖ Cancel", callback_data="st:1:x:")]])
+
+
+async def test_show_draft_edits_the_card(bot: BotHarness) -> None:
+    await show_draft(bot.application.bot, card_draft(), "💸 Who paid?", CARD)
+
+    edit = bot.telegram.last("editMessageText").params
+    assert (edit["chat_id"], edit["message_id"], edit["text"]) == (GROUP_ID, 42, "💸 Who paid?")
+    assert edit["reply_markup"] == CARD.to_dict()
+
+
+async def test_show_draft_ignores_an_unchanged_card(bot: BotHarness) -> None:
+    bot.telegram.fail("editMessageText", 400, "Bad Request: message is not modified")
+
+    await show_draft(bot.application.bot, card_draft(), "💸 Who paid?", CARD)
+
+    assert bot.telegram.calls_to("editMessageText")  # it was tried, and refused
+
+
+async def test_show_draft_raises_other_errors(bot: BotHarness) -> None:
+    bot.telegram.fail("editMessageText", 400, "Bad Request: message to edit not found")
+
+    with pytest.raises(BadRequest, match="Message to edit not found"):
+        await show_draft(bot.application.bot, card_draft(), "💸 Who paid?", CARD)
 
 
 async def test_update_data_removes_none_values(db: AsyncSession) -> None:

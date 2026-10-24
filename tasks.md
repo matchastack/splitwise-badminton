@@ -78,6 +78,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T39 | Link a guest to a Telegram account | `feat/t39-link-guests` | E2 | T19, T38 | ✅ | [#62](https://github.com/matchastack/splitwise-badminton/pull/62) |
 | T40 | Linked guest's name; member list closes after a change | `feat/t40-linked-guest-name` | E2 | T39 | ✅ | [#64](https://github.com/matchastack/splitwise-badminton/pull/64) |
 | T41 | Waiting shuttle batches and member purchases | `claude/dreamy-cerf-pz28gc` | E5 | T28, T38 | ✅ | [#67](https://github.com/matchastack/splitwise-badminton/pull/67) |
+| T42 | Share the wizard card refresh | `claude/dazzling-noether-dpbhbz` | E3 | T17, T41 | ✅ | [#69](https://github.com/matchastack/splitwise-badminton/pull/69) |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
@@ -295,6 +296,13 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
   - A session left with no bookings is cancelled. If its attendance card was already posted, the card is closed.
   - Announced in the group and audited.
 - **Done when:** tests cover the allowed roles, refusal for others, refusal after the start time, and session cancellation.
+
+### T42 · Share the wizard card refresh
+`claude/dazzling-noether-dpbhbz` · Stories US-3.4 · FR-BK-9 · Depends on T17, T41
+- **Scope:** `badminton/services/drafts.py`
+  - `show_draft` edits a wizard's card in place. `/book`, `/edit`, `/settle` and `/shuttle_edit` use it instead of their own copies.
+  - An edit that changes nothing, such as a double tap, makes Telegram answer "message is not modified". That is ignored; any other error is still raised.
+- **Done when:** tests cover the edit, an unchanged card being harmless (directly and from a double tap in `/settle`), and other errors still being raised.
 
 ## E4 — Attendance and locking
 
