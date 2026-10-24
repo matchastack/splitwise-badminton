@@ -9,16 +9,31 @@ from __future__ import annotations
 
 import logging
 
-from telegram import Message, Update
+from telegram import Message, MessageEntity, Update
 from telegram.error import BadRequest, Forbidden
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
+from badminton.bot.commands import BOOKING_COMMAND
 from badminton.bot.context import settings_of
 
 logger = logging.getLogger(__name__)
 
-# A /book photo is always allowed: it is the booking's proof (FR-BK-1).
-BOOK_PHOTO = filters.PHOTO & filters.CaptionRegex(r"^/book(@\w+)?(\s|$)")
+
+def caption_command(message: Message, bot_username: str) -> str | None:
+    """The command a caption starts with, if it is for this bot. Matched as
+    CommandHandler matches a text command: in any case, with no @handle or ours."""
+    entities = message.caption_entities
+    if not entities or entities[0].type != MessageEntity.BOT_COMMAND or entities[0].offset:
+        return None
+    command, _, handle = message.parse_caption_entity(entities[0])[1:].partition("@")
+    if handle and handle.lower() != bot_username.lower():
+        return None
+    return command.lower()
+
+
+def is_booking_photo(message: Message, bot_username: str) -> bool:
+    """A photo captioned /court. It is always allowed: it is the booking's proof (FR-BK-1)."""
+    return bool(message.photo) and caption_command(message, bot_username) == BOOKING_COMMAND
 
 
 def is_exempt(message: Message, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -29,8 +44,8 @@ def is_exempt(message: Message, context: ContextTypes.DEFAULT_TYPE) -> bool:
         return True  # an anonymous group admin
     if message.from_user is not None and settings.is_admin(message.from_user.id):
         return True
-    return bool(filters.StatusUpdate.ALL.check_update(_as_update(message))) or bool(
-        BOOK_PHOTO.check_update(_as_update(message))
+    return bool(filters.StatusUpdate.ALL.check_update(_as_update(message))) or (
+        is_booking_photo(message, context.bot.username)
     )
 
 

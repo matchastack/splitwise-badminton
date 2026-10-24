@@ -7,7 +7,7 @@ import html
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, filters
 
-from badminton.bot.commands import ADMIN_COMMANDS, MEMBER_COMMANDS
+from badminton.bot.commands import ADMIN_COMMANDS, BOOKING_COMMAND, MEMBER_COMMANDS
 from badminton.bot.context import db_session, settings_of
 from badminton.services.members import upsert_from_telegram, validate_name
 
@@ -20,7 +20,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await db.commit()
     await update.effective_message.reply_text(
         f"👋 Hi <b>{html.escape(name)}</b>! I'll send your monthly statement here.\n\n"
-        "In the group, send your court booking screenshot with the caption /book. "
+        f"In the group, send /{BOOKING_COMMAND} and then your court booking screenshot. "
         "Type /help to see everything I can do."
     )
 

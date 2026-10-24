@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from badminton.db.models import Booking, OpeningBalance, Session, ShuttleBatch, Transfer
+from badminton.db.models import OpeningBalance, Session, ShuttleBatch, Transfer
 from badminton.domain.ledger import (
     BatchFact,
     BookingFact,
@@ -94,16 +94,3 @@ async def load_ledger(db: AsyncSession, as_of: datetime) -> Ledger:
 
 async def get_balances(db: AsyncSession, as_of: datetime) -> dict[int, int]:
     return (await load_ledger(db, as_of)).balances
-
-
-async def last_hourly_rate(db: AsyncSession, default_cents: int) -> int:
-    """Cents per hour of the most recently recorded booking, to suggest a price (FR-BK-6)."""
-    latest = await db.scalar(
-        select(Booking)
-        .where(Booking.cancelled_at.is_(None))
-        .order_by(Booking.created_at.desc(), Booking.id.desc())
-        .limit(1)
-    )
-    if latest is None:
-        return default_cents
-    return (latest.amount_cents * 60 + latest.minutes // 2) // latest.minutes

@@ -77,9 +77,12 @@ def update_data(draft: Draft, **changes: Any) -> None:
 
 
 async def delete_draft(bot: Bot, db: AsyncSession, draft: Draft) -> None:
-    """Delete the draft and its open reply prompt, if any: with the wizard gone, nothing
-    could handle an answer."""
+    """Delete the draft, its open reply prompt, if any, and the messages it owns
+    (``data["owned_message_ids"]``, e.g. the screenshot sent to /court): with the wizard
+    gone, nothing could handle an answer, and nothing needs them."""
     await delete_message_quietly(bot, draft.chat_id, draft.prompt_message_id)
+    for message_id in draft.data.get("owned_message_ids", ()):
+        await delete_message_quietly(bot, draft.chat_id, message_id)
     draft.prompt_message_id = None
     await db.delete(draft)
 

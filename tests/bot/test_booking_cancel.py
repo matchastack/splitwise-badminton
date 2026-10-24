@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 from badminton.bot.handlers.booking_cancel import STARTED
 from badminton.db.models import AuditLog, Booking, Session
 from badminton.domain.timeutil import at_sgt, fmt_date, utc_now
-from tests.bot.booking_helpers import ALICE, BOB, CAROL, Wizard, book, future_day
+from tests.bot.booking_helpers import ALICE, BOB, CAROL, Card, book, future_day
 from tests.conftest import BotHarness
 from tests.fake_telegram import GROUP_ID, callback_update
 
@@ -15,13 +15,13 @@ DAY = future_day(14)
 
 async def booked(
     bot: BotHarness, sender: dict = BOB, hour: str = "11:00", hours: str = "2h"
-) -> Wizard:
+) -> Card:
+    """Book and confirm, joining the 11:00–13:00 session if there is one; returns the record."""
     wizard = await book(bot, sender, DAY, hour=hour, hours=hours)
-    await wizard.tap(next(label for label in wizard.buttons() if label.startswith("$")))
     if "➕ Add to 11:00–13:00" in wizard.buttons():
         await wizard.tap("➕ Add to 11:00–13:00")
     await wizard.tap("✅ Confirm")
-    return wizard
+    return wizard.record()
 
 
 async def only_session(bot: BotHarness) -> Session:
@@ -39,8 +39,15 @@ async def test_submitter_cancels_after_confirming(bot: BotHarness) -> None:
     session = await only_session(bot)
     assert session.status == "cancelled"
     assert session.bookings[0].cancelled_at is not None
-    assert record.text.startswith("🗑 <s>✅ <b>Court booked</b> by @bob_t")
-    assert record.text.endswith("Cancelled by bob.")
+    assert record.text == (
+        f"🗑 <s>📅 {fmt_date(DAY)}, 11:00–13:00 (2h)\n"
+        "📍 Hougang Sport Hall · Court 11\n"
+        "💵 $14.80, paid by @bob_t</s>\n"
+        "Cancelled by bob."
+    )
+    assert record.buttons() == {}
+    unpinned = bot.telegram.last("unpinChatMessage").params
+    assert (unpinned["chat_id"], unpinned["message_id"]) == (GROUP_ID, record.card["message_id"])
     assert bot.telegram.sent_texts(GROUP_ID)[-1] == (
         f"🗑 bob cancelled @bob_t's booking for {fmt_date(DAY)}, 11:00–13:00 ($14.80).\n"
         "That session is now cancelled."
@@ -150,3 +157,32 @@ async def test_already_cancelled(bot: BotHarness) -> None:
     await bot.send(callback_update(stale, sender=BOB, on_message=record.card))
 
     assert record.last_alert() == "This booking is already cancelled."
+
+
+async def test_a_record_from_before_screenshots_were_posted_is_still_updated(
+    bot: BotHarness,
+) -> None:
+    await booked(bot)
+    await bot.application.bot.send_message(GROUP_ID, "✅ Court booked by @bob_t")
+    old = bot.telegram.last("sendMessage").message
+    async with bot.sessionmaker() as db:
+        await db.execute(update(Booking).values(record_message_id=old["message_id"]))
+        await db.commit()
+    (booking,) = (await only_session(bot)).bookings
+    record = Card(bot, BOB, old, len(bot.telegram.calls))
+
+    await bot.send(callback_update(f"bkcy:{booking.id}", sender=BOB, on_message=old))
+
+    assert record.text.startswith(f"🗑 <s>📅 {fmt_date(DAY)}, 11:00–13:00 (2h)\n")
+    assert record.text.endswith("Cancelled by bob.")
+
+
+async def test_a_network_error_unpinning_still_announces(bot: BotHarness) -> None:
+    record = await booked(bot)
+    await record.tap("🗑 Cancel booking")
+    bot.telegram.fail("unpinChatMessage", 502, "Bad Gateway")
+
+    await record.tap("Yes, cancel it")
+
+    assert (await only_session(bot)).status == "cancelled"
+    assert bot.telegram.sent_texts(GROUP_ID)[-1].endswith("That session is now cancelled.")

@@ -6,7 +6,7 @@ import logging
 from typing import Any
 
 from telegram import Bot, Message
-from telegram.error import BadRequest, Forbidden
+from telegram.error import BadRequest, Forbidden, TelegramError
 
 from badminton.config import Settings
 from badminton.db.models import Member
@@ -38,6 +38,29 @@ async def dm(bot: Bot, member: Member, text: str, **kwargs: Any) -> bool:
         logger.warning("Could not DM member %s: %s", member.id, error)
         return False
     return True
+
+
+async def pin(bot: Bot, chat_id: int, message_id: int) -> None:
+    """Pin a message without notifying anyone (FR-ATT-4: no pings). The bot needs the
+    "Pin messages" admin right. Pins are a convenience: if one fails, even on a network
+    error, the message stays unpinned and the caller carries on."""
+    try:
+        await bot.pin_chat_message(chat_id, message_id, disable_notification=True)
+    except TelegramError as error:
+        logger.warning(
+            "Could not pin message %s: %s (can the bot pin messages?)", message_id, error
+        )
+
+
+async def unpin(bot: Bot, chat_id: int | None, message_id: int | None) -> None:
+    """Unpin a message, if it is still there and pinned. As with ``pin``, a failure is
+    logged and the caller carries on."""
+    if chat_id is None or message_id is None:
+        return
+    try:
+        await bot.unpin_chat_message(chat_id, message_id)
+    except TelegramError as error:
+        logger.info("Could not unpin message %s: %s", message_id, error)
 
 
 async def dm_admins(bot: Bot, settings: Settings, text: str, **kwargs: Any) -> None:

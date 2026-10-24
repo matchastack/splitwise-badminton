@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
+from badminton.bot.commands import BOOKING_COMMAND
 from badminton.bot.context import db_session
 from badminton.db.models import Member, Session
 from badminton.domain.ledger import Ledger
@@ -71,7 +72,7 @@ async def upcoming_lines(db: AsyncSession, now: datetime) -> list[str]:
         )
     ).all()
     if not sessions:
-        return ["No sessions booked yet. Send your booking screenshot with the caption /book."]
+        return [f"No sessions booked yet. Send /{BOOKING_COMMAND} in the group to record one."]
     names = {m.id: m.display_name for m in await db.scalars(select(Member))}
     lines = ["📅 <b>Upcoming sessions</b>"]
     for session in sessions:

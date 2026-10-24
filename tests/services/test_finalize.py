@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import select, update
 from telegram.error import BadRequest, NetworkError
 
-from badminton.db.models import Member, Session, ShuttleBatch
+from badminton.db.models import Booking, Member, Session, ShuttleBatch
 from badminton.domain.timeutil import at_sgt, fmt_session, utc_now
 from badminton.services.attendance import set_attendance
 from badminton.services.finalize import finalize_ended_sessions
@@ -167,3 +167,43 @@ async def test_a_late_tap_finalises_straight_away(bot: BotHarness) -> None:
 
     assert len(summaries(bot)) == 1
     assert "1 played: dave" in summaries(bot)[0]
+
+
+async def test_locking_unpins_the_booking_records(bot: BotHarness) -> None:
+    session_id = await make_session(bot, starts_at=START)
+    async with bot.sessionmaker() as db:
+        await db.execute(update(Booking).values(record_chat_id=GROUP_ID, record_message_id=4321))
+        await db.commit()
+    await mark_in(bot, session_id, "bob")
+
+    await finalize_ended_sessions(tick(bot))
+    await finalize_ended_sessions(tick(bot))
+
+    unpinned = [call.params for call in bot.telegram.calls_to("unpinChatMessage")]
+    assert unpinned == [{"chat_id": GROUP_ID, "message_id": 4321}]
+
+
+async def test_an_unpin_error_still_unpins_the_other_records(bot: BotHarness) -> None:
+    session_id = await make_session(bot, starts_at=START)
+    async with bot.sessionmaker() as db:
+        await db.execute(update(Booking).values(record_chat_id=GROUP_ID, record_message_id=4321))
+        first = await db.scalar(select(Booking))
+        second = Booking(
+            session_id=session_id,
+            payer_member_id=first.payer_member_id,
+            submitted_by_member_id=first.payer_member_id,
+            starts_at=START,
+            minutes=60,
+            amount_cents=740,
+            record_chat_id=GROUP_ID,
+            record_message_id=4322,
+        )
+        db.add(second)
+        await db.commit()
+    await mark_in(bot, session_id, "bob")
+    bot.telegram.fail("unpinChatMessage", 502, "Bad Gateway")
+
+    await finalize_ended_sessions(tick(bot))
+
+    unpinned = [call.params["message_id"] for call in bot.telegram.calls_to("unpinChatMessage")]
+    assert sorted(unpinned) == [4321, 4322]  # the first failed, and was tried

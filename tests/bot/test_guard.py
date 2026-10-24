@@ -69,10 +69,10 @@ async def test_deletes_member_messages_nothing_handled(bot: BotHarness, incoming
             sender_chat={"id": GROUP_ID, "type": "supergroup", "title": "Badminton"},
             text="anonymous admin",
         ),
-        photo_message(sender=BOB, caption="/book"),
-        photo_message(sender=BOB, caption="/book@badminton_bot 4 Oct"),
+        photo_message(sender=BOB, caption="/court"),
+        photo_message(sender=BOB, caption="/court@badminton_bot 4 Oct"),
     ],
-    ids=["admin", "join", "leave", "anonymous-admin", "book-photo", "book-photo-addressed"],
+    ids=["admin", "join", "leave", "anonymous-admin", "court-photo", "court-photo-addressed"],
 )
 async def test_keeps_exempt_messages(bot: BotHarness, incoming: dict) -> None:
     await bot.send(message_update(incoming))
