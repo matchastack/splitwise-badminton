@@ -1,3 +1,4 @@
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -19,3 +20,9 @@ def test_reads_an_activesg_screenshot() -> None:
 def test_anything_but_an_image_reads_as_nothing() -> None:
     assert read_text(b"not an image") == ""
     assert read_text(b"") == ""
+
+
+def test_a_tesseract_that_will_not_load_reads_as_nothing(monkeypatch) -> None:
+    monkeypatch.setitem(sys.modules, "tesserocr", None)  # importing it raises ImportError
+
+    assert read_text(SCREENSHOT.read_bytes()) == ""

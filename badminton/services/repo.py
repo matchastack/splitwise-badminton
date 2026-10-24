@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -97,10 +97,15 @@ async def get_balances(db: AsyncSession, as_of: datetime) -> dict[int, int]:
 
 
 async def last_hourly_rate(db: AsyncSession, default_cents: int) -> int:
-    """Cents per hour of the most recently recorded booking, to suggest a price (FR-BK-6)."""
+    """Cents per court-hour of the most recently recorded booking, to suggest a price
+    (FR-BK-6). Bookings listing several courts are left out: courts booked at once cost
+    more per hour, so the rate would compound."""
     latest = await db.scalar(
         select(Booking)
-        .where(Booking.cancelled_at.is_(None))
+        .where(
+            Booking.cancelled_at.is_(None),
+            or_(Booking.courts.is_(None), Booking.courts.not_like("%,%")),
+        )
         .order_by(Booking.created_at.desc(), Booking.id.desc())
         .limit(1)
     )
