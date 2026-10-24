@@ -10,7 +10,7 @@ from tests.bot.booking_helpers import BOB, Card, confirmed, future_day
 from tests.bot.edit_helpers import ALICE, EditCard
 from tests.bot.test_edit_attendance import START, WHEN, setup
 from tests.conftest import BotHarness
-from tests.fake_telegram import GROUP_ID, message, message_update
+from tests.fake_telegram import GROUP_ID, callback_update, message, message_update
 
 
 async def open_booking(bot: BotHarness) -> EditCard:
@@ -24,6 +24,14 @@ async def open_booking(bot: BotHarness) -> EditCard:
 async def the_booking(bot: BotHarness) -> Booking:
     async with bot.sessionmaker() as db:
         return await db.scalar(select(Booking))
+
+
+def card_edits(bot: BotHarness, card: EditCard) -> list:
+    return [
+        call
+        for call in bot.telegram.calls_to("editMessageText")
+        if call.params["message_id"] == card.message["message_id"]
+    ]
 
 
 async def test_change_price_through_a_reply(bot: BotHarness) -> None:
@@ -70,6 +78,38 @@ async def test_change_payer(bot: BotHarness) -> None:
         alice = await db.scalar(select(Member.id).where(Member.display_name == "alice"))
     assert ledger.balance(ids["dave"]) == 1480 - 740
     assert ledger.balance(alice) == 0
+
+
+async def test_a_second_payer_tap_changes_nothing(bot: BotHarness) -> None:
+    """The second tap of a double-tap waits for the first, then finds the payer set."""
+    await setup(bot)
+    card = await open_booking(bot)
+    await card.tap("👤 Payer")
+    dave = callback_update(card.buttons()["dave"], sender=ALICE, on_message=card.message)
+    await bot.send(dave)
+    sent, edits = len(bot.telegram.sent_texts(GROUP_ID)), len(card_edits(bot, card))
+
+    await bot.send(dave)
+
+    assert len(bot.telegram.sent_texts(GROUP_ID)) == sent  # announced once
+    assert len(card_edits(bot, card)) == edits
+    assert "dave's booking" in card.text
+    async with bot.sessionmaker() as db:
+        assert len((await db.scalars(select(AuditLog))).all()) == 1
+
+
+async def test_picking_the_payer_it_already_has_changes_nothing(bot: BotHarness) -> None:
+    await setup(bot)
+    card = await open_booking(bot)
+    sent = len(bot.telegram.sent_texts(GROUP_ID))
+
+    await card.tap("👤 Payer")
+    await card.tap("alice")
+
+    assert len(bot.telegram.sent_texts(GROUP_ID)) == sent
+    assert card.text.endswith("What should change?")  # back on the booking menu
+    async with bot.sessionmaker() as db:
+        assert await db.scalar(select(AuditLog)) is None
 
 
 async def test_change_hours_moves_the_session_end(bot: BotHarness) -> None:

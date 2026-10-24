@@ -18,6 +18,8 @@ from badminton.bot.handlers import (
     members,
     settle,
     shuttle,
+    shuttle_edit,
+    shuttle_finish,
 )
 
 
@@ -30,6 +32,8 @@ def register_handlers(application: Application) -> None:
     booking_cancel.register(application)
     attendance.register(application)
     shuttle.register(application)
+    shuttle_finish.register(application)
+    shuttle_edit.register(application)
     invoice.register(application)
     edit.register(application)
     settle.register(application)

@@ -40,7 +40,13 @@ from badminton.services.attendance import (
     refresh_card,
     set_attendance,
 )
-from badminton.services.drafts import create_draft, delete_draft, get_draft, update_data
+from badminton.services.drafts import (
+    create_draft,
+    delete_draft,
+    get_draft,
+    show_draft,
+    update_data,
+)
 from badminton.services.members import active_members, upsert_from_telegram
 from badminton.services.notify import announce
 from badminton.services.sessions import cancel_session, recompute_span
@@ -229,7 +235,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     callback = decode(query.data)
     async with db_session(context) as db:
-        draft = await get_draft(db, callback.draft_id, now=utc_now())
+        draft = await get_draft(db, callback.draft_id, now=utc_now(), lock=True)
         if draft is None:
             await query.answer("This form has expired. Use /edit again.", show_alert=True)
             return
@@ -351,9 +357,7 @@ def _split_line(view: CardView) -> str:
 
 async def _show(context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft) -> None:
     text, markup = await render(db, draft)
-    await context.bot.edit_message_text(
-        text, chat_id=draft.chat_id, message_id=draft.message_id, reply_markup=markup
-    )
+    await show_draft(context.bot, draft, text, markup)
 
 
 async def _change_booking(
@@ -368,6 +372,18 @@ async def _change_booking(
 ) -> None:
     """Apply one correction to a booking, then announce, audit and refresh."""
     booking = await db.get(Booking, draft.data["booking_id"])
+    unchanged = (
+        amount_cents in (None, booking.amount_cents)
+        and payer_id in (None, booking.payer_member_id)
+        and minutes in (None, booking.minutes)
+    )
+    if unchanged:  # e.g. a second tap on the same payer, which waited for the first
+        on_booking = draft.data.get("screen") == BOOKING
+        update_data(draft, screen=BOOKING)
+        if not on_booking:  # back from the payer or hours picker
+            await _show(context, db, draft)
+        await db.commit()
+        return
     session = await db.get(Session, booking.session_id)
     when = fmt_session(session.starts_at, session.ends_at)
     names = {m.id: m.display_name for m in await db.scalars(select(Member))}

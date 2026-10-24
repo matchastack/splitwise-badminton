@@ -10,6 +10,7 @@ an image's bytes as text, so a test puts a screenshot's text in ``telegram.files
 
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -25,9 +26,12 @@ from telegram import Update
 from telegram.ext import Application, ContextTypes
 
 from badminton.bot.app import build_application
+from badminton.bot.keyboards import decode
 from badminton.config import Settings, normalise_database_url
 from badminton.db.engine import create_engine, create_sessionmaker
 from badminton.db.models import Base
+from badminton.domain.timeutil import utc_now
+from badminton.services.drafts import get_draft
 from tests.fake_telegram import ADMIN_ID, GROUP_ID, FakeTelegram
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -103,6 +107,26 @@ class BotHarness:
         """Process one incoming update. Any handler error is re-raised here."""
         self.errors.clear()
         await self.application.process_update(Update.de_json(update, self.application.bot))
+        if self.errors:
+            raise self.errors[0]
+
+    async def double_tap(self, update: dict[str, Any]) -> None:
+        """Process a button tap twice at once, as Telegram may deliver a double-tap. The
+        card's draft is held until both requests are under way, so neither can finish
+        before the other starts."""
+        self.errors.clear()
+        draft_id = decode(update["callback_query"]["data"]).draft_id
+        async with self.sessionmaker() as holder:
+            await get_draft(holder, draft_id, now=utc_now(), lock=True)
+            taps = [
+                asyncio.create_task(
+                    self.application.process_update(Update.de_json(update, self.application.bot))
+                )
+                for _ in range(2)
+            ]
+            await asyncio.sleep(0.3)
+            assert not any(tap.done() for tap in taps)
+        await asyncio.gather(*taps)
         if self.errors:
             raise self.errors[0]
 

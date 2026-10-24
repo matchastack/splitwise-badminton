@@ -10,7 +10,7 @@ A Telegram bot that tracks court bookings, attendance and shuttlecock batches fo
 - **Bookings:** a member sends `/book`, then their ActiveSG booking screenshot. The bot reads the date, time, venue and court off it with OCR (Tesseract, no LLM), and shows the booking with a suggested price to confirm or edit. Once confirmed, it posts the screenshot with the booking and pins it until the session is played. The sender is recorded as the payer.
 - **Attendance:** 2 days before each session the bot posts a card with **[✅ I'm in] [❌ I'm out]**. People can change their answer until the session ends; no answer counts as out.
 - **Locking:** when the session ends, attendance locks and the bot posts the split. Everyone who played shares the court cost and gets hours added to the current shuttle batch (1 hour = 1 share).
-- **Shuttles:** the admin records each purchase with `/shuttle`. That closes the previous batch, which is then split by hours played.
+- **Shuttles:** whoever buys a tube records it in the group with `/shuttle <price>`, and is recorded as the payer. It waits until the batch in use runs out; only one purchase can wait. When the admin runs `/shuttle_finished`, that batch closes and is split by hours played, and the waiting one takes over. Until it's in use, the buyer or the admin can cancel a purchase from its card, and the admin can correct any batch with `/shuttle_edit`.
 - **Monthly settle-up:** on the 1st of each month the bot posts who pays whom, using the fewest transfers, with a **✅ paid** button on each line. Everyone who has opened a chat with the bot also gets a private statement.
 - **Admin corrections:** every change the admin makes is announced in the group.
 - **Commands-only group:** the bot deletes anything in the group that isn't a command.
@@ -117,7 +117,7 @@ This does two things:
 - Registers the webhook (`<base-url>/api/telegram`) with your `WEBHOOK_SECRET`.
 - Publishes the command menu: member commands for everyone, plus admin commands for you.
 
-It prints the webhook URL when done.
+It prints the webhook URL when done. Run it again whenever a change adds or renames a command, so Telegram's menus match.
 
 ### 7. Set up the Telegram group
 
@@ -191,11 +191,11 @@ If the group kept its accounts in the spreadsheet, carry everyone's balance over
 
 What it carries over:
 - **One opening balance per player:** Paid − Spend, rounded to cents so the balances still sum to zero. The history isn't copied; the sheet stays the record of it. The first monthly statement shows it as "Carried over from the spreadsheet".
-- **The unused tube:** a shuttle row with no shares yet becomes the current shuttle batch. When the next `/shuttle` closes it, its buyer is credited and everyone is charged by hours played. Until then, its price isn't in its buyer's balance. Only the latest tube can be unused. If a court row is dated after it, fill in its shares first: those sessions played with it.
+- **The unused tube:** a shuttle row with no shares yet becomes the current shuttle batch. When the admin finishes it with `/shuttle_finished`, its buyer is credited and everyone is charged by hours played. Until then, its price isn't in its buyer's balance. Only the latest tube can be unused. If a court row is dated after it, fill in its shares first: those sessions played with it.
 
 It runs only once, and the dry run is refused in the same cases as `--apply`, changing nothing. It refuses when the bot already has:
 - a session on or before the sheet's last date. Cancel it with `/edit`;
-- a shuttle batch or a payment from that time, or any shuttle batch at all when the sheet has an unused tube. These can't be removed in the bot, so import into a new, empty database instead.
+- a shuttle batch or a payment from that time, or any shuttle batch at all (even one still waiting) when the sheet has an unused tube. Batches in use and payments can't be removed in the bot, so import into a new, empty database instead.
 
 **When a guest joins the group.** The first time they use the bot (tap a card, send `/start` or `/balance`), it makes a new member record for their Telegram account, as for anyone. To link the two:
 1. Send `/members`.
@@ -252,13 +252,16 @@ If both records are marked in for a session that has already ended, the bot won'
 | Command | Who | Where | What |
 |---|---|---|---|
 | `/book` | anyone | group | Record a court booking: send it, then your booking screenshot (or send the screenshot with the caption `/book`) |
-| `/balance` | anyone | anywhere | Your balance, shuttle hours so far and unpaid settle-ups |
+| `/shuttle <price>` | anyone | group | Record a shuttlecock purchase you paid for; it waits until the current batch is finished |
+| `/balance` | anyone | anywhere | Your balance, shuttle hours so far, a waiting shuttle batch and unpaid settle-ups |
 | `/upcoming` | anyone | anywhere | Booked sessions |
 | `/name <name>` | anyone | anywhere | Change the name the bot shows for you |
 | `/start` | anyone | DM | Turn on monthly statements |
 | `/help` | anyone | anywhere | What the bot can do |
 | `/chatid` | anyone (in other groups once `GROUP_CHAT_ID` is set: admin) | anywhere | Show the chat ID (setup) |
-| `/shuttle <price>` | admin | anywhere | Record a shuttlecock purchase |
+| `/shuttle <price>` | admin | anywhere | As above, but you pick who paid |
+| `/shuttle_finished` | admin | anywhere | Finish the current shuttle batch; the waiting one takes over |
+| `/shuttle_edit` | admin | anywhere | Fix a shuttle batch's price or payer, remove a waiting one, or undo `/shuttle_finished` |
 | `/edit` | admin | anywhere | Fix a session's attendance or bookings, or cancel it |
 | `/settle` | admin | anywhere | Record a payment made outside the bot |
 | `/addmember <name>` | admin | anywhere | Add a guest who isn't on Telegram |

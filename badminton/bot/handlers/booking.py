@@ -69,6 +69,7 @@ from badminton.services.drafts import (
     delete_message_quietly,
     find_by_prompt,
     get_draft,
+    show_draft,
     update_data,
 )
 from badminton.services.members import mention_html, upsert_from_telegram
@@ -317,9 +318,7 @@ async def refresh_wizard(
     context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft
 ) -> None:
     text, markup = await _card(db, draft)
-    await context.bot.edit_message_text(
-        text, chat_id=draft.chat_id, message_id=draft.message_id, reply_markup=markup
-    )
+    await show_draft(context.bot, draft, text, markup)
 
 
 # Handlers ---------------------------------------------------------------------
@@ -390,6 +389,7 @@ async def _awaiting_screenshot(db: AsyncSession, message: Message, user_id: int)
         chat_id=message.chat_id,
         prompt_message_id=message.reply_to_message.message_id,
         now=utc_now(),
+        lock=True,  # one screenshot at a time, as for typed answers
     )
     if draft is None or draft.kind != KIND or draft.user_id != user_id:
         return None
@@ -443,7 +443,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     callback = decode(query.data)
     async with db_session(context) as db:
-        draft = await get_draft(db, callback.draft_id, now=utc_now())
+        draft = await get_draft(db, callback.draft_id, now=utc_now(), lock=True)
         if draft is None:
             await query.answer(EXPIRED, show_alert=True)
             return

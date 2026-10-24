@@ -17,6 +17,7 @@ from sqlalchemy import (
     MetaData,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -131,16 +132,29 @@ class Attendance(Base):
 
 
 class ShuttleBatch(Base):
-    """A shuttlecock purchase covering sessions from ``starts_at`` until the next batch."""
+    """A shuttlecock purchase covering sessions from ``starts_at`` until the next batch.
+
+    A purchase waits, with no start, until the admin finishes the batch in use; then it
+    is opened. At most one batch waits (FR-SH-5): ``opened_at`` is unique, NULLs included.
+    """
 
     __tablename__ = "shuttle_batches"
-    __table_args__ = (CheckConstraint("amount_cents > 0", name="amount_positive"),)
+    __table_args__ = (
+        CheckConstraint("amount_cents > 0", name="amount_positive"),
+        CheckConstraint("(starts_at IS NULL) = (opened_at IS NULL)", name="start_when_opened"),
+        UniqueConstraint("opened_at", postgresql_nulls_not_distinct=True),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     payer_member_id: Mapped[int] = _member_fk()
     amount_cents: Mapped[int]
-    starts_at: Mapped[datetime] = mapped_column(unique=True)
+    starts_at: Mapped[datetime | None] = mapped_column(unique=True)  # first session it covers
+    opened_at: Mapped[datetime | None]  # put in use, which closed the previous batch
     created_at: Mapped[datetime] = _created_at()
+
+    @property
+    def waiting(self) -> bool:
+        return self.opened_at is None
 
 
 class Transfer(Base):

@@ -77,7 +77,9 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T38 | Opening balances and spreadsheet import | `feat/t38-spreadsheet-import` | E10 | T14, T16, T37 | ✅ | [#61](https://github.com/matchastack/splitwise-badminton/pull/61) |
 | T39 | Link a guest to a Telegram account | `feat/t39-link-guests` | E2 | T19, T38 | ✅ | [#62](https://github.com/matchastack/splitwise-badminton/pull/62) |
 | T40 | Linked guest's name; member list closes after a change | `feat/t40-linked-guest-name` | E2 | T39 | ✅ | [#64](https://github.com/matchastack/splitwise-badminton/pull/64) |
-| T41 | Read booking screenshots (OCR); pin bookings | `claude/inspiring-euler-fdophp` | E3 | T23, T24, T27 | ⏳ | — |
+| T41 | Waiting shuttle batches and member purchases | `claude/dreamy-cerf-pz28gc` | E5 | T28, T38 | ✅ | [#67](https://github.com/matchastack/splitwise-badminton/pull/67) |
+| T42 | Share the wizard card refresh | `claude/dazzling-noether-dpbhbz` | E3 | T17, T41 | ✅ | [#69](https://github.com/matchastack/splitwise-badminton/pull/69) |
+| T43 | Read booking screenshots (OCR); pin bookings | `claude/inspiring-euler-fdophp` | E3 | T23, T24, T27, T42 | ✅ | [#72](https://github.com/matchastack/splitwise-badminton/pull/72) |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
@@ -296,13 +298,20 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
   - Announced in the group and audited.
 - **Done when:** tests cover the allowed roles, refusal for others, refusal after the start time, and session cancellation.
 
-### T41 · Read booking screenshots (OCR); pin bookings
-`claude/inspiring-euler-fdophp` · Stories US-3.1, US-3.2, US-3.7 · FR-BK-1 to FR-BK-8, FR-BK-10, FR-BK-12, FR-ATT-6 · Depends on T23, T24, T27
+### T42 · Share the wizard card refresh
+`claude/dazzling-noether-dpbhbz` · Stories US-3.4 · FR-BK-9 · Depends on T17, T41
+- **Scope:** `badminton/services/drafts.py`
+  - `show_draft` edits a wizard's card in place. `/book`, `/edit`, `/settle` and `/shuttle_edit` use it instead of their own copies.
+  - An edit that changes nothing, such as a double tap, makes Telegram answer "message is not modified". That is ignored; any other error is still raised.
+- **Done when:** tests cover the edit, an unchanged card being harmless (directly and from a double tap in `/settle`), and other errors still being raised.
+
+### T43 · Read booking screenshots (OCR); pin bookings
+`claude/inspiring-euler-fdophp` · Stories US-3.1, US-3.2, US-3.7 · FR-BK-1 to FR-BK-8, FR-BK-10, FR-BK-12, FR-ATT-6 · Depends on T23, T24, T27, T42
 - **Scope:**
   - `/book` asks for the screenshot with a reply prompt. A photo captioned `/book` still works.
   - `badminton/domain/screenshot.py` reads the venue, slots and courts off the OCR text. `badminton/services/ocr.py` runs Tesseract (the tesserocr wheel, with the English model in `badminton/tessdata`).
   - The wizard shows the booking with a suggested price to confirm. ✏️ Edit changes the date, time, hours, venue, courts or price. It asks for the date and time only if they couldn't be read.
-  - Bookings store their venue and courts (migration 0004).
+  - Bookings store their venue and courts (migration 0005).
   - On confirm, the bot posts the screenshot captioned with the booking and pins it silently. Cancelling the booking, or locking its session, unpins it.
 - **Done when:** tests cover the parser (12-hour times, the year from the weekday, two courts, gaps), Tesseract on a real screenshot, the prompt and caption paths, editing, the posted and pinned record, and unpinning.
 
@@ -341,6 +350,16 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
   - Announce the new batch together with the closed batch's split: total hours, $/h, and each player's hours and amount.
   - Audited.
 - **Done when:** tests cover the announcement figures, both start-point options, and refusal for non-admins.
+
+### T41 · Waiting shuttle batches and member purchases
+`claude/dreamy-cerf-pz28gc` · Stories US-5.1 to US-5.5, US-8.5 · FR-SH-1 to FR-SH-7, FR-LED-4, FR-LED-8 · Depends on T28, T38
+- **Scope:**
+  - `shuttle_batches.opened_at`, and a nullable `starts_at`: both are empty while a purchase waits. The database allows at most one waiting batch. The ledger opens and closes batches by `opened_at`; existing batches are backfilled from `created_at`, so no figure changes.
+  - `/shuttle <price>` for every member, in the group: the sender pays (the admin, anywhere, picks the payer), the purchase waits, and nothing closes. It's refused while a batch is waiting. The buyer or the admin can cancel it from its card until it's in use.
+  - `/shuttle_finished` (admin): [Next session]/[Last session] → the open batch closes with its split announced, and the waiting batch takes over.
+  - `/shuttle_edit` (admin): change any batch's price or payer (with the recalculated split for a closed batch), remove a waiting batch, or undo `/shuttle_finished`.
+  - `/balance` shows the waiting batch.
+- **Done when:** tests cover a member's purchase in the group (refused by DM) and the admin's anywhere, the one-waiting refusal, cancelling by the payer or the admin and refusal for anyone else, races on Record, cancel, remove and undo, finishing from either start point, the first batch, every correction, and the migration both ways with rows.
 
 ## E7 — Monthly invoicing and settlement
 

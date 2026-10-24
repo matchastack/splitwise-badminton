@@ -21,7 +21,13 @@ from badminton.db.models import Draft, Invoice, Member, Transfer
 from badminton.domain.money import fmt_sgd, parse_amount
 from badminton.domain.timeutil import utc_now
 from badminton.services import audit
-from badminton.services.drafts import create_draft, delete_draft, get_draft, update_data
+from badminton.services.drafts import (
+    create_draft,
+    delete_draft,
+    get_draft,
+    show_draft,
+    update_data,
+)
 from badminton.services.invoice import open_lines_for, refresh_invoice_card
 from badminton.services.members import active_members, upsert_from_telegram
 from badminton.services.notify import announce
@@ -71,9 +77,7 @@ async def render(db: AsyncSession, draft: Draft) -> tuple[str, InlineKeyboardMar
 
 async def _show(context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft) -> None:
     text, markup = await render(db, draft)
-    await context.bot.edit_message_text(
-        text, chat_id=draft.chat_id, message_id=draft.message_id, reply_markup=markup
-    )
+    await show_draft(context.bot, draft, text, markup)
 
 
 @admin_only
@@ -94,7 +98,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     callback = decode(query.data)
     async with db_session(context) as db:
-        draft = await get_draft(db, callback.draft_id, now=utc_now())
+        draft = await get_draft(db, callback.draft_id, now=utc_now(), lock=True)
         if draft is None:
             await query.answer("This form has expired. Use /settle again.", show_alert=True)
             return

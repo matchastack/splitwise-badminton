@@ -30,7 +30,7 @@ class SettleCard:
     @property
     def current(self) -> dict:
         for call in reversed(self.bot.telegram.calls):
-            edit = call.method == "editMessageText"
+            edit = call.method == "editMessageText" and call.result is not None  # not refused
             if edit and call.params["message_id"] == self.message["message_id"]:
                 return call.result
         return self.message
@@ -95,6 +95,27 @@ async def test_record_a_payment(bot: BotHarness) -> None:
     )
 
 
+async def test_a_second_record_tap_keeps_the_receipt(bot: BotHarness) -> None:
+    """The second tap of a double-tap waits for the first, then finds the form gone."""
+    await members(bot, "bob", "dave")
+    card = await SettleCard(bot).open()
+    await card.tap("bob")
+    await card.tap("dave")
+    await card.answer("50")
+    record = callback_update(card.buttons()["✅ Record"], sender=ALICE, on_message=card.message)
+    await bot.send(record)
+    receipt = card.current
+
+    await bot.send(record)
+
+    async with bot.sessionmaker() as db:
+        assert len((await db.scalars(select(Transfer))).all()) == 1
+    alert = bot.telegram.last("answerCallbackQuery").params["text"]
+    assert alert == "This form has expired. Use /settle again."
+    assert card.current is receipt  # not edited again
+    assert receipt["text"] == "✅ Recorded: bob paid dave $50.00."
+
+
 async def test_cancel_while_asked_for_the_amount_removes_the_prompt(bot: BotHarness) -> None:
     await members(bot, "bob", "dave")
     card = await SettleCard(bot).open()
@@ -107,6 +128,25 @@ async def test_cancel_while_asked_for_the_amount_removes_the_prompt(bot: BotHarn
     deleted = [call.params["message_id"] for call in bot.telegram.calls_to("deleteMessage")]
     assert deleted == [prompt["message_id"]]
     assert card.current["text"] == "✖ Payment not recorded."
+
+
+async def test_a_double_tap_is_harmless(bot: BotHarness) -> None:
+    ids = await members(bot, "bob", "dave")
+    card = await SettleCard(bot).open()
+    bob = card.buttons()["bob"]
+    await card.tap("bob")
+    # The second tap re-renders the same card, and Telegram refuses an edit that
+    # changes nothing.
+    bot.telegram.fail("editMessageText", 400, "Bad Request: message is not modified")
+
+    await bot.send(callback_update(bob, sender=ALICE, on_message=card.message))
+
+    await card.tap("dave")
+    await card.answer("50")
+    await card.tap("✅ Record")
+    async with bot.sessionmaker() as db:
+        transfer = await db.scalar(select(Transfer))
+    assert (transfer.from_member_id, transfer.to_member_id) == (ids["bob"], ids["dave"])
 
 
 async def test_same_person_on_both_sides_is_refused(bot: BotHarness) -> None:
