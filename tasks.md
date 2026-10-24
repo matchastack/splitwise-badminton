@@ -80,7 +80,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T41 | Waiting shuttle batches and member purchases | `claude/dreamy-cerf-pz28gc` | E5 | T28, T38 | ✅ | [#67](https://github.com/matchastack/splitwise-badminton/pull/67) |
 | T42 | Share the wizard card refresh | `claude/dazzling-noether-dpbhbz` | E3 | T17, T41 | ✅ | [#69](https://github.com/matchastack/splitwise-badminton/pull/69) |
 | T43 | Read booking screenshots (OCR); pin bookings | `claude/inspiring-euler-fdophp` | E3 | T23, T24, T27, T42 | ✅ | [#72](https://github.com/matchastack/splitwise-badminton/pull/72) |
-| T44 | Rename `/book` to `/court` | `feat/t44-court-command` | E3 | T43 | ⬜ | — |
+| T44 | Rename `/book` to `/court` | `feat/t44-court-command` | E3 | T43 | ✅ | [#73](https://github.com/matchastack/splitwise-badminton/pull/73) |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
