@@ -107,7 +107,9 @@ def test_open_batch_is_not_billed_but_reports_pending_hours() -> None:
 def test_session_starting_exactly_at_batch_start_uses_that_batch() -> None:
     """The "Last session" start point: the batch starts at that session's start."""
     last = SHEET_SESSIONS[-1]
-    bought_after = batch(3, FRANK, 7679, last.starts_at, created_at=last.ends_at + timedelta(hours=1))
+    bought_after = batch(
+        3, FRANK, 7679, last.starts_at, created_at=last.ends_at + timedelta(hours=1)
+    )
 
     ledger = compute_ledger(
         sessions=SHEET_SESSIONS,
@@ -116,7 +118,13 @@ def test_session_starting_exactly_at_batch_start_uses_that_batch() -> None:
         as_of=at_sgt(date(2026, 10, 19), 0),
     )
 
-    assert ledger.batch_minutes[bought_after.id] == {ALICE: 120, BOB: 120, DAVE: 120, ERIN: 120, FRANK: 120}
+    assert ledger.batch_minutes[bought_after.id] == {
+        ALICE: 120,
+        BOB: 120,
+        DAVE: 120,
+        ERIN: 120,
+        FRANK: 120,
+    }
     assert FRANK not in ledger.batch_minutes[AUG_16.id]
 
 

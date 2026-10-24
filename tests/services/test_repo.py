@@ -62,7 +62,9 @@ async def seed(db: AsyncSession) -> dict[str, int]:
     db.add_all(
         [
             ShuttleBatch(
-                payer_member_id=ids["alice"], amount_cents=6000, starts_at=at_sgt(date(2026, 10, 1), 0)
+                payer_member_id=ids["alice"],
+                amount_cents=6000,
+                starts_at=at_sgt(date(2026, 10, 1), 0),
             ),
             ShuttleBatch(
                 payer_member_id=ids["dave"],

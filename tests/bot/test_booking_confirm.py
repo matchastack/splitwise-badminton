@@ -4,7 +4,7 @@ from sqlalchemy import func, select
 
 from badminton.db.models import Booking, Draft, Member, Session
 from badminton.domain.timeutil import at_sgt, fmt_date
-from tests.bot.booking_helpers import BOB, ALICE, book, future_day
+from tests.bot.booking_helpers import ALICE, BOB, book, future_day
 from tests.conftest import BotHarness
 from tests.fake_telegram import message, message_update
 

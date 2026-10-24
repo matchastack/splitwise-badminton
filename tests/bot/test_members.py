@@ -112,7 +112,10 @@ async def test_chatid_works_anywhere_before_setup(bot: BotHarness) -> None:
 @pytest.mark.parametrize(
     ("member", "expected"),
     [
-        (Member(display_name="alice", username="alice_handle", telegram_user_id=1), "@alice_handle"),
+        (
+            Member(display_name="alice", username="alice_handle", telegram_user_id=1),
+            "@alice_handle",
+        ),
         (
             Member(display_name="Carol <3", telegram_user_id=7),
             '<a href="tg://user?id=7">Carol &lt;3</a>',

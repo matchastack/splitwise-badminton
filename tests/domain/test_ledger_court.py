@@ -74,7 +74,9 @@ def test_booker_who_does_not_play_is_still_credited() -> None:
 
 def test_multiple_bookings_add_up() -> None:
     ledger = compute_ledger(
-        sessions=[session(bookings=((DAVE, 740), (ALICE, 740)), attendees=(ALICE, BOB, CAROL, DAVE))],
+        sessions=[
+            session(bookings=((DAVE, 740), (ALICE, 740)), attendees=(ALICE, BOB, CAROL, DAVE))
+        ],
         transfers=[],
         as_of=AFTER,
     )

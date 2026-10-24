@@ -89,7 +89,16 @@ def write_sheet(path: Path) -> Path:
     items = workbook.active
     items.title = "Items"
     rows = [
-        ("Date", "Item", "Price", "Paid By", "alice", "frank", "Number of Shares", "Price per Share"),
+        (
+            "Date",
+            "Item",
+            "Price",
+            "Paid By",
+            "alice",
+            "frank",
+            "Number of Shares",
+            "Price per Share",
+        ),
         (datetime(2026, 10, 18), "court", 14.8, "alice", 1, 1, "=SUM(E2:F2)", "=C2/G2"),
         (datetime(2026, 10, 18), "shuttle", 76.79, "frank", 0, None, "=SUM(E3:F3)", "=C3/G3"),
     ]
@@ -102,9 +111,13 @@ def write_sheet(path: Path) -> Path:
 
 def test_import_reads_the_items_sheet_and_reports_the_tally(tmp_path: Path) -> None:
     summary = read_workbook(write_sheet(tmp_path / "Badminton.xlsx"))
-    alice = Member(id=1, display_name="Alice Wong", username="alice_w", telegram_user_id=111, active=True)
+    alice = Member(
+        id=1, display_name="Alice Wong", username="alice_w", telegram_user_id=111, active=True
+    )
 
-    lines = report(summary, [Match("alice", alice, "same name"), Match("frank", None, "new guest")], [alice])
+    lines = report(
+        summary, [Match("alice", alice, "same name"), Match("frank", None, "new guest")], [alice]
+    )
 
     assert lines[:6] == [
         "Bot members now:",

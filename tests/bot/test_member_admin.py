@@ -118,7 +118,10 @@ async def test_rename_through_a_prompt(bot: BotHarness) -> None:
     assert reprompt.params["text"].startswith("⚠️ Names can be at most 32 characters.")
 
     await bot.send(
-        {"update_id": 2, "message": message(sender=ALICE, text="Grace K", reply_to=reprompt.message)}
+        {
+            "update_id": 2,
+            "message": message(sender=ALICE, text="Grace K", reply_to=reprompt.message),
+        }
     )
 
     assert "Grace K" in await members(bot)
@@ -294,9 +297,7 @@ async def test_link_buttons_are_admin_only(bot: BotHarness) -> None:
     await bot.send(callback_update(button(card, "🔗"), sender=BOB, on_message=card))
     guest = (await members(bot))["grace"]
     bob = (await members(bot))["bob"]
-    await bot.send(
-        callback_update(f"mem:lnk:{guest.id}:{bob.id}:ok", sender=BOB, on_message=card)
-    )
+    await bot.send(callback_update(f"mem:lnk:{guest.id}:{bob.id}:ok", sender=BOB, on_message=card))
 
     assert [call.params["text"] for call in bot.telegram.calls_to("answerCallbackQuery")] == [
         NOT_ADMIN,

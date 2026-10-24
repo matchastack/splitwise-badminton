@@ -3,7 +3,7 @@ from sqlalchemy import func, select
 from badminton.bot.handlers.booking import EXPIRED
 from badminton.db.models import Draft, Member
 from badminton.domain.timeutil import fmt_date
-from tests.bot.booking_helpers import CAROL, BOB, Wizard, future_day
+from tests.bot.booking_helpers import BOB, CAROL, Wizard, future_day
 from tests.conftest import BotHarness
 from tests.fake_telegram import GROUP_ID, callback_update, message, text_update
 
@@ -97,9 +97,7 @@ async def test_past_dates_are_refused(bot: BotHarness) -> None:
     wizard = await Wizard(bot, BOB).start()
     draft = await the_draft(bot)
 
-    await bot.send(
-        callback_update(f"bk:{draft.id}:d:20200101", sender=BOB, on_message=wizard.card)
-    )
+    await bot.send(callback_update(f"bk:{draft.id}:d:20200101", sender=BOB, on_message=wizard.card))
 
     assert wizard.last_alert() == "That date has passed."
     assert "day" not in (await the_draft(bot)).data

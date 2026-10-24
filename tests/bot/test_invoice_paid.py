@@ -58,7 +58,8 @@ async def test_payer_marks_paid_and_can_undo(bot: BotHarness) -> None:
 
     assert card.alert() == "Marked as paid ✅"
     assert (
-        '✅ <s><a href="tg://user?id=222">bob</a> → @alice_handle $12.50</s>' in card.current["text"]
+        '✅ <s><a href="tg://user?id=222">bob</a> → @alice_handle $12.50</s>'
+        in card.current["text"]
     )
     assert "↩️ Undo bob → alice" in card.buttons()
     async with bot.sessionmaker() as db:

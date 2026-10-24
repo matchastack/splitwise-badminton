@@ -3,7 +3,7 @@ from sqlalchemy.orm import selectinload
 
 from badminton.db.models import Session
 from badminton.domain.timeutil import at_sgt, fmt_date
-from tests.bot.booking_helpers import BOB, ALICE, book, future_day
+from tests.bot.booking_helpers import ALICE, BOB, book, future_day
 from tests.conftest import BotHarness
 
 DAY = future_day(14)

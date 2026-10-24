@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 from badminton.bot.handlers.booking_cancel import STARTED
 from badminton.db.models import AuditLog, Booking, Session
 from badminton.domain.timeutil import at_sgt, fmt_date, utc_now
-from tests.bot.booking_helpers import CAROL, BOB, ALICE, Wizard, book, future_day
+from tests.bot.booking_helpers import ALICE, BOB, CAROL, Wizard, book, future_day
 from tests.conftest import BotHarness
 from tests.fake_telegram import GROUP_ID, callback_update
 

@@ -16,7 +16,9 @@ SEP_INVOICE = at_sgt(date(2026, 10, 1), 10)  # the previous invoice was generate
 NOW = at_sgt(date(2026, 11, 1), 10)
 
 
-def session(session_id: int, day: date, attendees: tuple[int, ...], payer: int = ALICE) -> SessionFact:
+def session(
+    session_id: int, day: date, attendees: tuple[int, ...], payer: int = ALICE
+) -> SessionFact:
     start = at_sgt(day, 11)
     return SessionFact(
         session_id,

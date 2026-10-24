@@ -51,7 +51,9 @@ async def add_session(db: AsyncSession, day: int, payer: Member, answers: dict[M
 async def people(db: AsyncSession) -> tuple[Member, Member, Member]:
     alice = Member(display_name="alice", telegram_user_id=1)
     guest = Member(display_name="frank", active=False)  # imported from the sheet
-    account = Member(display_name="Frank Lee", telegram_user_id=2, username="frank_lee", dm_enabled=True)
+    account = Member(
+        display_name="Frank Lee", telegram_user_id=2, username="frank_lee", dm_enabled=True
+    )
     db.add_all([alice, guest, account])
     await db.flush()
     db.add(
@@ -60,7 +62,9 @@ async def people(db: AsyncSession) -> tuple[Member, Member, Member]:
         )
     )
     db.add(
-        OpeningBalance(member_id=alice.id, amount_cents=494, created_at=at_sgt(date(2026, 10, 23), 9))
+        OpeningBalance(
+            member_id=alice.id, amount_cents=494, created_at=at_sgt(date(2026, 10, 23), 9)
+        )
     )
     return alice, guest, account
 
@@ -157,7 +161,9 @@ async def test_refuses_while_both_records_played_the_same_session(db: AsyncSessi
     account_id = account.id
     before = await get_balances(db, LATER)
 
-    with pytest.raises(LinkRefused, match=r"frank and Frank Lee are both marked in for Sun 1 Nov\."):
+    with pytest.raises(
+        LinkRefused, match=r"frank and Frank Lee are both marked in for Sun 1 Nov\."
+    ):
         await link_guest(db, guest, account, now=LATER)
     await db.rollback()
 
@@ -194,7 +200,12 @@ async def test_wizards_open_on_the_account_expire(db: AsyncSession) -> None:
         [
             draft("booking", payer_member_id=account.id),
             draft("settle", from_id=guest.id, to_id=account.id),
-            draft("edit", session_id=account.id + 100, ins=[alice.id, account.id], shown_ins=[alice.id]),
+            draft(
+                "edit",
+                session_id=account.id + 100,
+                ins=[alice.id, account.id],
+                shown_ins=[alice.id],
+            ),
             draft("member_rename", member_id=alice.id),
             draft("edit", session_id=account.id, ins=[alice.id]),  # a session ID, not a member
         ]
@@ -234,7 +245,9 @@ async def test_an_account_opening_balance_is_added_to_the_guests(db: AsyncSessio
     alice, guest, account = await people(db)
     alice_opening = await db.get(OpeningBalance, alice.id)
     alice_opening.amount_cents = 94  # so that the three still sum to zero
-    db.add(OpeningBalance(member_id=account.id, amount_cents=400, created_at=alice_opening.created_at))
+    db.add(
+        OpeningBalance(member_id=account.id, amount_cents=400, created_at=alice_opening.created_at)
+    )
     await db.commit()
 
     await link_guest(db, guest, account, now=LATER)

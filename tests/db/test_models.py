@@ -66,7 +66,10 @@ async def test_round_trip_every_model(db: AsyncSession) -> None:
     await db.flush()
     db.add(
         Transfer(
-            from_member_id=guest.id, to_member_id=alice.id, amount_cents=740, invoice_line_id=line.id
+            from_member_id=guest.id,
+            to_member_id=alice.id,
+            amount_cents=740,
+            invoice_line_id=line.id,
         )
     )
     await db.commit()
@@ -103,8 +106,12 @@ async def test_round_trip_every_model(db: AsyncSession) -> None:
 @pytest.mark.parametrize(
     "bad_row",
     [
-        lambda alice, guest: Transfer(from_member_id=alice.id, to_member_id=alice.id, amount_cents=100),
-        lambda alice, guest: Transfer(from_member_id=alice.id, to_member_id=guest.id, amount_cents=0),
+        lambda alice, guest: Transfer(
+            from_member_id=alice.id, to_member_id=alice.id, amount_cents=100
+        ),
+        lambda alice, guest: Transfer(
+            from_member_id=alice.id, to_member_id=guest.id, amount_cents=0
+        ),
         lambda alice, guest: Session(starts_at=START, ends_at=START),
         lambda alice, guest: Session(
             starts_at=START, ends_at=START + timedelta(hours=1), status="done"

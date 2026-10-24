@@ -71,9 +71,7 @@ async def test_invalid_answer_asks_again(bot: BotHarness, asked: dict) -> None:
     assert reprompt.startswith("⚠️ Enter a number\n")
     assert reprompt.endswith("how many?")
     new_prompt = bot.telegram.last("sendMessage").message
-    await bot.send(
-        {"update_id": 2, "message": message(sender=BOB, text="4", reply_to=new_prompt)}
-    )
+    await bot.send({"update_id": 2, "message": message(sender=BOB, text="4", reply_to=new_prompt)})
     assert answers == ["hours=4"]
 
 
