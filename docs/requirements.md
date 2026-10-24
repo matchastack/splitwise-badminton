@@ -140,8 +140,8 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
   - *Other* asks for the hours with a reply prompt.
   - It accepts a positive number in 0.5-hour steps, up to 6.
 - **FR-BK-6:** **Price**: the screenshot shows none, so the bot suggests one.
-  - The suggestion is the hourly rate × the court time: one hour per slot on the screenshot, e.g. 4h for two courts for 2 hours. Hours the member picks are taken as one court at a time.
-  - The hourly rate is the latest booking of a single court's price per hour, since courts booked at once cost more per hour. The default rate is $7.40/h.
+  - The suggestion is the court rate × the court time: one hour per slot on the screenshot, e.g. 4h for two courts for 2 hours. Hours the member picks are taken as one court at a time.
+  - The court rate is the configured `DEFAULT_COURT_RATE_CENTS`, $7.40/h unless set otherwise. Courts nearly always cost that; a booking that cost something else (off-peak, or bought through someone else) gets its price from ✏️ Edit, and doesn't change the rate.
   - The member can type another amount with ✏️ Edit (FR-BK-8). It accepts $0.01–$500.00 with up to 2 decimal places, and stays if the hours change.
 - **FR-BK-7:**
   - If the new booking is on the same date as an existing scheduled session, and the times overlap or run back-to-back, the wizard must offer **[Add to <existing session>]** or **[Separate session]**.

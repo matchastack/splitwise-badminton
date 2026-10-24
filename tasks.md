@@ -310,7 +310,7 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
 - **Scope:**
   - `/book` asks for the screenshot with a reply prompt. A photo captioned `/book` still works.
   - `badminton/domain/screenshot.py` reads the venue, slots and courts off the OCR text. `badminton/services/ocr.py` runs Tesseract (the tesserocr wheel, with the English model in `badminton/tessdata`).
-  - The wizard shows the booking with a suggested price to confirm. ✏️ Edit changes the date, time, hours, venue, courts or price. It asks for the date and time only if they couldn't be read.
+  - The wizard shows the booking with a suggested price to confirm: the court rate (`DEFAULT_COURT_RATE_CENTS`) × the court hours. ✏️ Edit changes the date, time, hours, venue, courts or price. It asks for the date and time only if they couldn't be read.
   - Bookings store their venue and courts (migration 0005).
   - On confirm, the bot posts the screenshot captioned with the booking and pins it silently. Cancelling the booking, or locking its session, unpins it.
 - **Done when:** tests cover the parser (12-hour times, the year from the weekday, two courts, gaps), Tesseract on a real screenshot, the prompt and caption paths, editing, the posted and pinned record, and unpinning.
