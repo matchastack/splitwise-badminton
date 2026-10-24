@@ -103,14 +103,14 @@ class Wizard(Card):
         self.photo: dict[str, Any] = {}
 
     async def start(self, *, caption: bool = False) -> Wizard:
-        """Send /book, then the screenshot in reply to the bot's prompt; or, with
-        ``caption``, the screenshot captioned /book."""
+        """Send /court, then the screenshot in reply to the bot's prompt; or, with
+        ``caption``, the screenshot captioned /court."""
         file_id = f"shot{next(_screenshots)}"
         self.bot.telegram.files[f"{file_id}-1280"] = self.screenshot.encode()
         if caption:
-            self.photo = photo_message(sender=self.sender, caption="/book", file_id=file_id)
+            self.photo = photo_message(sender=self.sender, caption="/court", file_id=file_id)
         else:
-            await self.bot.send(text_update("/book", sender=self.sender))
+            await self.bot.send(text_update("/court", sender=self.sender))
             self.prompt = self.bot.telegram.last("sendMessage").message
             self.photo = photo_message(sender=self.sender, file_id=file_id, reply_to=self.prompt)
         await self.bot.send(message_update(self.photo))

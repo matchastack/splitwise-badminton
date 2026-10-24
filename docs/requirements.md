@@ -124,8 +124,8 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
 
 ### 4.2 Court bookings (BK)
 - **FR-BK-1:**
-  - A member starts a booking by sending `/book` in the group. The bot asks for the booking screenshot with a reply prompt, and the member replies with it.
-  - Sending the screenshot with the caption `/book` does both at once.
+  - A member starts a booking by sending `/court` in the group. The bot asks for the booking screenshot with a reply prompt, and the member replies with it.
+  - Sending the screenshot with the caption `/court` does both at once.
   - The sender is the payer, whether or not they play.
   - The photo's Telegram `file_id` is stored as proof.
 - **FR-BK-2:**
@@ -296,7 +296,7 @@ Worked examples:
 - **FR-MOD-1:**
   - In the group, the bot must delete every message from a non-admin member unless it is one of these:
     - a command the bot handles;
-    - a `/book` photo;
+    - a `/court` photo;
     - a reply to an active bot prompt.
   - This covers plain text, stickers, media, unknown commands and forwards.
 - **FR-MOD-2:**
@@ -371,7 +371,7 @@ Worked examples:
 |---|---|---|---|
 | `/start` | anyone | DM | Link account, enable DM statements |
 | `/help` | anyone | any | List available commands |
-| `/book` | member | group | Start the booking wizard; then send the screenshot (or send it captioned `/book`) |
+| `/court` | member | group | Start the booking wizard; then send the screenshot (or send it captioned `/court`) |
 | `/shuttle <price>` | member | group (admin: any) | Record a shuttle purchase; it waits until the current batch is finished |
 | `/balance` | member | any | Balance, pending shuttle hours, unpaid lines |
 | `/upcoming` | member | any | Scheduled sessions |
@@ -437,7 +437,7 @@ Acceptance criteria are brief; the referenced FRs hold the detail.
 - **US-2.5:** As a member, I want to check my balance and upcoming sessions any time. *(FR-LED-8, FR-LED-9)*
 
 ### E3 — Court booking
-- **US-3.1:** As a member who booked a court, I want to submit the booking screenshot with `/book`, so that the group knows I paid. *(FR-BK-1, FR-BK-2)*
+- **US-3.1:** As a member who booked a court, I want to submit the booking screenshot with `/court`, so that the group knows I paid. *(FR-BK-1, FR-BK-2)*
   - I'm recorded as payer even if I don't play.
   - Only I can operate my wizard.
 - **US-3.2:** As a member, I want the bot to read my booking off the screenshot, so that submitting is quick and error-free. *(FR-BK-3 to FR-BK-6, FR-BK-8, FR-BK-12)*

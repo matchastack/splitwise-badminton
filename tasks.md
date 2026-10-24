@@ -308,7 +308,7 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
 ### T43 · Read booking screenshots (OCR); pin bookings
 `claude/inspiring-euler-fdophp` · Stories US-3.1, US-3.2, US-3.7 · FR-BK-1 to FR-BK-8, FR-BK-10, FR-BK-12, FR-ATT-6 · Depends on T23, T24, T27, T42
 - **Scope:**
-  - `/book` asks for the screenshot with a reply prompt. A photo captioned `/book` still works.
+  - `/court` (formerly `/book`) asks for the screenshot with a reply prompt. A photo captioned `/court` works too.
   - `badminton/domain/screenshot.py` reads the venue, slots and courts off the OCR text. `badminton/services/ocr.py` runs Tesseract (the tesserocr wheel, with the English model in `badminton/tessdata`).
   - The wizard shows the booking with a suggested price to confirm. ✏️ Edit changes the date, time, hours, venue, courts or price. It asks for the date and time only if they couldn't be read.
   - Bookings store their venue and courts (migration 0005).
