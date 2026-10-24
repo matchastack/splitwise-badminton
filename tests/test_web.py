@@ -30,7 +30,7 @@ UPDATE = {
         "message_id": 10,
         "date": 1_790_000_000,
         "chat": {"id": 111, "type": "private"},
-        "from": {"id": 111, "is_bot": False, "first_name": "zy"},
+        "from": {"id": 111, "is_bot": False, "first_name": "alice"},
         "text": "hello",
     },
 }

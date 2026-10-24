@@ -214,7 +214,7 @@ Worked examples:
 - **Court:** 2h for $14.80, 4 players in → $3.70 each. With 3 players in, 1480 cents splits 494 / 493 / 493.
 - **Shuttle:** an $80.00 batch that closes after 50 hours in total costs $1.60/h.
   - Someone with 12h pays $19.20 and someone with 2h pays $3.20.
-  - This is the sheet's batch from 16 Aug 2026: zy 12h, shawn 10h, nic 2h, hw 12h, jy 12h, yt 2h.
+  - This is the sheet's batch from 16 Aug 2026: alice 12h, bob 10h, carol 2h, dave 12h, erin 12h, frank 2h.
 
 ### 4.6 Invoicing and settlement (INV)
 - **FR-INV-1:**
@@ -223,7 +223,7 @@ Worked examples:
 - **FR-INV-2:**
   - The settle-up is computed from all-time balances by **fewest transfers**: greedily match the biggest debtor with the biggest creditor.
   - Amounts under $1.00 are skipped and carry forward.
-  - Example: balances zy +$45, yt +$10, shawn −$30, nic −$20, hw −$5 give 4 transfers: shawn → zy $30, nic → zy $15, nic → yt $5, hw → yt $5.
+  - Example: balances alice +$45, frank +$10, bob −$30, carol −$20, dave −$5 give 4 transfers: bob → alice $30, carol → alice $15, carol → frank $5, dave → frank $5.
 - **FR-INV-3:** The group card must show:
   - the month's totals: sessions, court spend, and shuttle batches closed;
   - one line per transfer, `@payer → @payee $X.XX`, each with a **[✅ Paid]** button.
@@ -256,7 +256,7 @@ Worked examples:
   - cancel the session.
 - **FR-ADM-3:**
   - Every admin change must be announced in the group, with a before/after diff and the recalculated split.
-  - Example: "✏️ Admin changed Sun 4 Oct: +nic −hw · court now $3.70 each".
+  - Example: "✏️ Admin changed Sun 4 Oct: +carol −dave · court now $3.70 each".
 - **FR-ADM-4:**
   - `/settle` (admin) records a manual transfer: from, to and amount.
   - It is announced in the group.

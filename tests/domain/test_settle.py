@@ -5,35 +5,35 @@ import pytest
 
 from badminton.domain.settle import Payment, simplify_debts
 
-ZY, SHAWN, NIC, HW, YT = 1, 2, 3, 4, 8
+ALICE, BOB, CAROL, DAVE, FRANK = 1, 2, 3, 4, 8
 
 
 def test_requirements_example() -> None:
-    """FR-INV-2: zy +$45, yt +$10, shawn −$30, nic −$20, hw −$5."""
-    balances = {ZY: 4500, YT: 1000, SHAWN: -3000, NIC: -2000, HW: -500}
+    """FR-INV-2: alice +$45, frank +$10, bob −$30, carol −$20, dave −$5."""
+    balances = {ALICE: 4500, FRANK: 1000, BOB: -3000, CAROL: -2000, DAVE: -500}
 
     assert simplify_debts(balances) == [
-        Payment(SHAWN, ZY, 3000),
-        Payment(NIC, ZY, 1500),
-        Payment(NIC, YT, 500),
-        Payment(HW, YT, 500),
+        Payment(BOB, ALICE, 3000),
+        Payment(CAROL, ALICE, 1500),
+        Payment(CAROL, FRANK, 500),
+        Payment(DAVE, FRANK, 500),
     ]
 
 
 def test_nothing_to_settle() -> None:
     assert simplify_debts({}) == []
-    assert simplify_debts({ZY: 0, SHAWN: 0}) == []
+    assert simplify_debts({ALICE: 0, BOB: 0}) == []
 
 
 def test_small_amounts_carry_forward() -> None:
-    balances = {ZY: 2050, SHAWN: -2000, NIC: -50}
+    balances = {ALICE: 2050, BOB: -2000, CAROL: -50}
 
-    assert simplify_debts(balances) == [Payment(SHAWN, ZY, 2000)]
+    assert simplify_debts(balances) == [Payment(BOB, ALICE, 2000)]
 
 
 def test_rejects_unbalanced_input() -> None:
     with pytest.raises(ValueError):
-        simplify_debts({ZY: 100, SHAWN: -99})
+        simplify_debts({ALICE: 100, BOB: -99})
 
 
 def test_random_balances_settle_with_few_transfers() -> None:

@@ -6,8 +6,8 @@ from badminton.db.models import AuditLog, Booking, Member, Session
 from badminton.domain.timeutil import fmt_date, fmt_session, utc_now
 from badminton.services.repo import load_ledger
 from tests.bot.attendance_helpers import post
-from tests.bot.booking_helpers import SHAWN, Wizard, book, future_day
-from tests.bot.edit_helpers import ZY, EditCard
+from tests.bot.booking_helpers import BOB, Wizard, book, future_day
+from tests.bot.edit_helpers import ALICE, EditCard
 from tests.bot.test_edit_attendance import START, WHEN, setup
 from tests.conftest import BotHarness
 from tests.fake_telegram import GROUP_ID, message, message_update
@@ -17,7 +17,7 @@ async def open_booking(bot: BotHarness) -> EditCard:
     card = await EditCard(bot).open()
     await card.tap_starting(fmt_date(date(2026, 10, 4)))
     await card.tap("💵 Bookings")
-    await card.tap("zy · 11:00 · 2h · $14.80")
+    await card.tap("alice · 11:00 · 2h · $14.80")
     return card
 
 
@@ -29,18 +29,18 @@ async def the_booking(bot: BotHarness) -> Booking:
 async def test_change_price_through_a_reply(bot: BotHarness) -> None:
     await setup(bot)
     card = await open_booking(bot)
-    assert "zy's booking: 11:00, 2h, $14.80" in card.text
+    assert "alice's booking: 11:00, 2h, $14.80" in card.text
 
     await card.tap("💵 Price")
     prompt = bot.telegram.last("sendMessage").message
-    await bot.send(message_update(message(sender=ZY, text="16", reply_to=prompt)))
+    await bot.send(message_update(message(sender=ALICE, text="16", reply_to=prompt)))
 
     assert (await the_booking(bot)).amount_cents == 1600
     assert bot.telegram.sent_texts(GROUP_ID)[-1] == (
-        f"✏️ Admin changed zy's booking for <b>{WHEN}</b>: price $14.80 → $16.00\n"
+        f"✏️ Admin changed alice's booking for <b>{WHEN}</b>: price $14.80 → $16.00\n"
         "💵 Court now $8.00 each (2 played)"
     )
-    assert "zy's booking: 11:00, 2h, $16.00" in card.text
+    assert "alice's booking: 11:00, 2h, $16.00" in card.text
     async with bot.sessionmaker() as db:
         row = await db.scalar(select(AuditLog))
     assert (
@@ -59,17 +59,17 @@ async def test_change_payer(bot: BotHarness) -> None:
     card = await open_booking(bot)
 
     await card.tap("👤 Payer")
-    await card.tap("hw")
+    await card.tap("dave")
 
-    assert (await the_booking(bot)).payer_member_id == ids["hw"]
+    assert (await the_booking(bot)).payer_member_id == ids["dave"]
     assert bot.telegram.sent_texts(GROUP_ID)[-1].startswith(
-        f"✏️ Admin changed zy's booking for <b>{WHEN}</b>: paid by zy → hw"
+        f"✏️ Admin changed alice's booking for <b>{WHEN}</b>: paid by alice → dave"
     )
     async with bot.sessionmaker() as db:
         ledger = await load_ledger(db, utc_now())
-        zy = await db.scalar(select(Member.id).where(Member.display_name == "zy"))
-    assert ledger.balance(ids["hw"]) == 1480 - 740
-    assert ledger.balance(zy) == 0
+        alice = await db.scalar(select(Member.id).where(Member.display_name == "alice"))
+    assert ledger.balance(ids["dave"]) == 1480 - 740
+    assert ledger.balance(alice) == 0
 
 
 async def test_change_hours_moves_the_session_end(bot: BotHarness) -> None:
@@ -80,14 +80,14 @@ async def test_change_hours_moves_the_session_end(bot: BotHarness) -> None:
     await card.tap("⏱ Hours")
     await card.tap("Other…")
     prompt = bot.telegram.last("sendMessage").message
-    await bot.send(message_update(message(sender=ZY, text="3", reply_to=prompt)))
+    await bot.send(message_update(message(sender=ALICE, text="3", reply_to=prompt)))
 
     async with bot.sessionmaker() as db:
         session = await db.get(Session, session_id)
     assert session.ends_at == START + timedelta(hours=3)
     announcement = bot.telegram.sent_texts(GROUP_ID)[-1].splitlines()
     assert announcement[:2] == [
-        f"✏️ Admin changed zy's booking for <b>{WHEN}</b>: 2h → 3h",
+        f"✏️ Admin changed alice's booking for <b>{WHEN}</b>: 2h → 3h",
         f"📅 The session is now {fmt_session(START, START + timedelta(hours=3))}",
     ]
     refreshed = [
@@ -149,7 +149,7 @@ async def test_moving_on_withdraws_an_open_prompt(bot: BotHarness) -> None:
 
     await card.tap("‹ Bookings")
     await card.tap("‹ Back")
-    await bot.send(message_update(message(sender=ZY, text="20", reply_to=prompt)))
+    await bot.send(message_update(message(sender=ALICE, text="20", reply_to=prompt)))
 
     deleted = [call.params["message_id"] for call in bot.telegram.calls_to("deleteMessage")]
     assert prompt["message_id"] in deleted
@@ -158,8 +158,8 @@ async def test_moving_on_withdraws_an_open_prompt(bot: BotHarness) -> None:
 
 
 async def booked_record(bot: BotHarness) -> Wizard:
-    """shawn's confirmed booking, 11:00–13:00 in two weeks for $14.80."""
-    record = await book(bot, SHAWN, future_day(14))
+    """bob's confirmed booking, 11:00–13:00 in two weeks for $14.80."""
+    record = await book(bot, BOB, future_day(14))
     await record.tap("$14.80")
     await record.tap("✅ Confirm")
     return record
@@ -170,13 +170,13 @@ async def test_a_corrected_booking_updates_its_record(bot: BotHarness) -> None:
     card = await EditCard(bot).open()
     await card.tap_starting(fmt_date(future_day(14)))
     await card.tap("💵 Bookings")
-    await card.tap("shawn · 11:00 · 2h · $14.80")
+    await card.tap("bob · 11:00 · 2h · $14.80")
 
     await card.tap("💵 Price")
     prompt = bot.telegram.last("sendMessage").message
-    await bot.send(message_update(message(sender=ZY, text="20", reply_to=prompt)))
+    await bot.send(message_update(message(sender=ALICE, text="20", reply_to=prompt)))
 
-    assert record.text.startswith("✅ <b>Court booked</b> by @shawn_t\n")
+    assert record.text.startswith("✅ <b>Court booked</b> by @bob_t\n")
     assert record.text.endswith("(2h) · $20.00\n✏️ Corrected by the admin.")
     assert set(record.buttons()) == {"🗑 Cancel booking"}
 
@@ -189,6 +189,6 @@ async def test_cancelling_the_session_updates_its_records(bot: BotHarness) -> No
     await card.tap("🗑 Cancel session")
     await card.tap("Yes, cancel the session")
 
-    assert record.text.startswith("🗑 <s>✅ <b>Court booked</b> by @shawn_t\n")
-    assert record.text.endswith("$14.80</s>\nCancelled by zy with the session.")
+    assert record.text.startswith("🗑 <s>✅ <b>Court booked</b> by @bob_t\n")
+    assert record.text.endswith("$14.80</s>\nCancelled by alice with the session.")
     assert record.buttons() == {}

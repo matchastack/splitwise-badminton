@@ -29,17 +29,17 @@ from badminton.services.spreadsheet import (
     match_members,
 )
 
-HEADER = ("Date", "Item", "Price", "Paid By", "zy", "shawn", "yt", "Number of Shares")
+HEADER = ("Date", "Item", "Price", "Paid By", "alice", "bob", "frank", "Number of Shares")
 SUMMARY = read_items(
     HEADER,
     [
-        (2, (datetime(2026, 10, 11), "court", 14.8, "zy", 1, 1, None)),
-        (3, (datetime(2026, 10, 18), "court", 14.8, "shawn", 1, 1, 1)),
-        (4, (datetime(2026, 10, 18), "shuttle", 76.79, "yt", 0, 0, None)),  # unused tube
+        (2, (datetime(2026, 10, 11), "court", 14.8, "alice", 1, 1, None)),
+        (3, (datetime(2026, 10, 18), "court", 14.8, "bob", 1, 1, 1)),
+        (4, (datetime(2026, 10, 18), "shuttle", 76.79, "frank", 0, 0, None)),  # unused tube
     ],
 )
-# zy and shawn: 14.80 − 12.33⅓ = +2.46⅔; yt: 76.79 − 4.93⅓ − the 76.79 tube = −4.93⅓.
-OPENING = {"zy": 247, "shawn": 247, "yt": -494}
+# alice and bob: 14.80 − 12.33⅓ = +2.46⅔; frank: 76.79 − 4.93⅓ − the 76.79 tube = −4.93⅓.
+OPENING = {"alice": 247, "bob": 247, "frank": -494}
 IMPORTED_AT = at_sgt(date(2026, 10, 23), 9)
 
 
@@ -73,44 +73,44 @@ async def add_session(db: AsyncSession, day: date, payer: int, players: list[int
 
 
 async def test_carries_over_each_balance_and_the_unused_tube(db: AsyncSession) -> None:
-    zy = Member(display_name="ZY", telegram_user_id=111)
-    shawn = Member(display_name="Shawn L", username="shawn", telegram_user_id=222)
-    db.add_all([zy, shawn])
+    alice = Member(display_name="ALICE", telegram_user_id=111)
+    bob = Member(display_name="Bob L", username="bob", telegram_user_id=222)
+    db.add_all([alice, bob])
     await db.commit()
 
     result = await run_import(db)
 
-    yt = await db.scalar(select(Member).where(Member.display_name == "yt"))
-    assert yt.telegram_user_id is None  # a guest, linked when they join
-    assert result.member_ids == {"zy": zy.id, "shawn": shawn.id, "yt": yt.id}
-    assert result.guests == ("yt",)
+    frank = await db.scalar(select(Member).where(Member.display_name == "frank"))
+    assert frank.telegram_user_id is None  # a guest, linked when they join
+    assert result.member_ids == {"alice": alice.id, "bob": bob.id, "frank": frank.id}
+    assert result.guests == ("frank",)
     assert result.opening_cents == OPENING
     rows = await db.scalars(select(OpeningBalance).order_by(OpeningBalance.member_id))
     assert [(row.member_id, row.amount_cents) for row in rows] == [
-        (zy.id, 247),
-        (shawn.id, 247),
-        (yt.id, -494),
+        (alice.id, 247),
+        (bob.id, 247),
+        (frank.id, -494),
     ]
     batch = await db.get(ShuttleBatch, result.batch_id)
-    assert (batch.payer_member_id, batch.amount_cents) == (yt.id, 7679)
+    assert (batch.payer_member_id, batch.amount_cents) == (frank.id, 7679)
     assert batch.starts_at == at_sgt(date(2026, 10, 19), 0) == cutoff(SUMMARY)
 
     ledger = await load_ledger(db, IMPORTED_AT)
-    assert ledger.balances == {zy.id: 247, shawn.id: 247, yt.id: -494} == result.balances
+    assert ledger.balances == {alice.id: 247, bob.id: 247, frank.id: -494} == result.balances
     assert ledger.open_batch_id == batch.id
     audit = await db.scalar(select(AuditLog).where(AuditLog.action == "sheet.import"))
-    assert audit.payload["after"]["yt"] == {"member_id": yt.id, "opening_cents": -494}
-    assert audit.payload["guests"] == ["yt"]
+    assert audit.payload["after"]["frank"] == {"member_id": frank.id, "opening_cents": -494}
+    assert audit.payload["guests"] == ["frank"]
 
 
 async def test_the_tube_is_billed_by_hours_once_the_next_one_is_bought(db: AsyncSession) -> None:
     result = await run_import(db)
-    zy, shawn, yt = (result.member_ids[name] for name in ("zy", "shawn", "yt"))
-    await add_session(db, date(2026, 10, 25), zy, [zy, shawn, yt])
-    await add_session(db, date(2026, 11, 1), zy, [zy, shawn])
+    alice, bob, frank = (result.member_ids[name] for name in ("alice", "bob", "frank"))
+    await add_session(db, date(2026, 10, 25), alice, [alice, bob, frank])
+    await add_session(db, date(2026, 11, 1), alice, [alice, bob])
     db.add(
         ShuttleBatch(
-            payer_member_id=shawn,
+            payer_member_id=bob,
             amount_cents=8000,
             starts_at=at_sgt(date(2026, 11, 2), 0),
             created_at=at_sgt(date(2026, 11, 2), 9),
@@ -125,37 +125,37 @@ async def test_the_tube_is_billed_by_hours_once_the_next_one_is_bought(db: Async
         for e in ledger.entries
         if e.kind is EntryKind.SHUTTLE_SHARE and e.batch_id == result.batch_id
     }
-    expected = allocate(7679, {zy: 240, shawn: 240, yt: 120})
+    expected = allocate(7679, {alice: 240, bob: 240, frank: 120})
     assert shares == {
-        zy: (expected[zy], 240),
-        shawn: (expected[shawn], 240),
-        yt: (expected[yt], 120),
+        alice: (expected[alice], 240),
+        bob: (expected[bob], 240),
+        frank: (expected[frank], 120),
     }
-    court = allocate(1480, {zy: 1, shawn: 1, yt: 1})
-    assert ledger.balance(yt) == -494 + 7679 - expected[yt] - court[yt]
+    court = allocate(1480, {alice: 1, bob: 1, frank: 1})
+    assert ledger.balance(frank) == -494 + 7679 - expected[frank] - court[frank]
     assert sum(ledger.balances.values()) == 0
 
 
 async def test_matches_chosen_members_and_refuses_unclear_ones(db: AsyncSession) -> None:
-    first = Member(display_name="yt", telegram_user_id=1)
-    second = Member(display_name="Yu Ting", username="yt", telegram_user_id=2)
+    first = Member(display_name="frank", telegram_user_id=1)
+    second = Member(display_name="Frank Lee", username="frank", telegram_user_id=2)
     db.add_all([first, second])
     await db.commit()
 
-    with pytest.raises(ImportRefused, match=r"'yt' could be member #1, #2"):
+    with pytest.raises(ImportRefused, match=r"'frank' could be member #1, #2"):
         await match_members(db, SUMMARY.players, {})
-    with pytest.raises(ImportRefused, match=r"There's no member #99 \(for 'zy'\)"):
-        await match_members(db, SUMMARY.players, {"zy": 99})
-    with pytest.raises(ImportRefused, match=r"No player column called 'nic'"):
-        await match_members(db, SUMMARY.players, {"nic": first.id})
-    with pytest.raises(ImportRefused, match=r"'zy' and 'yt' are both member #2"):
-        await match_members(db, SUMMARY.players, {"zy": second.id, "yt": second.id})
+    with pytest.raises(ImportRefused, match=r"There's no member #99 \(for 'alice'\)"):
+        await match_members(db, SUMMARY.players, {"alice": 99})
+    with pytest.raises(ImportRefused, match=r"No player column called 'carol'"):
+        await match_members(db, SUMMARY.players, {"carol": first.id})
+    with pytest.raises(ImportRefused, match=r"'alice' and 'frank' are both member #2"):
+        await match_members(db, SUMMARY.players, {"alice": second.id, "frank": second.id})
 
-    matches = await match_members(db, SUMMARY.players, {"yt": second.id})
+    matches = await match_members(db, SUMMARY.players, {"frank": second.id})
     assert [(m.name, m.member and m.member.id, m.how) for m in matches] == [
-        ("zy", None, "new guest"),
-        ("shawn", None, "new guest"),
-        ("yt", second.id, "chosen with --member"),
+        ("alice", None, "new guest"),
+        ("bob", None, "new guest"),
+        ("frank", second.id, "chosen with --member"),
     ]
 
 
@@ -167,10 +167,10 @@ async def test_refuses_to_import_twice(db: AsyncSession) -> None:
 
 
 async def test_refuses_when_a_shuttle_batch_is_already_recorded(db: AsyncSession) -> None:
-    zy = Member(display_name="zy", telegram_user_id=1)
-    db.add(zy)
+    alice = Member(display_name="alice", telegram_user_id=1)
+    db.add(alice)
     await db.flush()
-    db.add(ShuttleBatch(payer_member_id=zy.id, amount_cents=7679, starts_at=IMPORTED_AT))
+    db.add(ShuttleBatch(payer_member_id=alice.id, amount_cents=7679, starts_at=IMPORTED_AT))
     await db.commit()
 
     with pytest.raises(ImportRefused, match="unused tube must become the first batch"):
@@ -181,19 +181,19 @@ async def test_refuses_when_a_shuttle_batch_is_already_recorded(db: AsyncSession
 async def test_refuses_a_batch_or_payment_from_the_time_the_sheet_covers(
     db: AsyncSession,
 ) -> None:
-    no_tube = read_items(HEADER, [(2, (datetime(2026, 10, 18), "court", 14.8, "zy", 1, 1, 1))])
-    zy = Member(display_name="zy", telegram_user_id=1)
-    yt = Member(display_name="yt", telegram_user_id=2)
-    db.add_all([zy, yt])
+    no_tube = read_items(HEADER, [(2, (datetime(2026, 10, 18), "court", 14.8, "alice", 1, 1, 1))])
+    alice = Member(display_name="alice", telegram_user_id=1)
+    frank = Member(display_name="frank", telegram_user_id=2)
+    db.add_all([alice, frank])
     await db.flush()
-    later = ShuttleBatch(payer_member_id=zy.id, amount_cents=8000, starts_at=cutoff(no_tube))
+    later = ShuttleBatch(payer_member_id=alice.id, amount_cents=8000, starts_at=cutoff(no_tube))
     db.add(later)
     await db.commit()
     # A batch from the bot's time is fine when the sheet has no unused tube.
     await check_can_import(db, no_tube)
 
     earlier = ShuttleBatch(
-        payer_member_id=zy.id, amount_cents=7679, starts_at=at_sgt(date(2026, 10, 18), 13)
+        payer_member_id=alice.id, amount_cents=7679, starts_at=at_sgt(date(2026, 10, 18), 13)
     )
     db.add(earlier)
     await db.commit()
@@ -203,8 +203,8 @@ async def test_refuses_a_batch_or_payment_from_the_time_the_sheet_covers(
     await db.delete(earlier)
     db.add(
         Transfer(
-            from_member_id=yt.id,
-            to_member_id=zy.id,
+            from_member_id=frank.id,
+            to_member_id=alice.id,
             amount_cents=800,
             created_at=at_sgt(date(2026, 10, 18), 20),
         )
@@ -215,20 +215,20 @@ async def test_refuses_a_batch_or_payment_from_the_time_the_sheet_covers(
 
 
 async def test_names_match_whatever_their_case(db: AsyncSession) -> None:
-    strauss = Member(display_name="Strauss", telegram_user_id=1)
-    db.add(strauss)
+    weiss = Member(display_name="Weiss", telegram_user_id=1)
+    db.add(weiss)
     await db.commit()
 
-    [match] = await match_members(db, ("STRAUß",), {})
+    [match] = await match_members(db, ("WEIß",), {})
 
-    assert (match.member, match.how) == (strauss, "same name")
+    assert (match.member, match.how) == (weiss, "same name")
 
 
 async def test_refuses_when_the_bot_has_a_session_the_sheet_covers(db: AsyncSession) -> None:
-    zy = Member(display_name="zy", telegram_user_id=1)
-    db.add(zy)
+    alice = Member(display_name="alice", telegram_user_id=1)
+    db.add(alice)
     await db.flush()
-    await add_session(db, date(2026, 10, 18), zy.id, [zy.id])
+    await add_session(db, date(2026, 10, 18), alice.id, [alice.id])
     await db.commit()
 
     with pytest.raises(ImportRefused, match="already has a session on Sun 18 Oct"):
@@ -252,7 +252,7 @@ async def test_nothing_is_kept_if_the_balances_dont_tally(
     monkeypatch.setattr(spreadsheet, "get_balances", off_by_a_cent)
     matches = await match_members(db, SUMMARY.players, {})
 
-    with pytest.raises(TallyMismatch, match="Balances don't tally for zy, shawn, yt"):
+    with pytest.raises(TallyMismatch, match="Balances don't tally for alice, bob, frank"):
         await import_sheet(db, SUMMARY, matches, now=IMPORTED_AT)
     await db.rollback()
     assert await db.scalar(select(Member.id)) is None

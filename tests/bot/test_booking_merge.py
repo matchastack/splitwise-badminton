@@ -3,7 +3,7 @@ from sqlalchemy.orm import selectinload
 
 from badminton.db.models import Session
 from badminton.domain.timeutil import at_sgt, fmt_date
-from tests.bot.booking_helpers import SHAWN, ZY, book, future_day
+from tests.bot.booking_helpers import ALICE, BOB, book, future_day
 from tests.conftest import BotHarness
 
 DAY = future_day(14)
@@ -24,9 +24,9 @@ async def sessions(bot: BotHarness) -> list[Session]:
 
 
 async def test_back_to_back_booking_can_join_the_session(bot: BotHarness) -> None:
-    await (await confirmed(bot, ZY, "11:00")).tap("✅ Confirm")
+    await (await confirmed(bot, ALICE, "11:00")).tap("✅ Confirm")
 
-    wizard = await confirmed(bot, SHAWN, "13:00", "1h")
+    wizard = await confirmed(bot, BOB, "13:00", "1h")
     assert f"There's already a session on {fmt_date(DAY)}, 11:00–13:00" in wizard.text
     await wizard.tap("➕ Add to 11:00–13:00")
     assert "➕ Part of the 11:00–13:00 session" in wizard.text
@@ -39,17 +39,17 @@ async def test_back_to_back_booking_can_join_the_session(bot: BotHarness) -> Non
 
 
 async def test_overlapping_booking_is_offered_too(bot: BotHarness) -> None:
-    await (await confirmed(bot, ZY, "11:00")).tap("✅ Confirm")
+    await (await confirmed(bot, ALICE, "11:00")).tap("✅ Confirm")
 
-    wizard = await confirmed(bot, SHAWN, "12:00")
+    wizard = await confirmed(bot, BOB, "12:00")
 
     assert "➕ Add to 11:00–13:00" in wizard.buttons()
 
 
 async def test_separate_session_keeps_them_apart(bot: BotHarness) -> None:
-    await (await confirmed(bot, ZY, "11:00")).tap("✅ Confirm")
+    await (await confirmed(bot, ALICE, "11:00")).tap("✅ Confirm")
 
-    wizard = await confirmed(bot, SHAWN, "13:00")
+    wizard = await confirmed(bot, BOB, "13:00")
     await wizard.tap("Separate session")
     assert "Part of the" not in wizard.text
     await wizard.tap("✅ Confirm")
@@ -61,31 +61,31 @@ async def test_separate_session_keeps_them_apart(bot: BotHarness) -> None:
 
 
 async def test_gap_or_other_day_is_not_offered(bot: BotHarness) -> None:
-    await (await confirmed(bot, ZY, "11:00")).tap("✅ Confirm")
+    await (await confirmed(bot, ALICE, "11:00")).tap("✅ Confirm")
 
-    later_same_day = await confirmed(bot, SHAWN, "14:00")
+    later_same_day = await confirmed(bot, BOB, "14:00")
     assert "Is this right?" in later_same_day.text
     await later_same_day.tap("✖ Cancel")
 
-    next_day = await book(bot, SHAWN, future_day(15), hour="11:00")
+    next_day = await book(bot, BOB, future_day(15), hour="11:00")
     await next_day.tap("$14.80")
     assert "Is this right?" in next_day.text
 
 
 async def test_cancelled_sessions_are_not_offered(bot: BotHarness) -> None:
-    await (await confirmed(bot, ZY, "11:00")).tap("✅ Confirm")
+    await (await confirmed(bot, ALICE, "11:00")).tap("✅ Confirm")
     async with bot.sessionmaker() as db:
         await db.execute(update(Session).values(status="cancelled"))
         await db.commit()
 
-    wizard = await confirmed(bot, SHAWN, "13:00")
+    wizard = await confirmed(bot, BOB, "13:00")
 
     assert "Is this right?" in wizard.text
 
 
 async def test_changing_price_forgets_the_merge_choice(bot: BotHarness) -> None:
-    await (await confirmed(bot, ZY, "11:00")).tap("✅ Confirm")
-    wizard = await confirmed(bot, SHAWN, "13:00")
+    await (await confirmed(bot, ALICE, "11:00")).tap("✅ Confirm")
+    wizard = await confirmed(bot, BOB, "13:00")
     await wizard.tap("➕ Add to 11:00–13:00")
 
     await wizard.tap("✏️ Change price")

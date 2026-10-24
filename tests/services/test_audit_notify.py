@@ -12,13 +12,13 @@ from tests.fake_telegram import ADMIN_ID, GROUP_ID
 
 
 async def test_audit_record_is_saved_with_json_payload(db: AsyncSession) -> None:
-    zy = Member(display_name="zy")
-    db.add(zy)
+    alice = Member(display_name="alice")
+    db.add(alice)
     await db.flush()
 
     audit.record(
         db,
-        actor_member_id=zy.id,
+        actor_member_id=alice.id,
         action="attendance.edit",
         before={"in": {3, 1}},
         after={"in": [1, 2]},
@@ -28,7 +28,7 @@ async def test_audit_record_is_saved_with_json_payload(db: AsyncSession) -> None
     await db.commit()
 
     row = await db.scalar(select(AuditLog))
-    assert row.actor_member_id == zy.id
+    assert row.actor_member_id == alice.id
     assert row.action == "attendance.edit"
     assert row.payload == {
         "before": {"in": [1, 3]},

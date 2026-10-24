@@ -16,13 +16,13 @@ WHEN = fmt_session(START, START + timedelta(hours=2))
 
 
 async def setup(bot: BotHarness) -> tuple[int, dict[str, int]]:
-    """A finished $14.80 session (paid by zy) with shawn and hw in."""
+    """A finished $14.80 session (paid by alice) with bob and dave in."""
     session_id = await make_session(bot, starts_at=START)
     async with bot.sessionmaker() as db:
-        members = {name: Member(display_name=name) for name in ("shawn", "hw", "nic")}
+        members = {name: Member(display_name=name) for name in ("bob", "dave", "carol")}
         db.add_all(members.values())
         await db.flush()
-        for name in ("shawn", "hw"):
+        for name in ("bob", "dave"):
             await set_attendance(db, session_id, members[name].id, "in")
         await db.commit()
         return session_id, {name: m.id for name, m in members.items()}
@@ -45,7 +45,7 @@ async def ins(bot: BotHarness, session_id: int) -> set[int]:
 
 
 async def test_edit_is_admin_only(bot: BotHarness) -> None:
-    await bot.send(text_update("/edit", sender=user(222, "shawn")))
+    await bot.send(text_update("/edit", sender=user(222, "bob")))
 
     assert bot.telegram.sent_texts() == [NOT_ADMIN]
 
@@ -90,16 +90,16 @@ async def test_change_attendance_announces_and_audits(bot: BotHarness) -> None:
     await card.tap_starting(fmt_date(date(2026, 10, 4)))
     assert "What do you want to change?" in card.text
     await card.tap("👥 Attendance")
-    assert {"✅ shawn", "✅ hw", "⬜ nic", "⬜ zy"} <= set(card.buttons())
-    await card.tap("⬜ nic")
-    await card.tap("✅ hw")
-    assert {"✅ nic", "⬜ hw"} <= set(card.buttons())
+    assert {"✅ bob", "✅ dave", "⬜ carol", "⬜ alice"} <= set(card.buttons())
+    await card.tap("⬜ carol")
+    await card.tap("✅ dave")
+    assert {"✅ carol", "⬜ dave"} <= set(card.buttons())
     await card.tap("💾 Save")
 
-    assert await ins(bot, session_id) == {ids["shawn"], ids["nic"]}
+    assert await ins(bot, session_id) == {ids["bob"], ids["carol"]}
     assert card.text == f"✅ Saved attendance for {WHEN}."
     assert bot.telegram.sent_texts(GROUP_ID)[-1] == (
-        f"✏️ Admin changed attendance for <b>{WHEN}</b>: +nic −hw\n"
+        f"✏️ Admin changed attendance for <b>{WHEN}</b>: +carol −dave\n"
         "💵 Court now $7.40 each (2 played)"
     )
     refreshed = [
@@ -107,13 +107,13 @@ async def test_change_attendance_announces_and_audits(bot: BotHarness) -> None:
         for c in bot.telegram.calls_to("editMessageText")
         if c.params["message_id"] == card_message["message_id"]
     ]
-    assert "✅ In (2): nic, shawn" in refreshed[-1].params["text"]
+    assert "✅ In (2): bob, carol" in refreshed[-1].params["text"]
     async with bot.sessionmaker() as db:
         row = await db.scalar(select(AuditLog))
     assert (row.action, row.payload["before"], row.payload["after"]) == (
         "attendance.edit",
-        ["hw", "shawn"],
-        ["nic", "shawn"],
+        ["bob", "dave"],
+        ["bob", "carol"],
     )
 
 
@@ -123,15 +123,15 @@ async def test_saving_keeps_answers_given_while_editing(bot: BotHarness) -> None
     await card.tap_starting(fmt_date(date(2026, 10, 4)))
     await card.tap("👥 Attendance")
     async with bot.sessionmaker() as db:
-        await set_attendance(db, session_id, ids["nic"], "in")  # nic taps ✅ on the card
+        await set_attendance(db, session_id, ids["carol"], "in")  # carol taps ✅ on the card
         await db.commit()
 
-    await card.tap("✅ hw")
+    await card.tap("✅ dave")
     await card.tap("💾 Save")
 
-    assert await ins(bot, session_id) == {ids["shawn"], ids["nic"]}
+    assert await ins(bot, session_id) == {ids["bob"], ids["carol"]}
     assert bot.telegram.sent_texts(GROUP_ID)[-1].startswith(
-        f"✏️ Admin changed attendance for <b>{WHEN}</b>: −hw\n"
+        f"✏️ Admin changed attendance for <b>{WHEN}</b>: −dave\n"
     )
 
 
@@ -153,8 +153,8 @@ async def test_removing_everyone_says_session_is_left_out(bot: BotHarness) -> No
     await card.tap_starting(fmt_date(date(2026, 10, 4)))
     await card.tap("👥 Attendance")
 
-    await card.tap("✅ shawn")
-    await card.tap("✅ hw")
+    await card.tap("✅ bob")
+    await card.tap("✅ dave")
     await card.tap("💾 Save")
 
     assert bot.telegram.sent_texts(GROUP_ID)[-1].endswith(
@@ -173,7 +173,7 @@ async def test_locked_card_stays_locked(bot: BotHarness) -> None:
     assert f"{fmt_date(date(2026, 10, 4))} 11:00 🔒" in card.buttons()
     await card.tap_starting(fmt_date(date(2026, 10, 4)))
     await card.tap("👥 Attendance")
-    await card.tap("⬜ nic")
+    await card.tap("⬜ carol")
     await card.tap("💾 Save")
 
     refreshed = [

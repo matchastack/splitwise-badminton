@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 from badminton.bot.handlers.booking_cancel import STARTED
 from badminton.db.models import AuditLog, Booking, Session
 from badminton.domain.timeutil import at_sgt, fmt_date, utc_now
-from tests.bot.booking_helpers import NIC, SHAWN, ZY, Wizard, book, future_day
+from tests.bot.booking_helpers import ALICE, BOB, CAROL, Wizard, book, future_day
 from tests.conftest import BotHarness
 from tests.fake_telegram import GROUP_ID, callback_update
 
@@ -14,7 +14,7 @@ DAY = future_day(14)
 
 
 async def booked(
-    bot: BotHarness, sender: dict = SHAWN, hour: str = "11:00", hours: str = "2h"
+    bot: BotHarness, sender: dict = BOB, hour: str = "11:00", hours: str = "2h"
 ) -> Wizard:
     wizard = await book(bot, sender, DAY, hour=hour, hours=hours)
     await wizard.tap(next(label for label in wizard.buttons() if label.startswith("$")))
@@ -39,10 +39,10 @@ async def test_submitter_cancels_after_confirming(bot: BotHarness) -> None:
     session = await only_session(bot)
     assert session.status == "cancelled"
     assert session.bookings[0].cancelled_at is not None
-    assert record.text.startswith("🗑 <s>✅ <b>Court booked</b> by @shawn_t")
-    assert record.text.endswith("Cancelled by shawn.")
+    assert record.text.startswith("🗑 <s>✅ <b>Court booked</b> by @bob_t")
+    assert record.text.endswith("Cancelled by bob.")
     assert bot.telegram.sent_texts(GROUP_ID)[-1] == (
-        f"🗑 shawn cancelled @shawn_t's booking for {fmt_date(DAY)}, 11:00–13:00 ($14.80).\n"
+        f"🗑 bob cancelled @bob_t's booking for {fmt_date(DAY)}, 11:00–13:00 ($14.80).\n"
         "That session is now cancelled."
     )
     async with bot.sessionmaker() as db:
@@ -63,13 +63,13 @@ async def test_keep_it_restores_the_button(bot: BotHarness) -> None:
 async def test_admin_can_cancel_but_others_cannot(bot: BotHarness) -> None:
     record = await booked(bot)
 
-    await record.tap("🗑 Cancel booking", sender=NIC)
-    assert record.last_alert() == "Only shawn or the admin can cancel this booking."
+    await record.tap("🗑 Cancel booking", sender=CAROL)
+    assert record.last_alert() == "Only bob or the admin can cancel this booking."
 
-    await record.tap("🗑 Cancel booking", sender=ZY)
-    await record.tap("Yes, cancel it", sender=ZY)
+    await record.tap("🗑 Cancel booking", sender=ALICE)
+    await record.tap("Yes, cancel it", sender=ALICE)
     assert (await only_session(bot)).status == "cancelled"
-    assert record.text.endswith("Cancelled by zy.")
+    assert record.text.endswith("Cancelled by alice.")
 
 
 async def test_cannot_cancel_once_started(bot: BotHarness) -> None:
@@ -87,8 +87,8 @@ async def test_cannot_cancel_once_started(bot: BotHarness) -> None:
 
 
 async def test_cannot_cancel_a_later_booking_once_its_session_started(bot: BotHarness) -> None:
-    await booked(bot, ZY)
-    second = await booked(bot, SHAWN, hour="13:00", hours="1h")
+    await booked(bot, ALICE)
+    second = await booked(bot, BOB, hour="13:00", hours="1h")
     started = utc_now() - timedelta(minutes=30)
     async with bot.sessionmaker() as db:  # play began at the first booking; the second is next
         session = await only_session(bot)
@@ -110,8 +110,8 @@ async def test_cannot_cancel_a_later_booking_once_its_session_started(bot: BotHa
 
 
 async def test_cancelling_one_of_two_bookings_shrinks_the_session(bot: BotHarness) -> None:
-    await booked(bot, ZY)
-    second = await booked(bot, SHAWN, hour="13:00", hours="1h")
+    await booked(bot, ALICE)
+    second = await booked(bot, BOB, hour="13:00", hours="1h")
     assert (await only_session(bot)).ends_at == at_sgt(DAY, 14)
 
     await second.tap("🗑 Cancel booking")
@@ -147,6 +147,6 @@ async def test_already_cancelled(bot: BotHarness) -> None:
     stale = record.buttons()["Yes, cancel it"]
     await record.tap("Yes, cancel it")
 
-    await bot.send(callback_update(stale, sender=SHAWN, on_message=record.card))
+    await bot.send(callback_update(stale, sender=BOB, on_message=record.card))
 
     assert record.last_alert() == "This booking is already cancelled."

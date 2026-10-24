@@ -13,8 +13,8 @@ from tests.conftest import TEST_SETTINGS, BotHarness
 from tests.fake_telegram import ADMIN_ID, GROUP_ID, text_update, user
 from tests.services.test_invoice import seed
 
-ZY = user(ADMIN_ID, "zy", "zy_handle")
-SHAWN = user(222, "shawn")
+ALICE = user(ADMIN_ID, "alice", "alice_handle")
+BOB = user(222, "bob")
 
 
 async def periods(bot: BotHarness) -> list[str]:
@@ -60,11 +60,11 @@ async def test_admin_invoice_command(bot: BotHarness) -> None:
     await seed(bot)
     this_month = fmt_period(period_of(utc_now()))
 
-    await bot.send(text_update("/invoice", sender=ZY))
+    await bot.send(text_update("/invoice", sender=ALICE))
     assert await periods(bot) == [period_of(utc_now())]
     assert bot.telegram.sent_texts(GROUP_ID)[-1].startswith(f"🧾 <b>{this_month}</b>")
 
-    await bot.send(text_update("/invoice", sender=ZY, chat_id=ADMIN_ID))
+    await bot.send(text_update("/invoice", sender=ALICE, chat_id=ADMIN_ID))
     assert bot.telegram.last("sendMessage").params["text"] == (
         f"{this_month} already has an invoice. New activity goes on next month's invoice."
     )
@@ -78,7 +78,7 @@ async def test_invoice_command_early_in_the_month_takes_the_monthly_invoice(
     await seed(bot)
     monkeypatch.setattr(invoice_handlers, "utc_now", lambda: at_sgt(date(2026, 11, 1), 8))
 
-    await bot.send(text_update("/invoice", sender=ZY))
+    await bot.send(text_update("/invoice", sender=ALICE))
     await tick(bot, date(2026, 11, 1))
     await tick(bot, date(2026, 12, 1))
 
@@ -94,13 +94,13 @@ async def test_invoice_command_after_the_monthly_invoice_takes_this_month(
     await tick(bot, date(2026, 11, 1))
     monkeypatch.setattr(invoice_handlers, "utc_now", lambda: at_sgt(date(2026, 11, 3), 8))
 
-    await bot.send(text_update("/invoice", sender=ZY))
+    await bot.send(text_update("/invoice", sender=ALICE))
 
     assert await periods(bot) == ["2026-10", "2026-11"]
 
 
 async def test_invoice_command_in_a_dm_confirms(bot: BotHarness) -> None:
-    await bot.send(text_update("/invoice", sender=ZY, chat_id=ADMIN_ID))
+    await bot.send(text_update("/invoice", sender=ALICE, chat_id=ADMIN_ID))
 
     reply = bot.telegram.last("sendMessage").params
     assert (reply["chat_id"], reply["text"]) == (
@@ -110,7 +110,7 @@ async def test_invoice_command_in_a_dm_confirms(bot: BotHarness) -> None:
 
 
 async def test_invoice_command_is_admin_only(bot: BotHarness) -> None:
-    await bot.send(text_update("/invoice", sender=SHAWN))
+    await bot.send(text_update("/invoice", sender=BOB))
 
     assert bot.telegram.sent_texts() == [NOT_ADMIN]
     assert await periods(bot) == []

@@ -40,7 +40,7 @@ def summaries(bot: BotHarness) -> list[str]:
 async def test_ended_session_is_locked_with_a_summary(bot: BotHarness) -> None:
     session_id = await make_session(bot, starts_at=START)
     card = await post(bot, session_id)
-    await mark_in(bot, session_id, "shawn", "hw", "jy")
+    await mark_in(bot, session_id, "bob", "dave", "erin")
 
     await finalize_ended_sessions(tick(bot))
 
@@ -49,7 +49,7 @@ async def test_ended_session_is_locked_with_a_summary(bot: BotHarness) -> None:
     assert locked_card["text"].endswith("🔒 Attendance is locked.")
     assert "reply_markup" not in locked_card
     assert summaries(bot) == [
-        f"🔒 <b>{WHEN}</b> is locked.\n👥 3 played: hw, jy, shawn\n💵 Court $4.93–$4.94 each"
+        f"🔒 <b>{WHEN}</b> is locked.\n👥 3 played: bob, dave, erin\n💵 Court $4.93–$4.94 each"
     ]
     async with bot.sessionmaker() as db:
         assert (await db.get(Session, session_id)).locked_at == AFTER
@@ -57,9 +57,9 @@ async def test_ended_session_is_locked_with_a_summary(bot: BotHarness) -> None:
 
 async def test_summary_names_the_shuttle_batch(bot: BotHarness) -> None:
     session_id = await make_session(bot, starts_at=START)
-    await mark_in(bot, session_id, "shawn", "hw")
+    await mark_in(bot, session_id, "bob", "dave")
     async with bot.sessionmaker() as db:
-        payer = await db.scalar(select(Member.id).where(Member.display_name == "zy"))
+        payer = await db.scalar(select(Member.id).where(Member.display_name == "alice"))
         batch = ShuttleBatch(
             payer_member_id=payer, amount_cents=8000, starts_at=START - timedelta(days=30)
         )
@@ -75,7 +75,7 @@ async def test_summary_names_the_shuttle_batch(bot: BotHarness) -> None:
 
 async def test_only_once_and_only_after_the_end(bot: BotHarness) -> None:
     session_id = await make_session(bot, starts_at=START)
-    await mark_in(bot, session_id, "shawn")
+    await mark_in(bot, session_id, "bob")
 
     await finalize_ended_sessions(tick(bot, AFTER - timedelta(minutes=1)))
     assert summaries(bot) == []
@@ -124,7 +124,7 @@ async def test_a_failed_admin_dm_does_not_unlock_the_session(bot: BotHarness) ->
 
 async def test_a_failed_summary_is_retried(bot: BotHarness) -> None:
     session_id = await make_session(bot, starts_at=START)
-    await mark_in(bot, session_id, "shawn")
+    await mark_in(bot, session_id, "bob")
     bot.telegram.fail("sendMessage", 502, "Bad Gateway", chat_id=GROUP_ID)
 
     with pytest.raises(NetworkError):
@@ -141,8 +141,8 @@ async def test_a_failed_summary_is_retried(bot: BotHarness) -> None:
 async def test_one_failing_session_does_not_hold_up_the_rest(bot: BotHarness) -> None:
     first = await make_session(bot, starts_at=START)
     second = await make_session(bot, starts_at=START + timedelta(hours=3))
-    await mark_in(bot, first, "shawn")
-    await mark_in(bot, second, "hw")
+    await mark_in(bot, first, "bob")
+    await mark_in(bot, second, "dave")
     bot.telegram.fail("sendMessage", 400, "Bad Request: message is too long", chat_id=GROUP_ID)
 
     with pytest.raises(BadRequest):
@@ -156,11 +156,11 @@ async def test_one_failing_session_does_not_hold_up_the_rest(bot: BotHarness) ->
 async def test_a_late_tap_finalises_straight_away(bot: BotHarness) -> None:
     session_id = await make_session(bot)
     card = await post(bot, session_id)
-    await mark_in(bot, session_id, "hw")
+    await mark_in(bot, session_id, "dave")
     await move_session(bot, session_id, utc_now() - timedelta(hours=3))  # ended an hour ago
     button = card["reply_markup"]["inline_keyboard"][0][0]["callback_data"]
 
-    await bot.send(callback_update(button, sender=user(222, "shawn"), on_message=card))
+    await bot.send(callback_update(button, sender=user(222, "bob"), on_message=card))
 
     assert len(summaries(bot)) == 1
-    assert "1 played: hw" in summaries(bot)[0]
+    assert "1 played: dave" in summaries(bot)[0]

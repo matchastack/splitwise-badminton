@@ -10,7 +10,7 @@ from badminton.domain.timeutil import at_sgt
 from badminton.services.attendance import post_due_cards
 from badminton.services.tick import TickContext
 from tests.bot.attendance_helpers import make_session
-from tests.bot.booking_helpers import SHAWN, book, future_day
+from tests.bot.booking_helpers import BOB, book, future_day
 from tests.conftest import TEST_SETTINGS, BotHarness
 from tests.fake_telegram import GROUP_ID
 
@@ -118,7 +118,7 @@ async def test_one_failing_card_does_not_hold_up_the_rest(bot: BotHarness) -> No
 
 
 async def test_booking_inside_the_window_posts_its_card_at_once(bot: BotHarness) -> None:
-    wizard = await book(bot, SHAWN, future_day(1), hour="20:00")
+    wizard = await book(bot, BOB, future_day(1), hour="20:00")
     await wizard.tap("$14.80")
     await wizard.tap("✅ Confirm")
 
@@ -129,7 +129,7 @@ async def test_booking_inside_the_window_posts_its_card_at_once(bot: BotHarness)
 
 
 async def test_booking_outside_the_window_waits(bot: BotHarness) -> None:
-    wizard = await book(bot, SHAWN, future_day(10))
+    wizard = await book(bot, BOB, future_day(10))
     await wizard.tap("$14.80")
     await wizard.tap("✅ Confirm")
 
