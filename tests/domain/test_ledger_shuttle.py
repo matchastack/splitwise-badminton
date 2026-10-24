@@ -27,9 +27,9 @@ def sunday(
 
 
 def batch(
-    batch_id: int, payer: int, cents: int, starts_at: datetime, created_at: datetime | None = None
+    batch_id: int, payer: int, cents: int, starts_at: datetime, opened_at: datetime | None = None
 ) -> BatchFact:
-    return BatchFact(batch_id, payer, cents, starts_at, created_at or starts_at)
+    return BatchFact(batch_id, payer, cents, starts_at, opened_at or starts_at)
 
 
 def shuttle_shares(ledger, batch_id: int) -> dict[int, tuple[int, int]]:
@@ -75,7 +75,7 @@ def test_reproduces_the_sheets_16_aug_batch() -> None:
     paid = [
         e for e in ledger.entries if e.kind is EntryKind.SHUTTLE_PAID and e.batch_id == AUG_16.id
     ]
-    assert [(e.member_id, e.amount_cents, e.at) for e in paid] == [(ALICE, 8000, OCT_18.created_at)]
+    assert [(e.member_id, e.amount_cents, e.at) for e in paid] == [(ALICE, 8000, OCT_18.opened_at)]
     # The 16 Aug session itself was the earlier batch's: $38.74 over 5 people, 2h each.
     assert shuttle_shares(ledger, EARLIER.id) == {
         ALICE: (775, 120),
@@ -108,7 +108,7 @@ def test_session_starting_exactly_at_batch_start_uses_that_batch() -> None:
     """The "Last session" start point: the batch starts at that session's start."""
     last = SHEET_SESSIONS[-1]
     bought_after = batch(
-        3, FRANK, 7679, last.starts_at, created_at=last.ends_at + timedelta(hours=1)
+        3, FRANK, 7679, last.starts_at, opened_at=last.ends_at + timedelta(hours=1)
     )
 
     ledger = compute_ledger(
@@ -128,17 +128,17 @@ def test_session_starting_exactly_at_batch_start_uses_that_batch() -> None:
     assert FRANK not in ledger.batch_minutes[AUG_16.id]
 
 
-def test_batch_closes_only_once_its_successor_is_recorded() -> None:
-    successor_recorded = OCT_18.created_at
+def test_batch_closes_only_once_its_successor_is_opened() -> None:
+    successor_opened = OCT_18.opened_at
 
     before = compute_ledger(
         sessions=SHEET_SESSIONS,
         transfers=[],
         batches=[AUG_16, OCT_18],
-        as_of=successor_recorded - timedelta(minutes=1),
+        as_of=successor_opened - timedelta(minutes=1),
     )
     after = compute_ledger(
-        sessions=SHEET_SESSIONS, transfers=[], batches=[AUG_16, OCT_18], as_of=successor_recorded
+        sessions=SHEET_SESSIONS, transfers=[], batches=[AUG_16, OCT_18], as_of=successor_opened
     )
 
     assert before.open_batch_id == AUG_16.id
@@ -147,11 +147,11 @@ def test_batch_closes_only_once_its_successor_is_recorded() -> None:
     assert shuttle_shares(after, AUG_16.id)
 
 
-def test_backfilled_batch_closes_earlier_one_at_first_later_purchase() -> None:
+def test_backfilled_batch_closes_earlier_one_when_the_first_later_one_opened() -> None:
     first = batch(1, ALICE, 6000, at_sgt(date(2026, 8, 1), 0))
     third = batch(3, DAVE, 6000, at_sgt(date(2026, 10, 1), 0))
     backfilled = batch(
-        2, ERIN, 6000, at_sgt(date(2026, 9, 1), 0), created_at=at_sgt(date(2026, 10, 20), 0)
+        2, ERIN, 6000, at_sgt(date(2026, 9, 1), 0), opened_at=at_sgt(date(2026, 10, 20), 0)
     )
 
     ledger = compute_ledger(
@@ -162,7 +162,7 @@ def test_backfilled_batch_closes_earlier_one_at_first_later_purchase() -> None:
     )
 
     closing_times = {e.batch_id: e.at for e in ledger.entries if e.kind is EntryKind.SHUTTLE_PAID}
-    assert closing_times == {first.id: third.created_at, backfilled.id: third.created_at}
+    assert closing_times == {first.id: third.opened_at, backfilled.id: third.opened_at}
 
 
 def test_closed_batch_nobody_played_stays_with_buyer() -> None:

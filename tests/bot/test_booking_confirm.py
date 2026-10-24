@@ -1,12 +1,15 @@
 from datetime import timedelta
 
+import pytest
 from sqlalchemy import func, select
+from sqlalchemy.exc import SAWarning
 
+from badminton.bot.handlers.booking import EXPIRED
 from badminton.db.models import Booking, Draft, Member, Session
 from badminton.domain.timeutil import at_sgt, fmt_date
 from tests.bot.booking_helpers import ALICE, BOB, book, future_day
 from tests.conftest import BotHarness
-from tests.fake_telegram import message, message_update
+from tests.fake_telegram import callback_update, message, message_update
 
 
 async def stored(bot: BotHarness) -> tuple[list[Session], list[Booking]]:
@@ -51,6 +54,41 @@ async def test_confirm_stores_session_and_booking(bot: BotHarness) -> None:
         f"🗳 Attendance card goes up on {due}."
     )
     assert wizard.buttons() == {"🗑 Cancel booking": f"bkc:{booking.id}"}
+
+
+async def test_a_second_confirm_tap_keeps_the_record(bot: BotHarness) -> None:
+    """The second tap of a double-tap waits for the first, then finds the form gone."""
+    wizard = await book(bot, BOB, future_day(14))
+    await wizard.tap("$14.80")
+    confirm = callback_update(wizard.buttons()["✅ Confirm"], sender=BOB, on_message=wizard.card)
+    await bot.send(confirm)
+    record = wizard.current
+
+    await bot.send(confirm)
+
+    _, (booking,) = await stored(bot)
+    assert wizard.last_alert() == EXPIRED
+    assert wizard.current is record  # not edited again
+    assert wizard.text.startswith("✅ <b>Court booked</b> by @bob_t")
+    assert wizard.buttons() == {"🗑 Cancel booking": f"bkc:{booking.id}"}
+
+
+async def test_a_double_tap_on_confirm_books_once(
+    bot: BotHarness, recwarn: pytest.WarningsRecorder
+) -> None:
+    wizard = await book(bot, BOB, future_day(14))
+    await wizard.tap("$14.80")
+
+    await bot.double_tap(
+        callback_update(wizard.buttons()["✅ Confirm"], sender=BOB, on_message=wizard.card)
+    )
+
+    (_,), (booking,) = await stored(bot)
+    answers = [call.params.get("text") for call in bot.telegram.calls_to("answerCallbackQuery")]
+    assert sorted(answers[-2:], key=str) == [None, EXPIRED]  # one went through
+    assert wizard.text.startswith("✅ <b>Court booked</b> by @bob_t")
+    assert wizard.buttons() == {"🗑 Cancel booking": f"bkc:{booking.id}"}
+    assert not [w for w in recwarn if issubclass(w.category, SAWarning)]
 
 
 async def test_suggested_price_follows_the_last_booking(bot: BotHarness) -> None:

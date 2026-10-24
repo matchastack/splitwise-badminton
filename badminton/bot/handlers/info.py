@@ -19,6 +19,7 @@ from badminton.domain.timeutil import fmt_hours, fmt_session, utc_now
 from badminton.services.invoice import LineView, open_lines_for
 from badminton.services.members import mention_html, upsert_from_telegram
 from badminton.services.repo import load_ledger
+from badminton.services.shuttle import describe, member_names, waiting_batch
 from badminton.services.statements import balance_phrase
 
 
@@ -39,7 +40,11 @@ async def show_balance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     async with db_session(context) as db:
         member = await upsert_from_telegram(db, update.effective_user)
         await db.commit()
-        lines = balance_lines(await load_ledger(db, utc_now()), member)
+        ledger = await load_ledger(db, utc_now())
+        lines = balance_lines(ledger, member)
+        if (waiting := await waiting_batch(db)) is not None:
+            when = "to be put in use" if ledger.open_batch_id is None else "to take over"
+            lines.append(f"🛍 Batch {describe(waiting, await member_names(db))} is waiting {when}.")
         lines += unpaid_lines(member, await open_lines_for(db, member.id))
     await update.effective_message.reply_text("\n".join(lines))
 

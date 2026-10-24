@@ -113,7 +113,7 @@ async def test_the_tube_is_billed_by_hours_once_the_next_one_is_bought(db: Async
             payer_member_id=bob,
             amount_cents=8000,
             starts_at=at_sgt(date(2026, 11, 2), 0),
-            created_at=at_sgt(date(2026, 11, 2), 9),
+            opened_at=at_sgt(date(2026, 11, 2), 9),
         )
     )
     await db.commit()
@@ -166,11 +166,18 @@ async def test_refuses_to_import_twice(db: AsyncSession) -> None:
         await run_import(db)
 
 
-async def test_refuses_when_a_shuttle_batch_is_already_recorded(db: AsyncSession) -> None:
+@pytest.mark.parametrize(
+    "waiting_or_opened",
+    [{}, {"starts_at": IMPORTED_AT, "opened_at": IMPORTED_AT}],
+    ids=["waiting", "in-use"],
+)
+async def test_refuses_when_a_shuttle_batch_is_already_recorded(
+    db: AsyncSession, waiting_or_opened: dict
+) -> None:
     alice = Member(display_name="alice", telegram_user_id=1)
     db.add(alice)
     await db.flush()
-    db.add(ShuttleBatch(payer_member_id=alice.id, amount_cents=7679, starts_at=IMPORTED_AT))
+    db.add(ShuttleBatch(payer_member_id=alice.id, amount_cents=7679, **waiting_or_opened))
     await db.commit()
 
     with pytest.raises(ImportRefused, match="unused tube must become the first batch"):
@@ -186,14 +193,22 @@ async def test_refuses_a_batch_or_payment_from_the_time_the_sheet_covers(
     frank = Member(display_name="frank", telegram_user_id=2)
     db.add_all([alice, frank])
     await db.flush()
-    later = ShuttleBatch(payer_member_id=alice.id, amount_cents=8000, starts_at=cutoff(no_tube))
+    later = ShuttleBatch(
+        payer_member_id=alice.id,
+        amount_cents=8000,
+        starts_at=cutoff(no_tube),
+        opened_at=cutoff(no_tube),
+    )
     db.add(later)
     await db.commit()
     # A batch from the bot's time is fine when the sheet has no unused tube.
     await check_can_import(db, no_tube)
 
     earlier = ShuttleBatch(
-        payer_member_id=alice.id, amount_cents=7679, starts_at=at_sgt(date(2026, 10, 18), 13)
+        payer_member_id=alice.id,
+        amount_cents=7679,
+        starts_at=at_sgt(date(2026, 10, 18), 13),
+        opened_at=at_sgt(date(2026, 10, 18), 13),
     )
     db.add(earlier)
     await db.commit()
