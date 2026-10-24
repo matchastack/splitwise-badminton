@@ -3,8 +3,10 @@ import dataclasses
 import pytest
 from sqlalchemy import select
 from telegram import Update
+from telegram.ext import CommandHandler
 
 from badminton.bot.app import build_application
+from badminton.bot.commands import ADMIN_COMMANDS
 from badminton.db.models import Member
 from badminton.services.members import mention_html
 from tests.conftest import TEST_SETTINGS, BotHarness
@@ -125,3 +127,15 @@ async def test_chatid_works_anywhere_before_setup(bot: BotHarness) -> None:
 )
 def test_mention_html(member: Member, expected: str) -> None:
     assert mention_html(member) == expected
+
+
+def test_every_menu_command_has_a_handler(bot: BotHarness) -> None:
+    handled = {
+        command
+        for handlers in bot.application.handlers.values()
+        for handler in handlers
+        if isinstance(handler, CommandHandler)
+        for command in handler.commands
+    }
+
+    assert {command.command for command in ADMIN_COMMANDS} <= handled

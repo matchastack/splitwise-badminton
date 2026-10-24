@@ -7,7 +7,7 @@ from telegram.error import NetworkError
 
 from badminton.bot.context import OCR_KEY
 from badminton.bot.handlers import booking
-from badminton.bot.handlers.booking import EXPIRED, NOT_READ, UNREAD
+from badminton.bot.handlers.booking import EXPIRED, IN_THE_GROUP, MOVED, NOT_READ, UNREAD
 from badminton.db.models import Draft, Member
 from badminton.domain.timeutil import at_sgt, fmt_date, utc_now
 from badminton.services.ocr import read_text
@@ -25,7 +25,7 @@ from tests.fake_telegram import (
 SCREENSHOT = Path(__file__).resolve().parents[1] / "fixtures" / "activesg_booking.jpg"
 
 
-async def the_draft(bot: BotHarness) -> Draft:
+async def the_draft(bot: BotHarness) -> Draft | None:
     async with bot.sessionmaker() as db:
         return await db.scalar(select(Draft))
 
@@ -249,12 +249,50 @@ async def test_cancel_removes_the_screenshot(bot: BotHarness) -> None:
         assert await db.scalar(select(func.count()).select_from(Draft)) == 0
 
 
-async def test_book_is_no_longer_a_command(bot: BotHarness) -> None:
+async def test_book_points_to_court(bot: BotHarness) -> None:
     sent = text_update("/book", sender=BOB)
 
     await bot.send(sent)
 
-    assert deleted(bot) == [sent["message"]["message_id"]]  # like any unknown command
+    assert bot.telegram.sent_texts(GROUP_ID) == [MOVED]
+    assert deleted(bot) == [sent["message"]["message_id"]]  # not a command any more
+    assert await the_draft(bot) is None
+
+
+async def test_a_screenshot_captioned_book_points_to_court(bot: BotHarness) -> None:
+    photo = photo_message(sender=BOB, caption="/book")
+
+    await bot.send(message_update(photo))
+
+    assert bot.telegram.sent_texts(GROUP_ID) == [MOVED]
+    assert deleted(bot) == [photo["message_id"]]
+    assert await the_draft(bot) is None
+
+
+async def test_the_caption_is_matched_like_a_command(bot: BotHarness) -> None:
+    for file_id, caption in (("upper", "/Court"), ("ours", "/court@Badminton_Bot 4 Oct")):
+        bot.telegram.files[f"{file_id}-1280"] = activesg_text(future_day()).encode()
+
+        await bot.send(message_update(photo_message(sender=BOB, caption=caption, file_id=file_id)))
+
+        assert bot.telegram.last("sendMessage").params["text"].endswith("Is this right?")
+
+
+async def test_a_screenshot_captioned_for_another_bot_is_removed(bot: BotHarness) -> None:
+    photo = photo_message(sender=BOB, caption="/court@some_other_bot")
+
+    await bot.send(message_update(photo))
+
+    assert deleted(bot) == [photo["message_id"]]
+    assert await the_draft(bot) is None
+    assert bot.telegram.calls_to("getFile") == []
+
+
+async def test_court_in_a_private_chat_points_to_the_group(bot: BotHarness) -> None:
+    await bot.send(text_update("/court", sender=BOB, chat_id=BOB["id"]))
+
+    assert bot.telegram.sent_texts(BOB["id"]) == [IN_THE_GROUP]
+    assert await the_draft(bot) is None
 
 
 async def test_a_card_that_fails_to_send_keeps_the_prompt_to_try_again(bot: BotHarness) -> None:

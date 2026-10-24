@@ -5,8 +5,11 @@ from __future__ import annotations
 
 from telegram import BotCommand
 
+BOOKING_COMMAND = "court"
+OLD_BOOKING_COMMAND = "book"  # until T44; it now points members to BOOKING_COMMAND
+
 MEMBER_COMMANDS: tuple[BotCommand, ...] = (
-    BotCommand("court", "Record a court booking from your screenshot"),
+    BotCommand(BOOKING_COMMAND, "Record a court booking from your screenshot"),
     BotCommand("shuttle", "Record a shuttlecock purchase"),
     BotCommand("balance", "Your balance and pending shuttle hours"),
     BotCommand("upcoming", "Upcoming sessions"),

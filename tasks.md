@@ -320,8 +320,10 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
 `feat/t44-court-command` · Stories US-3.1 · FR-BK-1, FR-MOD-1 · Depends on T43
 - **Scope:** a court booking starts with `/court`, or a screenshot captioned `/court`, instead of `/book`.
   - The command menu, `/help`, the `/start` and `/upcoming` texts, the guard's caption filter, the README and the requirements say `/court`.
-  - `/book` is no longer a command: in the group it is removed like any unknown one.
-- **Done when:** the booking tests run through `/court`, and a test shows `/book` is removed without starting a booking.
+  - `/book`, as text or a caption, is answered with a pointer to `/court`, then removed from the group. `/court` in a private chat says to send it in the group.
+  - A captioned command is matched like a text command: in any case, and only with this bot's @handle or none.
+  - One constant names the command for the menu, the handlers, the caption check and the messages; a test checks every menu command has a handler.
+- **Done when:** the booking tests run through `/court`, and tests cover the `/book` pointer (text and caption), captions for other bots or in other cases, and `/court` in a private chat.
 
 ## E4 — Attendance and locking
 

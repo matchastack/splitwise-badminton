@@ -125,7 +125,8 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
 ### 4.2 Court bookings (BK)
 - **FR-BK-1:**
   - A member starts a booking by sending `/court` in the group. The bot asks for the booking screenshot with a reply prompt, and the member replies with it.
-  - Sending the screenshot with the caption `/court` does both at once.
+  - Sending the screenshot with the caption `/court` does both at once. The caption is matched like a command: in any case, and only addressed to this bot, if to any.
+  - `/court` in a private chat is answered with a pointer to the group. `/book`, its name before, is answered with a pointer to `/court`.
   - A new booking replaces the member's earlier one still waiting for its screenshot, and that prompt is removed. A screenshot answering a prompt whose form has expired starts a new booking.
   - The sender is the payer, whether or not they play.
   - The photo's Telegram `file_id` is stored as proof.

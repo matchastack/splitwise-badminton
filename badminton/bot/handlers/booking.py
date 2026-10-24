@@ -21,7 +21,14 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
+from telegram import (
+    Bot,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+    MessageEntity,
+    Update,
+)
 from telegram.error import BadRequest, TelegramError
 from telegram.ext import (
     Application,
@@ -33,9 +40,10 @@ from telegram.ext import (
 )
 
 from badminton.bot import prompts
+from badminton.bot.commands import BOOKING_COMMAND, OLD_BOOKING_COMMAND
 from badminton.bot.context import db_session, ocr_of, settings_of
 from badminton.bot.handlers import guard
-from badminton.bot.handlers.guard import COURT_PHOTO
+from badminton.bot.handlers.guard import caption_command, is_booking_photo
 from badminton.bot.keyboards import (
     BACK,
     NOOP,
@@ -134,7 +142,12 @@ NEEDS_SCHEDULE = {
 }
 
 ASK_SCREENSHOT = "send your booking screenshot as a reply to this message."
-EXPIRED = "This booking form has expired. Send /court again."
+EXPIRED = f"This booking form has expired. Send /{BOOKING_COMMAND} again."
+IN_THE_GROUP = f"📸 Send /{BOOKING_COMMAND} in the group, then your booking screenshot."
+MOVED = (
+    f"📸 /{OLD_BOOKING_COMMAND} is now /{BOOKING_COMMAND}: send /{BOOKING_COMMAND} in the group, "
+    "then your booking screenshot."
+)
 MERGE_FIRST = "There's now a session next to this one: is it part of it?"
 UNREAD = "🔍 I couldn't work out the date and time from the screenshot."
 NOT_READ = "📍 Venue and court not read: add them with ✏️ Edit"
@@ -351,8 +364,11 @@ async def on_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     user = update.effective_user
     async with db_session(context) as db:
         draft = await _prompt_draft(db, message, user.id)
-        if draft is None and not COURT_PHOTO.check_update(update):
-            await guard.delete_unless_exempt(update, context)
+        if draft is None and not is_booking_photo(message, context.bot.username):
+            if caption_command(message, context.bot.username) == OLD_BOOKING_COMMAND:
+                await point_to_new_command(update, context)
+            else:
+                await guard.delete_unless_exempt(update, context)
             return
         if not message.photo:  # an image sent as a file
             await delete_message_quietly(context.bot, message.chat_id, message.message_id)
@@ -385,6 +401,17 @@ async def on_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         # Only now the card is up: had anything failed, the member could answer again.
         await prompts.dismiss(context.bot, draft)
         await db.commit()
+
+
+async def point_to_new_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/book, as before T44, as text or a caption: say what replaced it. In the group the
+    message is then removed, like any other that isn't a command the bot handles."""
+    await context.bot.send_message(update.effective_chat.id, MOVED)
+    await guard.delete_unless_exempt(update, context)
+
+
+async def in_the_group(update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.effective_message.reply_text(IN_THE_GROUP)
 
 
 async def _prompt_draft(db: AsyncSession, message: Message, user_id: int) -> Draft | None:
@@ -705,9 +732,17 @@ async def on_typed_answer(
 
 
 def register(application: Application) -> None:
-    screenshot = COURT_PHOTO | (filters.REPLY & (filters.PHOTO | filters.Document.IMAGE))
-    application.add_handler(MessageHandler(filters.ChatType.GROUPS & screenshot, on_screenshot))
+    # A captioned command is checked in the handler, as CommandHandler checks text commands.
+    captioned = filters.PHOTO & filters.CaptionEntity(MessageEntity.BOT_COMMAND)
+    replied = filters.REPLY & (filters.PHOTO | filters.Document.IMAGE)
     application.add_handler(
-        CommandHandler("court", ask_for_screenshot, filters=filters.ChatType.GROUPS)
+        MessageHandler(filters.ChatType.GROUPS & (captioned | replied), on_screenshot)
     )
+    application.add_handler(
+        CommandHandler(BOOKING_COMMAND, ask_for_screenshot, filters=filters.ChatType.GROUPS)
+    )
+    application.add_handler(
+        CommandHandler(BOOKING_COMMAND, in_the_group, filters=filters.ChatType.PRIVATE)
+    )
+    application.add_handler(CommandHandler(OLD_BOOKING_COMMAND, point_to_new_command))
     application.add_handler(CallbackQueryHandler(on_button, pattern=rf"^{CALLBACK_KIND}:\d+:"))
