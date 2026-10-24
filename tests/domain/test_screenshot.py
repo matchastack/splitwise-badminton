@@ -54,7 +54,7 @@ def test_reads_the_screenshot() -> None:
         starts_at=at_sgt(date(2026, 10, 4), 11),
         minutes=120,
         courts="11",
-        courts_at_once=1,
+        court_minutes=120,
     )
 
 
@@ -85,14 +85,30 @@ def test_tolerates_what_ocr_makes_of_the_time(line: str) -> None:
     ("line", "today", "expected"),
     [
         ("Sun, 3 Jan, 9:00 am", date(2026, 12, 28), date(2027, 1, 3)),  # into the new year
-        ("Wed, 30 Dec, 9:00 am", date(2027, 1, 2), date(2026, 12, 30)),  # just passed
-        ("Fri, 5 Sept, 9:00 am", TODAY, date(2025, 9, 5)),  # the weekday decides
+        ("Wed, 30 Sept, 9:00 am", TODAY, TODAY),  # later today
         ("Mon, 5 Oct, 9:00 am", TODAY, date(2026, 10, 5)),
-        ("Wed, 5 Oct, 9:00 am", TODAY, date(2026, 10, 5)),  # misread weekday: nearest date
+        ("5 Oct, 9:00 am", TODAY, date(2026, 10, 5)),  # no weekday read
     ],
 )
-def test_the_weekday_settles_the_year(line: str, today: date, expected: date) -> None:
+def test_the_date_is_its_next_occurrence(line: str, today: date, expected: date) -> None:
     assert read_booking(slots(line, "Court 2"), today).starts_at == at_sgt(expected, 9)
+
+
+@pytest.mark.parametrize(
+    ("line", "today"),
+    [
+        ("Mon, 1 Nov, 9:00 am", date(2026, 10, 24)),  # 1 Nov 2026 is a Sunday: misread
+        ("Wed, 5 Oct, 9:00 am", TODAY),  # likewise; not moved to a year it fits
+        ("Wed, 30 Dec, 9:00 am", date(2027, 1, 2)),  # passed
+        ("Fri, 5 Sept, 9:00 am", TODAY),  # passed; next year's is too far ahead
+        ("Thu, 1 Jul, 9:00 am", TODAY),  # over six months ahead
+    ],
+)
+def test_a_date_that_does_not_fit_is_left_out(line: str, today: date) -> None:
+    found = read_booking(slots(line, "Court 2"), today)
+
+    assert (found.starts_at, found.minutes, found.court_minutes) == (None, None, None)
+    assert found.courts == "2"
 
 
 def test_two_courts_at_once() -> None:
@@ -101,7 +117,7 @@ def test_two_courts_at_once() -> None:
     )
 
     assert (found.starts_at, found.minutes) == (at_sgt(date(2026, 10, 4), 11), 60)
-    assert (found.courts, found.courts_at_once) == ("11, 12", 2)
+    assert (found.courts, found.court_minutes) == ("11, 12", 120)
 
 
 def test_changing_court_halfway() -> None:
@@ -109,7 +125,43 @@ def test_changing_court_halfway() -> None:
         slots("Sun, 4 Oct, 11:00 am", "Court 11", "Sun, 4 Oct, 12:00 pm", "Court 3"), TODAY
     )
 
-    assert (found.minutes, found.courts, found.courts_at_once) == (120, "11, 3", 1)
+    assert (found.minutes, found.courts, found.court_minutes) == (120, "11, 3", 120)
+
+
+def test_court_time_counts_each_slot_once() -> None:
+    three_court_hours = (
+        slots("Sun, 4 Oct, 11:00 am", "Court 11", "Sun, 4 Oct, 12:00 pm", "Court 11")
+        + "\nSun, 4 Oct, 11:00 am\nCourt 12"
+    )
+    read_twice = (
+        slots("Sun, 4 Oct, 11:00 am", "Court 11", "Sun, 4 Oct, 11:00 am", "Sun, 4 Oct, 12:00 pm")
+        + "\nCourt 11"
+    )
+
+    assert read_booking(three_court_hours, TODAY).court_minutes == 180
+    assert read_booking(read_twice, TODAY).court_minutes == 120  # the same slot, misread
+
+
+def test_other_dates_on_the_page_are_not_slots() -> None:
+    page = (
+        "Booked on Thu, 1 Oct, 3:15 pm\n"
+        + slots("Sun, 4 Oct, 11:00 am", "Court 11", "Sun, 4 Oct, 12:00 pm", "Court 11")
+        + "\nNOTIFICATION\nReminder sent Sat, 3 Oct, 9:05 am"
+    )
+
+    found = read_booking(page, TODAY)
+
+    assert (found.starts_at, found.minutes) == (at_sgt(date(2026, 10, 4), 11), 120)
+
+
+def test_a_court_is_on_its_slots_line_or_the_next() -> None:
+    no_court_line = slots("Sun, 4 Oct, 11:00 am", "", "Back to Home", "Book more Courts")
+    same_line = slots("Sun, 4 Oct, 11:00 am Court 7")
+    courtesy = slots("Sun, 4 Oct, 11:00 am", "Courtesy of ActiveSG")
+
+    assert read_booking(no_court_line, TODAY).courts is None
+    assert read_booking(same_line, TODAY).courts == "7"
+    assert read_booking(courtesy, TODAY).courts is None
 
 
 @pytest.mark.parametrize(

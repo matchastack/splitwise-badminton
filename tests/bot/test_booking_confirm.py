@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import SAWarning
 
-from badminton.bot.handlers.booking import EXPIRED
+from badminton.bot.handlers.booking import EXPIRED, UNREAD
 from badminton.db.models import Booking, Draft, Member, Session
 from badminton.domain.timeutil import at_sgt, fmt_date
 from tests.bot.booking_helpers import ALICE, BOB, Wizard, activesg_text, book, future_day
@@ -137,7 +137,7 @@ async def test_suggested_price_follows_the_last_booking(bot: BotHarness) -> None
 
 async def test_two_courts_at_once_are_priced_as_two(bot: BotHarness) -> None:
     day = future_day(14)
-    screenshot = activesg_text(day, hours=1) + "\n" + activesg_text(day, hours=1, court="12")
+    screenshot = activesg_text(day, hours=1, courts=("11", "12"))
 
     wizard = await Wizard(bot, BOB, screenshot).start()
 
@@ -148,9 +148,17 @@ async def test_two_courts_at_once_are_priced_as_two(bot: BotHarness) -> None:
     )
 
 
-async def test_a_screenshot_of_a_past_booking_cannot_be_confirmed(bot: BotHarness) -> None:
+async def test_a_screenshot_of_a_past_day_asks_for_the_date(bot: BotHarness) -> None:
     wizard = await book(bot, BOB, future_day(-7))
 
+    assert (
+        wizard.text
+        == f"{UNREAD}\n📍 Hougang Sport Hall · Court 11\nWhich day is the court booked for?"
+    )
+
+
+async def test_a_slot_earlier_today_cannot_be_confirmed(bot: BotHarness) -> None:
+    wizard = await Wizard(bot, BOB, activesg_text(future_day(0), hour=0, hours=1)).start()
     assert wizard.text.endswith("⚠️ That time has passed.\nIs this right?")
 
     await wizard.tap("✅ Confirm")
@@ -192,3 +200,43 @@ async def test_a_session_that_was_cancelled_meanwhile_is_not_joined(bot: BotHarn
 
     sessions, _ = await stored(bot)
     assert sorted(s.status for s in sessions) == ["cancelled", "scheduled"]
+
+
+async def test_a_two_court_booking_does_not_raise_the_next_suggestion(bot: BotHarness) -> None:
+    """The suggestion is per court-hour, so a booking of two courts at once isn't taken
+    for a dearer court."""
+    day = future_day(14)
+    two_courts = activesg_text(day, hours=1, courts=("11", "12"))
+    first = await Wizard(bot, BOB, two_courts).start()
+    assert "💵 $14.80" in first.text  # 2 courts × 1h × $7.40
+    await first.tap("✅ Confirm")
+
+    second = await book(bot, ALICE, future_day(21), hours="1h")
+
+    assert "💵 $7.40, paid by @alice_handle" in second.text
+
+
+async def test_a_network_error_pinning_still_finishes_the_booking(bot: BotHarness) -> None:
+    wizard = await book(bot, BOB, future_day(1), hour="20:00")  # its card is due at once
+    bot.telegram.fail("pinChatMessage", 502, "Bad Gateway")
+
+    await wizard.tap("✅ Confirm")
+
+    assert len((await stored(bot))[1]) == 1
+    deleted = [call.params["message_id"] for call in bot.telegram.calls_to("deleteMessage")]
+    assert {wizard.card["message_id"], wizard.photo["message_id"]} <= set(deleted)
+    assert any("No answer = not playing." in text for text in bot.telegram.sent_texts(GROUP_ID))
+
+
+async def test_a_session_booked_meanwhile_is_offered_before_confirming(bot: BotHarness) -> None:
+    day = future_day(14)
+    wizard = await book(bot, BOB, day, hour="13:00")
+    assert wizard.text.endswith("Is this right?")  # nothing to join yet
+    other = await book(bot, ALICE, day, hour="11:00")
+    await other.tap("✅ Confirm")
+
+    await wizard.tap("✅ Confirm")
+
+    assert wizard.last_alert() == "There's now a session next to this one: is it part of it?"
+    assert "➕ Add to 11:00–13:00" in wizard.buttons()
+    assert len((await stored(bot))[1]) == 1  # only alice's

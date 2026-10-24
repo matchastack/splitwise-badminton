@@ -1,11 +1,15 @@
+from datetime import date, timedelta
 from pathlib import Path
 
-from sqlalchemy import func, select
+import pytest
+from sqlalchemy import func, select, update
+from telegram.error import NetworkError
 
 from badminton.bot.context import OCR_KEY
+from badminton.bot.handlers import booking
 from badminton.bot.handlers.booking import EXPIRED, NOT_READ, UNREAD
 from badminton.db.models import Draft, Member
-from badminton.domain.timeutil import fmt_date
+from badminton.domain.timeutil import at_sgt, fmt_date, utc_now
 from badminton.services.ocr import read_text
 from tests.bot.booking_helpers import BOB, CAROL, Wizard, activesg_text, future_day
 from tests.conftest import BotHarness
@@ -67,7 +71,7 @@ async def test_screenshot_reply_shows_the_booking_to_confirm(bot: BotHarness) ->
         draft.data.items()
         >= {
             "photo_file_id": wizard.photo["photo"][-1]["file_id"],
-            "photo_message_id": wizard.photo["message_id"],
+            "owned_message_ids": [wizard.photo["message_id"]],
             "venue": "Hougang Sport Hall",
             "courts": "11",
             "hour": 11,
@@ -88,14 +92,20 @@ async def test_screenshot_captioned_court_skips_the_prompt(bot: BotHarness) -> N
     assert [call.params["text"] for call in bot.telegram.calls_to("sendMessage")] == [wizard.text]
 
 
-async def test_reads_a_real_screenshot(bot: BotHarness) -> None:
+async def test_reads_a_real_screenshot(bot: BotHarness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The screenshot is of a booking for Sun 4 Oct 2026, sent a few days before."""
+    monkeypatch.setattr(booking, "utc_now", lambda: at_sgt(date(2026, 9, 30), 10))
     bot.application.bot_data[OCR_KEY] = read_text
     bot.telegram.files["real-1280"] = SCREENSHOT.read_bytes()
 
     await bot.send(message_update(photo_message(sender=BOB, caption="/court", file_id="real")))
 
-    card = bot.telegram.last("sendMessage").params["text"]
-    assert ", 11:00–13:00 (2h)\n📍 Hougang Sport Hall · Court 11\n💵 $14.80" in card
+    assert bot.telegram.last("sendMessage").params["text"] == (
+        "📅 Sun 4 Oct, 11:00–13:00 (2h)\n"
+        "📍 Hougang Sport Hall · Court 11\n"
+        "💵 $14.80, paid by @bob_t\n"
+        "Is this right?"
+    )
 
 
 async def test_typed_answer_to_the_screenshot_prompt_is_asked_again(bot: BotHarness) -> None:
@@ -245,4 +255,72 @@ async def test_book_is_no_longer_a_command(bot: BotHarness) -> None:
     await bot.send(sent)
 
     assert deleted(bot) == [sent["message"]["message_id"]]  # like any unknown command
+
+
+async def test_a_card_that_fails_to_send_keeps_the_prompt_to_try_again(bot: BotHarness) -> None:
+    await bot.send(text_update("/court", sender=BOB))
+    prompt = bot.telegram.last("sendMessage").message
+    bot.telegram.files["retry-1280"] = activesg_text(future_day()).encode()
+    photo = photo_message(sender=BOB, reply_to=prompt, file_id="retry")
+    bot.telegram.fail("sendMessage", 502, "Bad Gateway")
+
+    with pytest.raises(NetworkError):
+        await bot.send(message_update(photo))
+
+    assert prompt["message_id"] not in deleted(bot)
+    await bot.send(message_update(photo))  # answering the same prompt again works
+    assert bot.telegram.last("sendMessage").params["text"].endswith("Is this right?")
+
+
+async def test_a_screenshot_for_an_expired_prompt_starts_a_new_booking(bot: BotHarness) -> None:
+    await bot.send(text_update("/court", sender=BOB))
+    prompt = bot.telegram.last("sendMessage").message
+    async with bot.sessionmaker() as db:
+        await db.execute(update(Draft).values(expires_at=utc_now() - timedelta(minutes=1)))
+        await db.commit()
+    bot.telegram.files["late-1280"] = activesg_text(future_day()).encode()
+
+    await bot.send(message_update(photo_message(sender=BOB, reply_to=prompt, file_id="late")))
+
+    assert bot.telegram.last("sendMessage").params["text"].endswith("Is this right?")
+    assert prompt["message_id"] in deleted(bot)
+    async with bot.sessionmaker() as db:
+        assert await db.scalar(select(func.count()).select_from(Draft)) == 1
+
+
+async def test_a_new_booking_closes_the_one_waiting_for_a_screenshot(bot: BotHarness) -> None:
+    await bot.send(text_update("/court", sender=BOB))
+    prompt = bot.telegram.last("sendMessage").message
+
+    await Wizard(bot, BOB, activesg_text(future_day())).start(caption=True)
+
+    assert prompt["message_id"] in deleted(bot)
+    async with bot.sessionmaker() as db:
+        assert await db.scalar(select(func.count()).select_from(Draft)) == 1
+
+
+async def test_a_form_from_before_an_update_expires(bot: BotHarness) -> None:
+    """A wizard left open over a deploy may hold a step or prompt this version lacks."""
+    wizard = await Wizard(bot, BOB, activesg_text(future_day())).start()
+    async with bot.sessionmaker() as db:
+        draft = await db.scalar(select(Draft))
+        draft.data = {**draft.data, "step": "price", "awaiting": "amount"}
+        draft.prompt_message_id = 4321
+        await db.commit()
+    old = {"message_id": 4321, "chat": {"id": GROUP_ID, "type": "supergroup"}, "date": 0}
+
+    await bot.send(message_update(message(sender=BOB, text="16", reply_to=old)))
+
+    assert wizard.text == EXPIRED
+    assert await the_draft(bot) is None
+
+
+async def test_a_button_from_before_an_update_expires_the_form(bot: BotHarness) -> None:
+    wizard = await Wizard(bot, BOB, activesg_text(future_day())).start()
+    draft = await the_draft(bot)
+
+    await bot.send(callback_update(f"bk:{draft.id}:p:1480", sender=BOB, on_message=wizard.card))
+
+    assert wizard.last_alert() == EXPIRED
+    assert wizard.text == EXPIRED
     assert await the_draft(bot) is None

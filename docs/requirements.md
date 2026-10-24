@@ -126,6 +126,7 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
 - **FR-BK-1:**
   - A member starts a booking by sending `/court` in the group. The bot asks for the booking screenshot with a reply prompt, and the member replies with it.
   - Sending the screenshot with the caption `/court` does both at once.
+  - A new booking replaces the member's earlier one still waiting for its screenshot, and that prompt is removed. A screenshot answering a prompt whose form has expired starts a new booking.
   - The sender is the payer, whether or not they play.
   - The photo's Telegram `file_id` is stored as proof.
 - **FR-BK-2:**
@@ -139,12 +140,13 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
   - *Other* asks for the hours with a reply prompt.
   - It accepts a positive number in 0.5-hour steps, up to 6.
 - **FR-BK-6:** **Price**: the screenshot shows none, so the bot suggests one.
-  - The suggestion is the last recorded hourly rate × hours × courts booked at once. The default rate is $7.40/h.
+  - The suggestion is the hourly rate × the court time: one hour per slot on the screenshot, e.g. 4h for two courts for 2 hours. Hours the member picks are taken as one court at a time.
+  - The hourly rate is the latest booking of a single court's price per hour, since courts booked at once cost more per hour. The default rate is $7.40/h.
   - The member can type another amount with ✏️ Edit (FR-BK-8). It accepts $0.01–$500.00 with up to 2 decimal places, and stays if the hours change.
 - **FR-BK-7:**
   - If the new booking is on the same date as an existing scheduled session, and the times overlap or run back-to-back, the wizard must offer **[Add to <existing session>]** or **[Separate session]**.
   - Adding the booking re-derives the session's start and end.
-  - Changing the date, time or hours asks again.
+  - Changing the date, time or hours asks again. So does confirming, if someone booked a session to join in the meantime.
 - **FR-BK-8:**
   - **Confirm**: the booking (date, start–end, hours, venue and courts, price and payer) with **[✅ Confirm] [✏️ Edit] [✖ Cancel]**.
   - **✏️ Edit** changes the date, time or hours (as in FR-BK-3 to FR-BK-5), or the venue, courts or price (reply prompts).
@@ -159,8 +161,8 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
   - The cancellation is announced in the group.
 - **FR-BK-11:** If a session starts within the reminder window (FR-ATT-1), confirming a booking for it posts the attendance card straight away.
 - **FR-BK-12:** The bot reads the screenshot with OCR: Tesseract, run by the bot itself. No LLM or external service is involved.
-  - It reads the venue (*Where*) and each one-hour slot (*When*: date, start time and court). It ignores the name: the sender is the payer (FR-BK-1).
-  - The screenshot shows no year. It is the one in which the date falls on the weekday shown.
+  - It reads the venue (*Where*) and each one-hour slot of the *When* list: date, start time, and the court on the same or the next line. Other dates on the page are ignored, and so is the name: the sender is the payer (FR-BK-1).
+  - The screenshot shows no year. The date is its next occurrence within the six months bookings are made for, and must fall on the weekday shown. Otherwise the day or weekday was misread, or the booking has passed, and the bot asks for the date.
   - The date, start time and hours are filled in only when the slots run back to back on one day. Otherwise the bot asks for them (FR-BK-3).
   - Anything else it can't read can be added with ✏️ Edit.
 
@@ -358,7 +360,7 @@ Worked examples:
 | NFR-2 | Correctness | Money is integer cents. Splits add up exactly. All balances sum to zero, which is tested. |
 | NFR-3 | Reliability | Scheduled steps and card/invoice posting are idempotent: they claim their work atomically in the database before sending. If a scheduled run is missed, the next one catches up. |
 | NFR-4 | Security | The webhook secret, cron bearer token and admin ID list are configured as environment variables. Secrets are never logged. Updates from other chats are ignored. |
-| NFR-5 | Privacy | Only Telegram user ID, first name, @username, booking photo `file_id`s, and the venue and courts read from them are stored. Screenshots are read in memory and not kept. No phone numbers or payment details. |
+| NFR-5 | Privacy | Only Telegram user ID, first name, @username, booking photo `file_id`s, and the venue and courts read from them are stored. Screenshots are read through a temporary file that is deleted at once; they aren't kept. No phone numbers or payment details. |
 | NFR-6 | Transparency | Every change that affects someone's money is visible in the group and recorded in the audit log. |
 | NFR-7 | Usability | Each wizard is one message edited in place. Buttons are preferred over typing. Messages are short. All times are in SGT, e.g. "Sun 4 Oct, 11:00–13:00". |
 | NFR-8 | Performance | A typical webhook update is handled within 3 seconds, allowing for a Neon cold start. |

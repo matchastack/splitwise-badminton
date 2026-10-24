@@ -175,3 +175,14 @@ async def test_a_record_from_before_screenshots_were_posted_is_still_updated(
 
     assert record.text.startswith(f"🗑 <s>📅 {fmt_date(DAY)}, 11:00–13:00 (2h)\n")
     assert record.text.endswith("Cancelled by bob.")
+
+
+async def test_a_network_error_unpinning_still_announces(bot: BotHarness) -> None:
+    record = await booked(bot)
+    await record.tap("🗑 Cancel booking")
+    bot.telegram.fail("unpinChatMessage", 502, "Bad Gateway")
+
+    await record.tap("Yes, cancel it")
+
+    assert (await only_session(bot)).status == "cancelled"
+    assert bot.telegram.sent_texts(GROUP_ID)[-1].endswith("That session is now cancelled.")

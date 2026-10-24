@@ -19,6 +19,7 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
 from telegram.error import BadRequest, TelegramError
@@ -67,7 +68,6 @@ from badminton.services.drafts import (
     create_draft,
     delete_draft,
     delete_message_quietly,
-    find_by_prompt,
     get_draft,
     show_draft,
     update_data,
@@ -135,6 +135,7 @@ NEEDS_SCHEDULE = {
 
 ASK_SCREENSHOT = "send your booking screenshot as a reply to this message."
 EXPIRED = "This booking form has expired. Send /court again."
+MERGE_FIRST = "There's now a session next to this one: is it part of it?"
 UNREAD = "🔍 I couldn't work out the date and time from the screenshot."
 NOT_READ = "📍 Venue and court not read: add them with ✏️ Edit"
 
@@ -329,6 +330,7 @@ async def ask_for_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE)
     message = update.effective_message
     async with db_session(context) as db:
         payer = await upsert_from_telegram(db, update.effective_user)
+        await _close_waiting(context.bot, db, message.chat_id, update.effective_user.id)
         draft = await create_draft(
             db,
             kind=KIND,
@@ -348,7 +350,7 @@ async def on_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     message = update.effective_message
     user = update.effective_user
     async with db_session(context) as db:
-        draft = await _awaiting_screenshot(db, message, user.id)
+        draft = await _prompt_draft(db, message, user.id)
         if draft is None and not COURT_PHOTO.check_update(update):
             await guard.delete_unless_exempt(update, context)
             return
@@ -365,7 +367,12 @@ async def on_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             await db.commit()
             return
         payer = await upsert_from_telegram(db, user)
+        if draft is not None and draft.expires_at <= utc_now():
+            # The prompt outlived its form until the tick's cleanup: start a new one.
+            await delete_draft(context.bot, db, draft)
+            draft = None
         if draft is None:
+            await _close_waiting(context.bot, db, message.chat_id, user.id)
             draft = await create_draft(
                 db,
                 kind=KIND,
@@ -374,26 +381,43 @@ async def on_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 now=utc_now(),
                 data={"step": STEP_PHOTO, "payer_member_id": payer.id},
             )
-        else:
-            await prompts.dismiss(context.bot, draft)
         await _read_screenshot(context, db, draft, message)
+        # Only now the card is up: had anything failed, the member could answer again.
+        await prompts.dismiss(context.bot, draft)
         await db.commit()
 
 
-async def _awaiting_screenshot(db: AsyncSession, message: Message, user_id: int) -> Draft | None:
-    """The sender's booking draft whose prompt the message replies to, if it wants a photo."""
+async def _prompt_draft(db: AsyncSession, message: Message, user_id: int) -> Draft | None:
+    """The sender's booking draft whose screenshot prompt the message replies to. It may
+    have expired: the prompt stays up until the tick cleans it away."""
     if message.reply_to_message is None:
         return None
-    draft = await find_by_prompt(
-        db,
-        chat_id=message.chat_id,
-        prompt_message_id=message.reply_to_message.message_id,
-        now=utc_now(),
-        lock=True,  # one screenshot at a time, as for typed answers
+    draft = await db.scalar(
+        select(Draft)
+        .where(
+            Draft.kind == KIND,
+            Draft.chat_id == message.chat_id,
+            Draft.user_id == user_id,
+            Draft.prompt_message_id == message.reply_to_message.message_id,
+        )
+        .with_for_update()  # one screenshot at a time, as for typed answers
     )
-    if draft is None or draft.kind != KIND or draft.user_id != user_id:
-        return None
-    return draft if draft.data.get("awaiting") == "photo" else None
+    return draft if draft is not None and draft.data.get("awaiting") == "photo" else None
+
+
+async def _close_waiting(bot: Bot, db: AsyncSession, chat_id: int, user_id: int) -> None:
+    """Close the member's forms still waiting for a screenshot, and their prompts: the
+    booking they start now replaces them."""
+    waiting = await db.scalars(
+        select(Draft).where(
+            Draft.kind == KIND,
+            Draft.chat_id == chat_id,
+            Draft.user_id == user_id,
+            Draft.data["awaiting"].astext == "photo",
+        )
+    )
+    for draft in waiting.all():
+        await delete_draft(bot, db, draft)
 
 
 async def _read_screenshot(
@@ -405,10 +429,9 @@ async def _read_screenshot(
     update_data(
         draft,
         photo_file_id=file_id,
-        photo_message_id=message.message_id,
+        owned_message_ids=[message.message_id],  # the record will carry the screenshot
         venue=found.venue,
         courts=found.courts,
-        courts_at_once=found.courts_at_once,
     )
     if found.starts_at is None:
         update_data(draft, step=STEP_DATE)
@@ -422,6 +445,7 @@ async def _read_screenshot(
             month=day[:6],
             hour=to_sgt(found.starts_at).hour,
             minutes=found.minutes,
+            court_minutes=found.court_minutes,
         )
     text, markup = await _card(db, draft)
     card = await message.reply_text(text, reply_markup=markup)
@@ -509,8 +533,9 @@ async def _apply(
         update_data(draft, merge_session_id=int(value), merge_candidate_id=None, step=STEP_CONFIRM)
     elif action == SEPARATE:
         update_data(draft, separate=True, merge_candidate_id=None, step=STEP_CONFIRM)
-    else:
-        return None
+    else:  # a button of an older version of the form, left open over an update
+        await _expire(context, db, draft)
+        return EXPIRED
     await refresh_wizard(context, db, draft)
     return None
 
@@ -527,7 +552,11 @@ async def _reschedule(
     context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft, **changes: Any
 ) -> None:
     """Change the date, time or hours, then ask for whatever is still missing or show the
-    booking. It may now join a different session, so that question is asked again."""
+    booking. It may now join a different session, so that question is asked again. Hours
+    the member picks are taken as one court at a time: the screenshot's court time, if
+    any, no longer applies."""
+    if "minutes" in changes:
+        changes.setdefault("court_minutes", None)
     update_data(draft, **changes, merge_candidate_id=None, merge_session_id=None, separate=None)
     if "minutes" in changes:
         update_data(draft, suggested_cents=await _suggested_price(context, db, draft.data))
@@ -540,9 +569,10 @@ async def _reschedule(
 async def _suggested_price(
     context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, data: dict[str, Any]
 ) -> int:
-    """The last hourly rate × hours × courts booked at once (FR-BK-6)."""
+    """The last hourly rate × the court time: the screenshot's slots, or else the hours,
+    one court at a time (FR-BK-6)."""
     rate = await last_hourly_rate(db, settings_of(context).default_court_rate_cents)
-    court_minutes = data["minutes"] * data.get("courts_at_once", 1)
+    court_minutes = data.get("court_minutes") or data["minutes"]
     return (rate * court_minutes + 30) // 60
 
 
@@ -570,9 +600,17 @@ async def _summary(db: AsyncSession, draft: Draft) -> dict[str, Any]:
 async def _cancel(
     update: Update, context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft
 ) -> None:
-    await delete_draft(context.bot, db, draft)
+    await delete_draft(context.bot, db, draft)  # and the member's screenshot
     await update.callback_query.edit_message_text("✖ Booking cancelled.")
-    await delete_message_quietly(context.bot, draft.chat_id, draft.data.get("photo_message_id"))
+
+
+async def _expire(context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft) -> None:
+    """End a form this version can't carry on, e.g. one left open over an update."""
+    await delete_draft(context.bot, db, draft)
+    with contextlib.suppress(BadRequest):  # the card is gone
+        await context.bot.edit_message_text(
+            EXPIRED, chat_id=draft.chat_id, message_id=draft.message_id
+        )
 
 
 async def _confirm(
@@ -583,6 +621,13 @@ async def _confirm(
     now = utc_now()
     if starts_at <= now:
         return "That time has passed. Change the date or time first."
+    if not data.get("merge_session_id") and not data.get("separate"):
+        # Someone may have booked a session to join since this card was shown (FR-BK-7).
+        candidate = await find_mergeable_session(db, starts_at, ends_at)
+        if candidate is not None:
+            update_data(draft, step=STEP_MERGE, merge_candidate_id=candidate.id)
+            await refresh_wizard(context, db, draft)
+            return MERGE_FIRST
     merge_into = None
     if data.get("merge_session_id"):
         # Only join if it can still be joined, e.g. it wasn't cancelled meanwhile.
@@ -618,15 +663,15 @@ async def _confirm(
         reply_markup=cancel_markup(booking.id),
     )
     booking.record_message_id = record.message_id
-    await delete_draft(context.bot, db, draft)
+    await delete_draft(context.bot, db, draft)  # and the member's screenshot: the record has it
     await db.commit()
 
-    await pin(context.bot, record.chat_id, record.message_id)
-    await delete_message_quietly(context.bot, draft.chat_id, draft.message_id)
-    await delete_message_quietly(context.bot, draft.chat_id, data.get("photo_message_id"))
+    # The attendance card first; pinning and removing the wizard are only tidying up.
     if merge_into is not None:
         await refresh_card(context.bot, db, session.id)
     await post_card_if_due(context.bot, db, session, settings_of(context), now)
+    await pin(context.bot, record.chat_id, record.message_id)
+    await delete_message_quietly(context.bot, draft.chat_id, draft.message_id)
     return None
 
 
@@ -642,6 +687,9 @@ async def on_typed_answer(
     _update: Update, context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft, text: str
 ) -> None:
     awaiting = draft.data.get("awaiting")
+    if awaiting != "photo" and awaiting not in PARSERS:  # asked by an older version of the form
+        await _expire(context, db, draft)
+        return
     try:
         if awaiting == "photo":
             raise ValueError("Send your booking screenshot as a photo.")

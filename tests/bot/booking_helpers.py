@@ -29,9 +29,13 @@ def future_day(days: int = 14) -> date:
 
 
 def activesg_text(
-    day: date, hour: int = 11, hours: int = 2, court: str = "11", venue: str = "Hougang Sport Hall"
+    day: date,
+    hour: int = 11,
+    hours: int = 2,
+    courts: tuple[str, ...] = ("11",),
+    venue: str = "Hougang Sport Hall",
 ) -> str:
-    """An ActiveSG booking screenshot's text, as OCR reads it: one slot per hour."""
+    """An ActiveSG booking screenshot's text, as OCR reads it: one slot per court and hour."""
     lines = [
         "Booking confirmed!",
         "BOOKING DETAILS",
@@ -40,7 +44,8 @@ def activesg_text(
         "93 Hougang Avenue 4 Singapore",
         "538832",
     ]
-    for index, start in enumerate(range(hour, hour + hours)):
+    slots = [(start, court) for start in range(hour, hour + hours) for court in courts]
+    for index, (start, court) in enumerate(slots):
         when = f"{day:%a}, {day.day} {day:%b}, {start % 12 or 12}:00 {'am' if start < 12 else 'pm'}"
         lines += [f"When {when}" if index == 0 else when, f"Court {court}"]
     return "\n".join([*lines, "Back to Home"])
