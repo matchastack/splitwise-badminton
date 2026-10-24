@@ -108,7 +108,7 @@ async def test_balance_shows_a_waiting_batch(bot: BotHarness) -> None:
 
 async def test_upcoming_lists_scheduled_sessions(bot: BotHarness) -> None:
     assert await reply(bot, "/upcoming", BOB) == (
-        "No sessions booked yet. Send your booking screenshot with the caption /book."
+        "No sessions booked yet. Send /book in the group to record one."
     )
     start = utc_now().replace(microsecond=0) + timedelta(days=3)
     await make_session(bot, starts_at=start)

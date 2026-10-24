@@ -4,7 +4,8 @@ Database tests need ``TEST_DATABASE_URL`` pointing at a throwaway Postgres: the
 schema is dropped and rebuilt from the migrations once per run, and every table
 is truncated before each test. Without it those tests are skipped.
 
-The ``bot`` fixture runs the real application against ``FakeTelegram``.
+The ``bot`` fixture runs the real application against ``FakeTelegram``. Its OCR reads
+an image's bytes as text, so a test puts a screenshot's text in ``telegram.files``.
 """
 
 from __future__ import annotations
@@ -134,7 +135,9 @@ class BotHarness:
 async def bot(engine: AsyncEngine) -> AsyncIterator[BotHarness]:
     telegram = FakeTelegram()
     sessionmaker = create_sessionmaker(engine)
-    application = build_application(TEST_SETTINGS, sessionmaker, request=telegram)
+    application = build_application(
+        TEST_SETTINGS, sessionmaker, request=telegram, read_text=bytes.decode
+    )
     harness = BotHarness(application, telegram, TEST_SETTINGS, sessionmaker)
 
     async def record_error(_update: object, context: ContextTypes.DEFAULT_TYPE) -> None:

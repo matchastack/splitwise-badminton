@@ -79,6 +79,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T40 | Linked guest's name; member list closes after a change | `feat/t40-linked-guest-name` | E2 | T39 | ✅ | [#64](https://github.com/matchastack/splitwise-badminton/pull/64) |
 | T41 | Waiting shuttle batches and member purchases | `claude/dreamy-cerf-pz28gc` | E5 | T28, T38 | ✅ | [#67](https://github.com/matchastack/splitwise-badminton/pull/67) |
 | T42 | Share the wizard card refresh | `claude/dazzling-noether-dpbhbz` | E3 | T17, T41 | ✅ | [#69](https://github.com/matchastack/splitwise-badminton/pull/69) |
+| T43 | Read booking screenshots (OCR); pin bookings | `claude/inspiring-euler-fdophp` | E3 | T23, T24, T27, T42 | ✅ | [#72](https://github.com/matchastack/splitwise-badminton/pull/72) |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
@@ -303,6 +304,16 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
   - `show_draft` edits a wizard's card in place. `/book`, `/edit`, `/settle` and `/shuttle_edit` use it instead of their own copies.
   - An edit that changes nothing, such as a double tap, makes Telegram answer "message is not modified". That is ignored; any other error is still raised.
 - **Done when:** tests cover the edit, an unchanged card being harmless (directly and from a double tap in `/settle`), and other errors still being raised.
+
+### T43 · Read booking screenshots (OCR); pin bookings
+`claude/inspiring-euler-fdophp` · Stories US-3.1, US-3.2, US-3.7 · FR-BK-1 to FR-BK-8, FR-BK-10, FR-BK-12, FR-ATT-6 · Depends on T23, T24, T27, T42
+- **Scope:**
+  - `/book` asks for the screenshot with a reply prompt. A photo captioned `/book` still works.
+  - `badminton/domain/screenshot.py` reads the venue, slots and courts off the OCR text. `badminton/services/ocr.py` runs Tesseract (the tesserocr wheel, with the English model in `badminton/tessdata`).
+  - The wizard shows the booking with a suggested price to confirm. ✏️ Edit changes the date, time, hours, venue, courts or price. It asks for the date and time only if they couldn't be read.
+  - Bookings store their venue and courts (migration 0005).
+  - On confirm, the bot posts the screenshot captioned with the booking and pins it silently. Cancelling the booking, or locking its session, unpins it.
+- **Done when:** tests cover the parser (12-hour times, the year from the weekday, two courts, gaps), Tesseract on a real screenshot, the prompt and caption paths, editing, the posted and pinned record, and unpinning.
 
 ## E4 — Attendance and locking
 

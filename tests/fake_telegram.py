@@ -1,8 +1,9 @@
 """A fake Telegram Bot API for bot-flow tests (NFR-9): nothing touches the network.
 
 ``FakeTelegram`` replaces python-telegram-bot's HTTP transport. It records every
-API call and answers with plausible results. The ``*_update`` factories build
-incoming updates as plain dicts, the same JSON Telegram would POST to the webhook.
+API call and answers with plausible results. Files to download (e.g. a booking
+screenshot) go in ``files``, by file ID. The ``*_update`` factories build incoming
+updates as plain dicts, the same JSON Telegram would POST to the webhook.
 """
 
 from __future__ import annotations
@@ -56,6 +57,9 @@ class FakeTelegram(BaseRequest):
     """
 
     calls: list[ApiCall] = field(default_factory=list)
+    files: dict[str, bytes] = field(default_factory=dict)
+    _photo_ids: set[int] = field(default_factory=set)  # the bot's photo messages
+    _text_ids: set[int] = field(default_factory=set)  # and its text messages
     _failures: dict[str, list[tuple[int, str, int | None]]] = field(default_factory=dict)
     _message_ids: itertools.count[int] = field(default_factory=lambda: itertools.count(1000))
 
@@ -76,14 +80,18 @@ class FakeTelegram(BaseRequest):
         params = dict(request_data.parameters) if request_data else {}
         if api_method == "getMe":
             return 200, _encode({"ok": True, "result": BOT_USER})
+        if "/file/bot" in url:  # a download, from the file_path getFile gave
+            return 200, self.files.get(api_method, b"")
 
         # setMyCommands names its chat inside ``scope`` rather than as a top-level chat_id.
         target_chat = params.get("chat_id") or (params.get("scope") or {}).get("chat_id")
-        if failure := self._take_failure(api_method, target_chat):
+        if failure := self._take_failure(api_method, target_chat) or self._wrong_kind(
+            api_method, params
+        ):
             code, description = failure
             self.calls.append(ApiCall(api_method, params))
             return code, _encode({"ok": False, "error_code": code, "description": description})
-        if api_method not in _TRUE_METHODS | _SEND_METHODS | _EDIT_METHODS:
+        if api_method not in _TRUE_METHODS | _SEND_METHODS | _EDIT_METHODS | {"getFile"}:
             description = f"FakeTelegram does not support {api_method}; add it to the fake"
             return 400, _encode({"ok": False, "error_code": 400, "description": description})
 
@@ -101,6 +109,15 @@ class FakeTelegram(BaseRequest):
             if only_chat is None or str(only_chat) == str(chat_id):
                 del queued[index]
                 return code, description
+        return None
+
+    def _wrong_kind(self, method: str, params: dict[str, Any]) -> tuple[int, str] | None:
+        """Like Telegram, refuse to edit the text of a photo or the caption of a text."""
+        message_id = int(params.get("message_id") or 0)
+        if method == "editMessageText" and message_id in self._photo_ids:
+            return 400, "Bad Request: there is no text in the message to edit"
+        if method == "editMessageCaption" and message_id in self._text_ids:
+            return 400, "Bad Request: there is no caption in the message to edit"
         return None
 
     # Inspection helpers ---------------------------------------------------
@@ -127,8 +144,13 @@ class FakeTelegram(BaseRequest):
     # Responses ------------------------------------------------------------
 
     def _result(self, method: str, params: dict[str, Any]) -> Any:
+        if method == "getFile":
+            file_id = params["file_id"]
+            return {"file_id": file_id, "file_unique_id": f"u-{file_id}", "file_path": file_id}
         if method in _SEND_METHODS:
-            return self._message(params, next(self._message_ids))
+            message_id = next(self._message_ids)
+            (self._photo_ids if method == "sendPhoto" else self._text_ids).add(message_id)
+            return self._message(params, message_id)
         if method in _EDIT_METHODS and "inline_message_id" not in params:
             return self._message(params, int(params["message_id"]))
         return True
@@ -145,6 +167,10 @@ class FakeTelegram(BaseRequest):
         for key in ("text", "caption"):
             if key in params:
                 message[key] = params[key]
+        if isinstance(params.get("photo"), str):  # sent by file ID
+            message["photo"] = [
+                {"file_id": params["photo"], "file_unique_id": "u", "width": 590, "height": 1280}
+            ]
         # Like Telegram, only inline keyboards come back on the message.
         markup = params.get("reply_markup")
         if isinstance(markup, dict) and "inline_keyboard" in markup:
@@ -202,13 +228,24 @@ def message(
 
 
 def photo_message(
-    *, sender: dict[str, Any], caption: str | None = None, chat_id: int = GROUP_ID
+    *,
+    sender: dict[str, Any],
+    caption: str | None = None,
+    chat_id: int = GROUP_ID,
+    file_id: str = "photo",
+    reply_to: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """A photo in three sizes, ``<file_id>-90`` to ``<file_id>-1280`` (the largest)."""
     sizes = [
-        {"file_id": f"photo-{size}", "file_unique_id": f"u-{size}", "width": size, "height": size}
+        {
+            "file_id": f"{file_id}-{size}",
+            "file_unique_id": f"u-{size}",
+            "width": size,
+            "height": size,
+        }
         for size in (90, 320, 1280)
     ]
-    data = message(sender=sender, chat_id=chat_id, photo=sizes)
+    data = message(sender=sender, chat_id=chat_id, photo=sizes, reply_to=reply_to)
     if caption is not None:
         data["caption"] = caption
         if entities := _command_entities(caption):

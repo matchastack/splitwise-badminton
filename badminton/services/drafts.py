@@ -119,5 +119,8 @@ async def cleanup_expired_drafts(context: TickContext) -> None:
         expired = (await db.scalars(select(Draft).where(Draft.expires_at <= context.now))).all()
         for draft in expired:
             await delete_message_quietly(context.bot, draft.chat_id, draft.message_id)
+            # A booking wizard also leaves the member's screenshot behind (FR-BK-8).
+            photo_message_id = draft.data.get("photo_message_id")
+            await delete_message_quietly(context.bot, draft.chat_id, photo_message_id)
             await delete_draft(context.bot, db, draft)
         await db.commit()

@@ -1,7 +1,8 @@
 """Cancelling a booking from its record (FR-BK-10).
 
 The submitter or the admin can cancel before the session starts. A second tap
-confirms, to avoid accidents. The cancellation is announced and audited.
+confirms, to avoid accidents. The cancellation is announced and audited, and the
+record is unpinned.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CallbackQueryHandler, ContextTypes
 
 from badminton.bot.context import db_session, settings_of
-from badminton.bot.handlers.booking import cancel_markup, render_record
+from badminton.bot.handlers.booking import cancel_markup, refresh_record
 from badminton.db.models import Booking, Member, Session
 from badminton.domain.money import fmt_sgd
 from badminton.domain.timeutil import fmt_session, utc_now
@@ -85,10 +86,9 @@ async def on_cancel_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
         await db.commit()
 
-        record = render_record(payer, booking.starts_at, booking.minutes, booking.amount_cents)
         await query.answer("Booking cancelled.")
-        await query.edit_message_text(
-            f"🗑 <s>{record}</s>\nCancelled by {html.escape(actor.display_name)}."
+        await refresh_record(
+            context.bot, db, booking, f"Cancelled by {html.escape(actor.display_name)}."
         )
         await close_cancelled_card(context.bot, session)
         await refresh_card(context.bot, db, session.id)

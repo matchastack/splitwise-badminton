@@ -71,7 +71,7 @@ async def upcoming_lines(db: AsyncSession, now: datetime) -> list[str]:
         )
     ).all()
     if not sessions:
-        return ["No sessions booked yet. Send your booking screenshot with the caption /book."]
+        return ["No sessions booked yet. Send /book in the group to record one."]
     names = {m.id: m.display_name for m in await db.scalars(select(Member))}
     lines = ["📅 <b>Upcoming sessions</b>"]
     for session in sessions:
