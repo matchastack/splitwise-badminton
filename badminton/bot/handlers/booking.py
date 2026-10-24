@@ -52,7 +52,13 @@ from badminton.domain.timeutil import (
     utc_now,
 )
 from badminton.services.attendance import post_card_if_due, refresh_card
-from badminton.services.drafts import create_draft, delete_draft, get_draft, update_data
+from badminton.services.drafts import (
+    create_draft,
+    delete_draft,
+    get_draft,
+    show_draft,
+    update_data,
+)
 from badminton.services.members import mention_html, upsert_from_telegram
 from badminton.services.repo import last_hourly_rate
 from badminton.services.sessions import find_mergeable_session, record_booking
@@ -213,9 +219,7 @@ async def refresh_wizard(
     session_id = draft.data.get("merge_candidate_id") or draft.data.get("merge_session_id")
     merge_into = await db.get(Session, session_id) if session_id else None
     text, markup = render(draft, payer, merge_into)
-    await context.bot.edit_message_text(
-        text, chat_id=draft.chat_id, message_id=draft.message_id, reply_markup=markup
-    )
+    await show_draft(context.bot, draft, text, markup)
 
 
 # Handlers ---------------------------------------------------------------------

@@ -40,7 +40,13 @@ from badminton.services.attendance import (
     refresh_card,
     set_attendance,
 )
-from badminton.services.drafts import create_draft, delete_draft, get_draft, update_data
+from badminton.services.drafts import (
+    create_draft,
+    delete_draft,
+    get_draft,
+    show_draft,
+    update_data,
+)
 from badminton.services.members import active_members, upsert_from_telegram
 from badminton.services.notify import announce
 from badminton.services.sessions import cancel_session, recompute_span
@@ -351,9 +357,7 @@ def _split_line(view: CardView) -> str:
 
 async def _show(context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft) -> None:
     text, markup = await render(db, draft)
-    await context.bot.edit_message_text(
-        text, chat_id=draft.chat_id, message_id=draft.message_id, reply_markup=markup
-    )
+    await show_draft(context.bot, draft, text, markup)
 
 
 async def _change_booking(

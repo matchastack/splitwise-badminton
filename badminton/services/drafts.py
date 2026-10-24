@@ -9,7 +9,7 @@ from typing import Any
 
 from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from telegram import Bot
+from telegram import Bot, InlineKeyboardMarkup
 from telegram.error import BadRequest, Forbidden
 
 from badminton.db.models import Draft
@@ -77,6 +77,19 @@ async def delete_draft(bot: Bot, db: AsyncSession, draft: Draft) -> None:
     await delete_message_quietly(bot, draft.chat_id, draft.prompt_message_id)
     draft.prompt_message_id = None
     await db.delete(draft)
+
+
+async def show_draft(bot: Bot, draft: Draft, text: str, markup: InlineKeyboardMarkup) -> None:
+    """Edit the wizard's card to show ``text`` and ``markup``. Telegram refuses an edit
+    that changes nothing ("message is not modified"), e.g. after a double tap; the card
+    already shows it, so that is ignored. Any other error is raised."""
+    try:
+        await bot.edit_message_text(
+            text, chat_id=draft.chat_id, message_id=draft.message_id, reply_markup=markup
+        )
+    except BadRequest as error:
+        if "message is not modified" not in error.message.lower():
+            raise
 
 
 def is_deleted(db: AsyncSession, draft: Draft) -> bool:
