@@ -1,9 +1,11 @@
 from datetime import timedelta
 
+import pytest
 from sqlalchemy import select, update
 
-from badminton.bot.handlers.shuttle import IN_USE
-from badminton.db.models import AuditLog, ShuttleBatch
+from badminton.bot.handlers import shuttle as shuttle_handler
+from badminton.bot.handlers.shuttle import ALREADY_CANCELLED, IN_THE_GROUP, IN_USE
+from badminton.db.models import AuditLog, Draft, ShuttleBatch
 from badminton.domain.timeutil import utc_now
 from tests.bot.shuttle_helpers import (
     NIC,
@@ -16,10 +18,11 @@ from tests.bot.shuttle_helpers import (
     member_id,
     played,
     purchase,
+    removed_first,
     seed_members,
 )
 from tests.conftest import BotHarness
-from tests.fake_telegram import GROUP_ID, text_update
+from tests.fake_telegram import GROUP_ID, text_update, user
 
 USAGE = "Usage: /shuttle &lt;price&gt;, e.g. /shuttle 76.79"
 
@@ -99,6 +102,7 @@ async def test_only_one_purchase_can_wait(bot: BotHarness) -> None:
 
 
 async def test_a_purchase_recorded_while_the_form_was_open_wins(bot: BotHarness) -> None:
+    """The database refuses the second waiting batch, as when two Record taps race."""
     late = await Card.open(bot, "/shuttle 20", NIC)
     await purchase(bot, "76.79", SHAWN)
 
@@ -107,6 +111,27 @@ async def test_a_purchase_recorded_while_the_form_was_open_wins(bot: BotHarness)
     (waiting,) = await batches(bot)
     assert waiting.amount_cents == 7679
     assert late.text.startswith(f"⚠️ Batch #{waiting.id} ($76.79, paid by shawn) is already")
+
+
+async def test_members_record_in_the_group_only(bot: BotHarness) -> None:
+    stranger = user(999, "stranger")  # not in the group, but anyone can DM a bot
+    await bot.send(text_update("/shuttle 999", sender=stranger, chat_id=stranger["id"]))
+    await bot.send(text_update("/shuttle 76.79", sender=SHAWN, chat_id=SHAWN["id"]))
+
+    assert bot.telegram.sent_texts() == [IN_THE_GROUP, IN_THE_GROUP]
+    async with bot.sessionmaker() as db:
+        assert await db.scalar(select(Draft)) is None
+
+
+async def test_the_admin_records_by_dm(bot: BotHarness) -> None:
+    await seed_members(bot, "yt")
+    await bot.send(text_update("/shuttle 30", sender=ZY, chat_id=ZY["id"]))
+    card = Card(bot, bot.telegram.last("sendMessage").message, ZY)
+
+    await card.tap("yt")
+    await card.tap("✅ Record")
+
+    assert len(await batches(bot)) == 1
 
 
 async def test_only_the_sender_can_fill_it_in(bot: BotHarness) -> None:
@@ -168,3 +193,16 @@ async def test_a_purchase_in_use_cannot_be_cancelled(bot: BotHarness) -> None:
     assert card.last_alert() == IN_USE.format(batch_id=batch.id)
     assert card.buttons() == {}
     assert len(await batches(bot)) == 1
+
+
+async def test_a_second_cancel_tap_says_already_cancelled(
+    bot: BotHarness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    receipt = await purchase(bot, "76.79")
+    await receipt.tap("🗑 Cancel purchase")
+    removed_first(bot, monkeypatch, shuttle_handler)  # the other tap got there first
+
+    await receipt.tap("Yes, cancel it")
+
+    assert receipt.last_alert() == ALREADY_CANCELLED
+    assert await batches(bot) == []

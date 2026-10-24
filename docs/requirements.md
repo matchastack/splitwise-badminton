@@ -177,8 +177,9 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
   - The admin is notified by DM so they can fix the attendance or cancel the session.
 
 ### 4.4 Shuttlecock batches (SH)
-- **FR-SH-1:** Any member records a shuttlecock purchase with `/shuttle <price>`.
-  - The sender is the payer, as for a booking (FR-BK-1). The admin picks the payer from a list of members instead, to record a purchase for someone else.
+- **FR-SH-1:** Any member records a shuttlecock purchase by sending `/shuttle <price>` in the group, as for a booking (FR-BK-1).
+  - The sender is the payer. In a private chat, a member is asked to send it in the group instead, so someone outside the group can't record a purchase.
+  - The admin can use it anywhere, and picks the payer from a list of members, to record a purchase for someone else.
   - The card shows the price and payer with **[✅ Record] [✖ Cancel]**. Only the sender can operate it.
   - The purchase becomes the *waiting* batch, for when the batch in use runs out. Nothing closes and nothing is billed. It is announced in the group.
 - **FR-SH-2:** `/shuttle_finished` (admin) finishes the open batch: it closes, and the waiting batch becomes the open one. The admin picks the waiting batch's start point: **[Next session]** (default) or **[Last session]**, the latter for shuttles already used in the most recent session.
@@ -358,7 +359,7 @@ Worked examples:
 | `/start` | anyone | DM | Link account, enable DM statements |
 | `/help` | anyone | any | List available commands |
 | `/book` (photo caption) | member | group | Start the booking wizard |
-| `/shuttle <price>` | member | any | Record a shuttle purchase; it waits until the current batch is finished |
+| `/shuttle <price>` | member | group (admin: any) | Record a shuttle purchase; it waits until the current batch is finished |
 | `/balance` | member | any | Balance, pending shuttle hours, unpaid lines |
 | `/upcoming` | member | any | Scheduled sessions |
 | `/name <name>` | member | any | Set display name |

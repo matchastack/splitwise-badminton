@@ -1,8 +1,10 @@
 from datetime import timedelta
 
+import pytest
 from sqlalchemy import select
 
 from badminton.bot.admin import NOT_ADMIN
+from badminton.bot.handlers import shuttle_edit as shuttle_edit_handler
 from badminton.db.models import AuditLog
 from badminton.domain.ledger import EntryKind
 from badminton.domain.timeutil import fmt_date, sgt_date, utc_now
@@ -17,6 +19,7 @@ from tests.bot.shuttle_helpers import (
     batches,
     played,
     purchase,
+    removed_first,
     seed_members,
 )
 from tests.bot.test_shuttle_finish import finish
@@ -103,6 +106,22 @@ async def test_the_admin_removes_a_waiting_batch(bot: BotHarness) -> None:
     assert receipt.buttons() == {}
 
 
+async def test_removing_a_purchase_its_buyer_just_cancelled(
+    bot: BotHarness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await purchase(bot, "76.79", SHAWN)
+    (batch,) = await batches(bot)
+    card = await open_batch(bot, batch.id)
+    await card.tap("🗑 Remove")
+    removed_first(bot, monkeypatch, shuttle_edit_handler)  # the buyer's cancel landed first
+
+    await card.tap("Yes, remove it")
+
+    assert card.last_alert() == f"Batch #{batch.id} no longer exists."
+    assert card.text == "There are no shuttle batches to edit."
+    assert await audit_actions(bot) == ["shuttle.add"]  # nothing removed twice
+
+
 # Price and payer -----------------------------------------------------------------
 
 
@@ -164,6 +183,44 @@ async def test_new_payer_on_a_waiting_batch(bot: BotHarness) -> None:
     assert bot.telegram.sent_texts(GROUP_ID)[-1] == (
         f"✏️ Admin changed shuttle batch #{batch.id}: paid by shawn → yt"
     )
+
+
+async def test_typing_the_price_it_already_has_changes_nothing(bot: BotHarness) -> None:
+    await purchase(bot, "76.79", SHAWN)
+    (batch,) = await batches(bot)
+    card = await open_batch(bot, batch.id)
+    await card.tap("💵 Price")
+    prompt = bot.telegram.last("sendMessage").message
+    edits = len(bot.telegram.calls_to("editMessageText"))
+    announced = len(bot.telegram.sent_texts(GROUP_ID))
+    # Telegram refuses an edit that changes nothing, so the card must be left alone.
+    bot.telegram.fail("editMessageText", 400, "Bad Request: message is not modified")
+
+    await bot.send(message_update(message(sender=ZY, text="76.79", reply_to=prompt)))
+
+    assert bot.telegram.calls_to("editMessageText")[edits:] == []
+    assert len(bot.telegram.sent_texts(GROUP_ID)) == announced
+    assert prompt["message_id"] in [
+        c.params["message_id"] for c in bot.telegram.calls_to("deleteMessage")
+    ]
+
+
+async def test_a_price_prompt_goes_with_a_cancelled_batch(bot: BotHarness) -> None:
+    receipt = await purchase(bot, "76.79", SHAWN)
+    (batch,) = await batches(bot)
+    card = await open_batch(bot, batch.id)
+    await card.tap("💵 Price")
+    first_prompt = bot.telegram.last("sendMessage").message
+    await receipt.tap("🗑 Cancel purchase")
+    await receipt.tap("Yes, cancel it")
+    await card.tap("💵 Price")  # the batch is gone: back to the list
+
+    await bot.send(message_update(message(sender=ZY, text="50", reply_to=first_prompt)))
+
+    assert card.text == "There are no shuttle batches to edit."
+    assert first_prompt["message_id"] in [
+        c.params["message_id"] for c in bot.telegram.calls_to("deleteMessage")
+    ]
 
 
 # Undoing /shuttle_finished ------------------------------------------------------

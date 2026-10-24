@@ -7,10 +7,14 @@ covers sessions from its start point. At most one purchase waits at a time.
 from __future__ import annotations
 
 import html
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 
 from sqlalchemy import delete, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from badminton.db.models import Member, Session, ShuttleBatch
@@ -91,43 +95,100 @@ async def open_waiting(
     return await db.get(ShuttleBatch, opened, populate_existing=True)
 
 
-async def remove_waiting(db: AsyncSession, batch: ShuttleBatch) -> bool:
-    """Delete a purchase that is still waiting. ``False`` if it went into use meanwhile.
-    ``batch`` stays readable for the announcement."""
+def waiting_refusal(waiting: ShuttleBatch) -> str:
+    return f"Batch #{waiting.id} is waiting, and only one batch can wait. Remove it first."
+
+
+class AlreadyWaiting(ValueError):
+    """Another purchase already waits (FR-SH-5)."""
+
+    def __init__(self, waiting: ShuttleBatch) -> None:
+        super().__init__(waiting_refusal(waiting))
+        self.waiting = waiting
+
+
+@asynccontextmanager
+async def _making_one_wait(db: AsyncSession) -> AsyncIterator[None]:
+    """Save the body's changes, which make a batch wait, in a savepoint. If another batch
+    already waits, the database refuses it (FR-SH-5): only the savepoint is rolled back,
+    and ``AlreadyWaiting`` is raised. This holds when two requests race, too."""
+    try:
+        async with db.begin_nested():
+            yield
+    except IntegrityError:
+        if (waiting := await waiting_batch(db)) is None:
+            raise  # some other constraint
+        raise AlreadyWaiting(waiting) from None
+
+
+async def add_waiting(db: AsyncSession, *, payer_id: int, amount_cents: int) -> ShuttleBatch:
+    """Record a purchase as the waiting batch, or raise ``AlreadyWaiting``."""
+    batch = ShuttleBatch(payer_member_id=payer_id, amount_cents=amount_cents)
+    async with _making_one_wait(db):
+        db.add(batch)
+    return batch
+
+
+class Removal(Enum):
+    REMOVED = "removed"
+    IN_USE = "in use"  # it went into use meanwhile
+    GONE = "gone"  # someone else removed it first
+
+
+async def remove_waiting(db: AsyncSession, batch: ShuttleBatch) -> Removal:
+    """Delete a purchase that is still waiting. ``batch`` stays readable for the
+    announcement."""
     removed = await db.scalar(
         delete(ShuttleBatch)
         .where(ShuttleBatch.id == batch.id, ShuttleBatch.opened_at.is_(None))
         .returning(ShuttleBatch.id)
+        .execution_options(synchronize_session=False)
     )
-    if removed is None:
-        return False
-    db.expunge(batch)
-    return True
+    if removed is not None:
+        db.expunge(batch)
+        return Removal.REMOVED
+    if await db.scalar(select(ShuttleBatch.id).where(ShuttleBatch.id == batch.id)) is None:
+        db.expunge(batch)
+        return Removal.GONE
+    await db.refresh(batch)
+    return Removal.IN_USE
 
 
 class ReopenRefused(ValueError):
     """The batch can't go back to waiting; the message says why."""
 
 
-async def reopen(db: AsyncSession, batch: ShuttleBatch) -> ShuttleBatch | None:
-    """Undo finishing the previous batch: ``batch``, the one in use, goes back to waiting
-    and the batch before it is in use again. Returns that batch, if there is one."""
-    current = await current_batch(db)
-    if current is None or current.id != batch.id:
-        raise ReopenRefused(f"Batch #{batch.id} isn't the one in use.")
-    if (waiting := await waiting_batch(db)) is not None:
-        raise ReopenRefused(
-            f"Batch #{waiting.id} is waiting, and only one batch can wait. Remove it first."
-        )
-    previous = await db.scalar(
+async def previous_batch(db: AsyncSession, batch: ShuttleBatch) -> ShuttleBatch | None:
+    """The batch in use before ``batch`` started."""
+    return await db.scalar(
         select(ShuttleBatch)
         .where(ShuttleBatch.starts_at < batch.starts_at)
         .order_by(ShuttleBatch.starts_at.desc())
         .limit(1)
     )
-    batch.starts_at = None
-    batch.opened_at = None
-    await db.flush()
+
+
+async def check_can_reopen(db: AsyncSession, batch: ShuttleBatch) -> None:
+    """Raise ``ReopenRefused`` unless ``batch`` is the one in use and nothing waits."""
+    current = await current_batch(db)
+    if current is None or current.id != batch.id:
+        raise ReopenRefused(f"Batch #{batch.id} isn't the one in use.")
+    if (waiting := await waiting_batch(db)) is not None:
+        raise ReopenRefused(waiting_refusal(waiting))
+
+
+async def reopen(db: AsyncSession, batch: ShuttleBatch) -> ShuttleBatch | None:
+    """Undo finishing the previous batch: ``batch``, the one in use, goes back to waiting
+    and the batch before it is in use again. Returns that batch, if there is one."""
+    await check_can_reopen(db, batch)
+    previous = await previous_batch(db, batch)
+    try:
+        async with _making_one_wait(db):
+            batch.starts_at = None
+            batch.opened_at = None
+    except AlreadyWaiting as refusal:  # a purchase was recorded since the check
+        await db.refresh(batch)  # the savepoint's rollback expired it
+        raise ReopenRefused(str(refusal)) from None
     return previous
 
 

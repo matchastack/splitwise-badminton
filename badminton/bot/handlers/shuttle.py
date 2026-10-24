@@ -1,9 +1,10 @@
 """/shuttle <price>: a member records a shuttlecock purchase (FR-SH-1, FR-SH-5, FR-SH-6).
 
 The purchase waits until the admin finishes the batch in use with /shuttle_finished,
-so recording it closes nothing. Only one purchase can wait at a time. The sender is
-the payer; the admin picks the payer instead, to record a purchase for someone else.
-Until it is in use, its payer or the admin can cancel it from its card.
+so recording it closes nothing. Only one purchase can wait at a time. Members record
+in the group, like a booking, and are the payer; the admin can record anywhere and
+picks the payer, to record a purchase for someone else. Until it is in use, its payer
+or the admin can cancel it from its card.
 """
 
 from __future__ import annotations
@@ -11,9 +12,9 @@ from __future__ import annotations
 import html
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.constants import ChatType
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
 from badminton.bot.context import db_session, settings_of
@@ -26,6 +27,9 @@ from badminton.services.drafts import create_draft, delete_draft, get_draft, upd
 from badminton.services.members import active_members, upsert_from_telegram
 from badminton.services.notify import announce
 from badminton.services.shuttle import (
+    AlreadyWaiting,
+    Removal,
+    add_waiting,
     current_batch,
     describe,
     member_names,
@@ -37,6 +41,8 @@ KIND = "shuttle"
 CALLBACK_KIND = "sh"
 MAX_SHUTTLE_CENTS = 100_000
 USAGE = "Usage: /shuttle &lt;price&gt;, e.g. /shuttle 76.79"
+IN_THE_GROUP = "🏸 Send /shuttle &lt;price&gt; in the group, so everyone sees the purchase."
+ALREADY_CANCELLED = "This purchase is already cancelled."
 
 PAYER = "pay"
 RECORD = "ok"
@@ -100,6 +106,11 @@ def cancel_markup(batch_id: int) -> InlineKeyboardMarkup:
 
 async def start_shuttle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
+    is_admin = settings_of(context).is_admin(update.effective_user.id)
+    if not is_admin and message.chat.type == ChatType.PRIVATE:
+        # Only people in the group spend the group's money, as with /book.
+        await message.reply_text(IN_THE_GROUP)
+        return
     try:
         amount = parse_amount(" ".join(context.args or ()), max_cents=MAX_SHUTTLE_CENTS)
     except ValueError:
@@ -112,7 +123,7 @@ async def start_shuttle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             await message.reply_text(await already_waiting(db, waiting))
             return
         data = {"amount_cents": amount}
-        if not settings_of(context).is_admin(update.effective_user.id):
+        if not is_admin:
             data["payer_id"] = sender.id
         draft = await create_draft(
             db,
@@ -161,26 +172,12 @@ async def _record(
 ) -> None:
     data = draft.data
     query = update.callback_query
-    batch = None
-    if await waiting_batch(db) is None:
-        batch = ShuttleBatch(payer_member_id=data["payer_id"], amount_cents=data["amount_cents"])
-        db.add(batch)
-        try:
-            await db.flush()
-        except IntegrityError:  # another purchase was recorded at the same moment
-            await db.rollback()
-            batch = None
-            draft = await db.get(Draft, draft.id)
-    if batch is None:
-        if draft is not None:
-            await delete_draft(context.bot, db, draft)
-            await db.commit()
-        waiting = await waiting_batch(db)
-        await query.edit_message_text(
-            await already_waiting(db, waiting)
-            if waiting
-            else "Something changed. Use /shuttle again."
-        )
+    try:
+        batch = await add_waiting(db, payer_id=data["payer_id"], amount_cents=data["amount_cents"])
+    except AlreadyWaiting as refusal:  # recorded since this card opened, or just now
+        await delete_draft(context.bot, db, draft)
+        await db.commit()
+        await query.edit_message_text(await already_waiting(db, refusal.waiting))
         return
 
     sender = await upsert_from_telegram(db, update.effective_user)
@@ -216,7 +213,7 @@ async def on_cancel_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     async with db_session(context) as db:
         batch = await db.get(ShuttleBatch, int(batch_id))
         if batch is None:
-            await query.answer("This purchase is already cancelled.", show_alert=True)
+            await query.answer(ALREADY_CANCELLED, show_alert=True)
             await query.edit_message_reply_markup(None)
             return
         payer = await db.get(Member, batch.payer_member_id)
@@ -253,8 +250,10 @@ async def on_cancel_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             return
 
         names = await member_names(db)
-        if not await remove_waiting(db, batch):
-            await query.answer(IN_USE.format(batch_id=batch.id), show_alert=True)
+        if (removal := await remove_waiting(db, batch)) is not Removal.REMOVED:
+            # Opened, or cancelled by a second tap, since the checks above.
+            alert = ALREADY_CANCELLED if removal is Removal.GONE else IN_USE
+            await query.answer(alert.format(batch_id=batch.id), show_alert=True)
             await query.edit_message_reply_markup(None)
             return
         actor = await upsert_from_telegram(db, update.effective_user)

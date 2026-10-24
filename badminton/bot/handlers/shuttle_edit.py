@@ -27,11 +27,14 @@ from badminton.services.drafts import create_draft, delete_draft, get_draft, upd
 from badminton.services.members import active_members, upsert_from_telegram
 from badminton.services.notify import announce
 from badminton.services.shuttle import (
+    Removal,
     ReopenRefused,
+    check_can_reopen,
     current_batch,
     describe,
     member_names,
     next_start,
+    previous_batch,
     remove_waiting,
     reopen,
     split_lines,
@@ -178,8 +181,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         batch_id = int(value) if action == PICK_BATCH else draft.data.get("batch_id")
         if action != BATCHES and await db.get(ShuttleBatch, batch_id) is None:
             await query.answer(f"Batch #{batch_id} no longer exists.", show_alert=True)
-            update_data(draft, screen=BATCHES, batch_id=None)
-            await _show(context, db, draft)
+            await _back_to_batches(context, db, draft)
             await db.commit()
             return
         alert = await _apply(update, context, db, draft, action, value)
@@ -220,16 +222,13 @@ async def _apply(
     elif action in (PAYER, REMOVE):
         update_data(draft, screen=action)
     elif action == REOPEN:
-        if (waiting := await waiting_batch(db)) is not None:
-            return f"Batch #{waiting.id} is waiting, and only one batch can wait. Remove it first."
         batch = await db.get(ShuttleBatch, draft.data["batch_id"])
-        previous = await db.scalar(
-            select(ShuttleBatch.id)
-            .where(ShuttleBatch.starts_at < batch.starts_at)
-            .order_by(ShuttleBatch.starts_at.desc())
-            .limit(1)
-        )
-        update_data(draft, screen=REOPEN, previous_id=previous)
+        try:
+            await check_can_reopen(db, batch)
+        except ReopenRefused as refusal:
+            return str(refusal)
+        previous = await previous_batch(db, batch)
+        update_data(draft, screen=REOPEN, previous_id=previous.id if previous else None)
     await _show(context, db, draft)
     return None
 
@@ -239,6 +238,16 @@ async def _show(context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Dra
     await context.bot.edit_message_text(
         text, chat_id=draft.chat_id, message_id=draft.message_id, reply_markup=markup
     )
+
+
+async def _back_to_batches(
+    context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft
+) -> None:
+    """The chosen batch is gone (its buyer cancelled it): show the list again. An open
+    price prompt goes too, or an answer to it would find no batch."""
+    await prompts.dismiss(context.bot, draft)
+    update_data(draft, screen=BATCHES, batch_id=None, previous_id=None)
+    await _show(context, db, draft)
 
 
 def _details(batch: ShuttleBatch) -> dict[str, int]:
@@ -266,9 +275,11 @@ async def _change(
             f"paid by {html.escape(names[batch.payer_member_id])} → {html.escape(names[payer_id])}"
         )
         batch.payer_member_id = payer_id
+    on_menu = draft.data.get("screen") == "menu"
     update_data(draft, screen="menu")
     if _details(batch) == before:
-        await _show(context, db, draft)
+        if not on_menu:  # back from the payer picker; the menu itself is unchanged
+            await _show(context, db, draft)
         await db.commit()
         return
     admin = await upsert_from_telegram(db, update.effective_user)
@@ -301,7 +312,11 @@ async def _remove(
 ) -> str | None:
     batch = await db.get(ShuttleBatch, draft.data["batch_id"])
     names = await member_names(db)
-    if not await remove_waiting(db, batch):
+    removal = await remove_waiting(db, batch)
+    if removal is Removal.GONE:  # its buyer cancelled it at the same moment
+        await _back_to_batches(context, db, draft)
+        return f"Batch #{batch.id} no longer exists."
+    if removal is Removal.IN_USE:
         update_data(draft, screen="menu")
         await _show(context, db, draft)
         return f"Batch #{batch.id} is in use now, so it can't be removed."

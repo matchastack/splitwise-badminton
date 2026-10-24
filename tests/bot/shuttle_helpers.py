@@ -5,7 +5,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+import pytest
+from sqlalchemy import delete, select
 
 from badminton.db.models import Member, ShuttleBatch
 from badminton.domain.timeutil import utc_now
@@ -126,3 +127,30 @@ async def purchase(bot: BotHarness, price: str, sender: dict[str, Any] = SHAWN) 
     card = await Card.open(bot, f"/shuttle {price}", sender)
     await card.tap("✅ Record")
     return card
+
+
+def miss_once(monkeypatch: pytest.MonkeyPatch, module: object) -> None:
+    """Make the next ``waiting_batch`` call in ``module`` miss a purchase that another
+    request is recording at the same moment: a race made deterministic."""
+    real = module.waiting_batch
+    calls = []
+
+    async def patched(db):
+        calls.append(1)
+        return None if len(calls) == 1 else await real(db)
+
+    monkeypatch.setattr(module, "waiting_batch", patched)
+
+
+def removed_first(bot: BotHarness, monkeypatch: pytest.MonkeyPatch, module: object) -> None:
+    """Make ``remove_waiting`` in ``module`` run just after a concurrent request (a second
+    tap, or the other of the buyer and the admin) removed the same purchase."""
+    real = module.remove_waiting
+
+    async def patched(db, batch):
+        async with bot.sessionmaker() as other:
+            await other.execute(delete(ShuttleBatch).where(ShuttleBatch.id == batch.id))
+            await other.commit()
+        return await real(db, batch)
+
+    monkeypatch.setattr(module, "remove_waiting", patched)

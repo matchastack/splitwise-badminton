@@ -77,7 +77,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T38 | Opening balances and spreadsheet import | `feat/t38-spreadsheet-import` | E10 | T14, T16, T37 | ✅ | [#61](https://github.com/matchastack/splitwise-badminton/pull/61) |
 | T39 | Link a guest to a Telegram account | `feat/t39-link-guests` | E2 | T19, T38 | ✅ | [#62](https://github.com/matchastack/splitwise-badminton/pull/62) |
 | T40 | Linked guest's name; member list closes after a change | `feat/t40-linked-guest-name` | E2 | T39 | ✅ | [#64](https://github.com/matchastack/splitwise-badminton/pull/64) |
-| T41 | Waiting shuttle batches and member purchases | `claude/dreamy-cerf-pz28gc` | E5 | T28, T38 | ⏳ | — |
+| T41 | Waiting shuttle batches and member purchases | `claude/dreamy-cerf-pz28gc` | E5 | T28, T38 | ✅ | [#67](https://github.com/matchastack/splitwise-badminton/pull/67) |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
@@ -336,11 +336,11 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
 `claude/dreamy-cerf-pz28gc` · Stories US-5.1 to US-5.5, US-8.5 · FR-SH-1 to FR-SH-7, FR-LED-4, FR-LED-8 · Depends on T28, T38
 - **Scope:**
   - `shuttle_batches.opened_at`, and a nullable `starts_at`: both are empty while a purchase waits. The database allows at most one waiting batch. The ledger opens and closes batches by `opened_at`; existing batches are backfilled from `created_at`, so no figure changes.
-  - `/shuttle <price>` for every member: the sender pays (the admin picks the payer), the purchase waits, and nothing closes. It's refused while a batch is waiting. The buyer or the admin can cancel it from its card until it's in use.
+  - `/shuttle <price>` for every member, in the group: the sender pays (the admin, anywhere, picks the payer), the purchase waits, and nothing closes. It's refused while a batch is waiting. The buyer or the admin can cancel it from its card until it's in use.
   - `/shuttle_finished` (admin): [Next session]/[Last session] → the open batch closes with its split announced, and the waiting batch takes over.
   - `/shuttle_edit` (admin): change any batch's price or payer (with the recalculated split for a closed batch), remove a waiting batch, or undo `/shuttle_finished`.
   - `/balance` shows the waiting batch.
-- **Done when:** tests cover a member's and the admin's purchase, the one-waiting refusal (including a race), cancelling by the payer or the admin and refusal for anyone else, finishing from either start point, the first batch, every correction, and the migration round trip.
+- **Done when:** tests cover a member's purchase in the group (refused by DM) and the admin's anywhere, the one-waiting refusal, cancelling by the payer or the admin and refusal for anyone else, races on Record, cancel, remove and undo, finishing from either start point, the first batch, every correction, and the migration both ways with rows.
 
 ## E7 — Monthly invoicing and settlement
 

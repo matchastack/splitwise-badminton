@@ -10,7 +10,7 @@ A Telegram bot that tracks court bookings, attendance and shuttlecock batches fo
 - **Bookings:** a member sends the court booking screenshot with the caption `/book`, then taps through date, time, hours and price. The sender is recorded as the payer.
 - **Attendance:** 2 days before each session the bot posts a card with **[✅ I'm in] [❌ I'm out]**. People can change their answer until the session ends; no answer counts as out.
 - **Locking:** when the session ends, attendance locks and the bot posts the split. Everyone who played shares the court cost and gets hours added to the current shuttle batch (1 hour = 1 share).
-- **Shuttles:** whoever buys a tube records it with `/shuttle <price>`, and is recorded as the payer. It waits until the batch in use runs out; only one purchase can wait. When the admin runs `/shuttle_finished`, that batch closes and is split by hours played, and the waiting one takes over. Until it's in use, the buyer or the admin can cancel a purchase from its card, and the admin can correct any batch with `/shuttle_edit`.
+- **Shuttles:** whoever buys a tube records it in the group with `/shuttle <price>`, and is recorded as the payer. It waits until the batch in use runs out; only one purchase can wait. When the admin runs `/shuttle_finished`, that batch closes and is split by hours played, and the waiting one takes over. Until it's in use, the buyer or the admin can cancel a purchase from its card, and the admin can correct any batch with `/shuttle_edit`.
 - **Monthly settle-up:** on the 1st of each month the bot posts who pays whom, using the fewest transfers, with a **✅ paid** button on each line. Everyone who has opened a chat with the bot also gets a private statement.
 - **Admin corrections:** every change the admin makes is announced in the group.
 - **Commands-only group:** the bot deletes anything in the group that isn't a command.
@@ -250,7 +250,7 @@ If both records are marked in for a session that has already ended, the bot won'
 | Command | Who | Where | What |
 |---|---|---|---|
 | `/book` (as a photo caption) | anyone | group | Record a court booking |
-| `/shuttle <price>` | anyone | anywhere | Record a shuttlecock purchase you paid for; it waits until the current batch is finished |
+| `/shuttle <price>` | anyone | group | Record a shuttlecock purchase you paid for; it waits until the current batch is finished |
 | `/balance` | anyone | anywhere | Your balance, shuttle hours so far, a waiting shuttle batch and unpaid settle-ups |
 | `/upcoming` | anyone | anywhere | Booked sessions |
 | `/name <name>` | anyone | anywhere | Change the name the bot shows for you |
