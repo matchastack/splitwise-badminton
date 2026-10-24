@@ -108,7 +108,7 @@ async def start_shuttle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     message = update.effective_message
     is_admin = settings_of(context).is_admin(update.effective_user.id)
     if not is_admin and message.chat.type == ChatType.PRIVATE:
-        # Only people in the group spend the group's money, as with /court.
+        # Only people in the group spend the group's money, as with /book.
         await message.reply_text(IN_THE_GROUP)
         return
     try:

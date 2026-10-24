@@ -42,7 +42,7 @@ _MEMBER_COLUMNS = (
     InvoiceLine.to_member_id,
     AuditLog.actor_member_id,
 )
-# Where the wizards keep member IDs in a draft's state: /court's payer, a /members
+# Where the wizards keep member IDs in a draft's state: /book's payer, a /members
 # rename, /settle's two sides, /shuttle's payer, and /edit's attendance toggles.
 _DRAFT_MEMBER_FIELDS = ("payer_member_id", "member_id", "from_id", "to_id", "payer_id")
 _DRAFT_MEMBER_LISTS = ("ins", "shown_ins")

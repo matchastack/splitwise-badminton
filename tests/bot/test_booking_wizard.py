@@ -30,8 +30,8 @@ def deleted(bot: BotHarness) -> list[int]:
     return [call.params["message_id"] for call in bot.telegram.calls_to("deleteMessage")]
 
 
-async def test_court_asks_for_the_screenshot(bot: BotHarness) -> None:
-    await bot.send(text_update("/court", sender=BOB))
+async def test_book_asks_for_the_screenshot(bot: BotHarness) -> None:
+    await bot.send(text_update("/book", sender=BOB))
 
     prompt = bot.telegram.last("sendMessage")
     assert prompt.params["chat_id"] == GROUP_ID
@@ -81,7 +81,7 @@ async def test_screenshot_reply_shows_the_booking_to_confirm(bot: BotHarness) ->
     assert payer.telegram_user_id == BOB["id"]
 
 
-async def test_screenshot_captioned_court_skips_the_prompt(bot: BotHarness) -> None:
+async def test_screenshot_captioned_book_skips_the_prompt(bot: BotHarness) -> None:
     wizard = await Wizard(bot, BOB, activesg_text(future_day())).start(caption=True)
 
     assert "📍 Hougang Sport Hall · Court 11" in wizard.text
@@ -92,14 +92,14 @@ async def test_reads_a_real_screenshot(bot: BotHarness) -> None:
     bot.application.bot_data[OCR_KEY] = read_text
     bot.telegram.files["real-1280"] = SCREENSHOT.read_bytes()
 
-    await bot.send(message_update(photo_message(sender=BOB, caption="/court", file_id="real")))
+    await bot.send(message_update(photo_message(sender=BOB, caption="/book", file_id="real")))
 
     card = bot.telegram.last("sendMessage").params["text"]
     assert ", 11:00–13:00 (2h)\n📍 Hougang Sport Hall · Court 11\n💵 $14.80" in card
 
 
 async def test_typed_answer_to_the_screenshot_prompt_is_asked_again(bot: BotHarness) -> None:
-    await bot.send(text_update("/court", sender=BOB))
+    await bot.send(text_update("/book", sender=BOB))
     prompt = bot.telegram.last("sendMessage").message
 
     await bot.send(message_update(message(sender=BOB, text="Sunday 11am", reply_to=prompt)))
@@ -113,7 +113,7 @@ async def test_typed_answer_to_the_screenshot_prompt_is_asked_again(bot: BotHarn
 
 
 async def test_image_sent_as_a_file_is_asked_again(bot: BotHarness) -> None:
-    await bot.send(text_update("/court", sender=BOB))
+    await bot.send(text_update("/book", sender=BOB))
     prompt = bot.telegram.last("sendMessage").message
     document = {"file_id": "doc", "file_unique_id": "d", "mime_type": "image/jpeg"}
     sent = message(sender=BOB, reply_to=prompt, document=document)
@@ -130,7 +130,7 @@ async def test_image_sent_as_a_file_is_asked_again(bot: BotHarness) -> None:
 
 
 async def test_someone_elses_screenshot_is_removed(bot: BotHarness) -> None:
-    await bot.send(text_update("/court", sender=BOB))
+    await bot.send(text_update("/book", sender=BOB))
     prompt = bot.telegram.last("sendMessage").message
     stray = photo_message(sender=CAROL, reply_to=prompt)
 
@@ -237,12 +237,3 @@ async def test_cancel_removes_the_screenshot(bot: BotHarness) -> None:
     assert wizard.photo["message_id"] in deleted(bot)
     async with bot.sessionmaker() as db:
         assert await db.scalar(select(func.count()).select_from(Draft)) == 0
-
-
-async def test_book_is_no_longer_a_command(bot: BotHarness) -> None:
-    sent = text_update("/book", sender=BOB)
-
-    await bot.send(sent)
-
-    assert deleted(bot) == [sent["message"]["message_id"]]  # like any unknown command
-    assert await the_draft(bot) is None

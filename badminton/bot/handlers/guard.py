@@ -17,8 +17,8 @@ from badminton.bot.context import settings_of
 
 logger = logging.getLogger(__name__)
 
-# A /court photo is always allowed: it is the booking's proof (FR-BK-1).
-COURT_PHOTO = filters.PHOTO & filters.CaptionRegex(r"^/court(@\w+)?(\s|$)")
+# A /book photo is always allowed: it is the booking's proof (FR-BK-1).
+BOOK_PHOTO = filters.PHOTO & filters.CaptionRegex(r"^/book(@\w+)?(\s|$)")
 
 
 def is_exempt(message: Message, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -30,7 +30,7 @@ def is_exempt(message: Message, context: ContextTypes.DEFAULT_TYPE) -> bool:
     if message.from_user is not None and settings.is_admin(message.from_user.id):
         return True
     return bool(filters.StatusUpdate.ALL.check_update(_as_update(message))) or bool(
-        COURT_PHOTO.check_update(_as_update(message))
+        BOOK_PHOTO.check_update(_as_update(message))
     )
 
 

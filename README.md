@@ -7,7 +7,7 @@ A Telegram bot that tracks court bookings, attendance and shuttlecock batches fo
 
 ## What it does
 
-- **Bookings:** a member sends `/court`, then their ActiveSG booking screenshot. The bot reads the date, time, venue and court off it with OCR (Tesseract, no LLM), and shows the booking with a suggested price to confirm or edit. Once confirmed, it posts the screenshot with the booking and pins it until the session is played. The sender is recorded as the payer.
+- **Bookings:** a member sends `/book`, then their ActiveSG booking screenshot. The bot reads the date, time, venue and court off it with OCR (Tesseract, no LLM), and shows the booking with a suggested price to confirm or edit. Once confirmed, it posts the screenshot with the booking and pins it until the session is played. The sender is recorded as the payer.
 - **Attendance:** 2 days before each session the bot posts a card with **[✅ I'm in] [❌ I'm out]**. People can change their answer until the session ends; no answer counts as out.
 - **Locking:** when the session ends, attendance locks and the bot posts the split. Everyone who played shares the court cost and gets hours added to the current shuttle batch (1 hour = 1 share).
 - **Shuttles:** whoever buys a tube records it in the group with `/shuttle <price>`, and is recorded as the payer. It waits until the batch in use runs out; only one purchase can wait. When the admin runs `/shuttle_finished`, that batch closes and is split by hours played, and the waiting one takes over. Until it's in use, the buyer or the admin can cancel a purchase from its card, and the admin can correct any batch with `/shuttle_edit`.
@@ -149,7 +149,7 @@ The only effect of a daily cron is that the "🔒 locked" summary can arrive up 
 ### 9. Check that it works
 
 1. In the group, send `/help`. The bot should reply. As the admin you also see admin commands.
-2. Send `/court`, reply to the bot's prompt with a booking screenshot, and confirm. The bot posts the screenshot with the booking and pins it. If the session is within 2 days, the attendance card appears straight away.
+2. Send `/book`, reply to the bot's prompt with a booking screenshot, and confirm. The bot posts the screenshot with the booking and pins it. If the session is within 2 days, the attendance card appears straight away.
 3. Tap **✅ I'm in** and check the card updates.
 4. Send a normal text message from a non-admin account. The bot should delete it.
 5. Trigger the scheduler by hand:
@@ -251,7 +251,7 @@ If both records are marked in for a session that has already ended, the bot won'
 
 | Command | Who | Where | What |
 |---|---|---|---|
-| `/court` | anyone | group | Record a court booking: send it, then your booking screenshot (or send the screenshot with the caption `/court`) |
+| `/book` | anyone | group | Record a court booking: send it, then your booking screenshot (or send the screenshot with the caption `/book`) |
 | `/shuttle <price>` | anyone | group | Record a shuttlecock purchase you paid for; it waits until the current batch is finished |
 | `/balance` | anyone | anywhere | Your balance, shuttle hours so far, a waiting shuttle batch and unpaid settle-ups |
 | `/upcoming` | anyone | anywhere | Booked sessions |

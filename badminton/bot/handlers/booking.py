@@ -1,7 +1,7 @@
 """The booking wizard (FR-BK-1 to FR-BK-9, FR-BK-12).
 
-A member sends /court in the group and replies to the bot's prompt with their booking
-screenshot, or sends the screenshot with the caption /court. The bot reads the date,
+A member sends /book in the group and replies to the bot's prompt with their booking
+screenshot, or sends the screenshot with the caption /book. The bot reads the date,
 time, venue and courts off it (OCR) and replies with one card, edited in place: it
 asks for anything it couldn't read, then shows the booking to confirm or edit. Only
 the submitter can operate it (FR-BK-2); the sender is the payer.
@@ -34,7 +34,7 @@ from telegram.ext import (
 from badminton.bot import prompts
 from badminton.bot.context import db_session, ocr_of, settings_of
 from badminton.bot.handlers import guard
-from badminton.bot.handlers.guard import COURT_PHOTO
+from badminton.bot.handlers.guard import BOOK_PHOTO
 from badminton.bot.keyboards import (
     BACK,
     NOOP,
@@ -134,7 +134,7 @@ NEEDS_SCHEDULE = {
 }
 
 ASK_SCREENSHOT = "send your booking screenshot as a reply to this message."
-EXPIRED = "This booking form has expired. Send /court again."
+EXPIRED = "This booking form has expired. Send /book again."
 UNREAD = "🔍 I couldn't work out the date and time from the screenshot."
 NOT_READ = "📍 Venue and court not read: add them with ✏️ Edit"
 
@@ -325,7 +325,7 @@ async def refresh_wizard(
 
 
 async def ask_for_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/court: ask for the booking screenshot, as a reply to the prompt."""
+    """/book: ask for the booking screenshot, as a reply to the prompt."""
     message = update.effective_message
     async with db_session(context) as db:
         payer = await upsert_from_telegram(db, update.effective_user)
@@ -344,12 +344,12 @@ async def ask_for_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def on_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """A screenshot replying to the sender's /court prompt, or captioned /court."""
+    """A screenshot replying to the sender's /book prompt, or captioned /book."""
     message = update.effective_message
     user = update.effective_user
     async with db_session(context) as db:
         draft = await _awaiting_screenshot(db, message, user.id)
-        if draft is None and not COURT_PHOTO.check_update(update):
+        if draft is None and not BOOK_PHOTO.check_update(update):
             await guard.delete_unless_exempt(update, context)
             return
         if not message.photo:  # an image sent as a file
@@ -657,9 +657,9 @@ async def on_typed_answer(
 
 
 def register(application: Application) -> None:
-    screenshot = COURT_PHOTO | (filters.REPLY & (filters.PHOTO | filters.Document.IMAGE))
+    screenshot = BOOK_PHOTO | (filters.REPLY & (filters.PHOTO | filters.Document.IMAGE))
     application.add_handler(MessageHandler(filters.ChatType.GROUPS & screenshot, on_screenshot))
     application.add_handler(
-        CommandHandler("court", ask_for_screenshot, filters=filters.ChatType.GROUPS)
+        CommandHandler("book", ask_for_screenshot, filters=filters.ChatType.GROUPS)
     )
     application.add_handler(CallbackQueryHandler(on_button, pattern=rf"^{CALLBACK_KIND}:\d+:"))
