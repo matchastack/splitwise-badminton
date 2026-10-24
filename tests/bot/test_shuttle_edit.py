@@ -24,7 +24,13 @@ from tests.bot.shuttle_helpers import (
 )
 from tests.bot.test_shuttle_finish import finish
 from tests.conftest import BotHarness
-from tests.fake_telegram import GROUP_ID, message, message_update, text_update
+from tests.fake_telegram import (
+    GROUP_ID,
+    callback_update,
+    message,
+    message_update,
+    text_update,
+)
 
 
 async def audit_actions(bot: BotHarness) -> list[str]:
@@ -104,6 +110,26 @@ async def test_the_admin_removes_a_waiting_batch(bot: BotHarness) -> None:
     await receipt.tap("🗑 Cancel purchase")
     assert receipt.last_alert() == "This purchase is already cancelled."
     assert receipt.buttons() == {}
+
+
+async def test_a_second_remove_tap_keeps_the_result(bot: BotHarness) -> None:
+    """The second tap of a double-tap waits for the first, then finds the form gone."""
+    await purchase(bot, "76.79", BOB)
+    (batch,) = await batches(bot)
+    card = await open_batch(bot, batch.id)
+    await card.tap("🗑 Remove")
+    remove = callback_update(
+        card.buttons()["Yes, remove it"], sender=ALICE, on_message=card.message
+    )
+    await bot.send(remove)
+    sent = len(bot.telegram.sent_texts(GROUP_ID))
+
+    await bot.send(remove)
+
+    assert card.last_alert() == "This form has expired. Use /shuttle_edit again."
+    assert card.text == f"🗑 Removed shuttle batch #{batch.id}."
+    assert len(bot.telegram.sent_texts(GROUP_ID)) == sent
+    assert await audit_actions(bot) == ["shuttle.add", "shuttle.delete"]
 
 
 async def test_removing_a_purchase_its_buyer_just_cancelled(

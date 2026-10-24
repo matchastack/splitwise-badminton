@@ -95,6 +95,27 @@ async def test_record_a_payment(bot: BotHarness) -> None:
     )
 
 
+async def test_a_second_record_tap_keeps_the_receipt(bot: BotHarness) -> None:
+    """The second tap of a double-tap waits for the first, then finds the form gone."""
+    await members(bot, "bob", "dave")
+    card = await SettleCard(bot).open()
+    await card.tap("bob")
+    await card.tap("dave")
+    await card.answer("50")
+    record = callback_update(card.buttons()["✅ Record"], sender=ALICE, on_message=card.message)
+    await bot.send(record)
+    receipt = card.current
+
+    await bot.send(record)
+
+    async with bot.sessionmaker() as db:
+        assert len((await db.scalars(select(Transfer))).all()) == 1
+    alert = bot.telegram.last("answerCallbackQuery").params["text"]
+    assert alert == "This form has expired. Use /settle again."
+    assert card.current is receipt  # not edited again
+    assert receipt["text"] == "✅ Recorded: bob paid dave $50.00."
+
+
 async def test_cancel_while_asked_for_the_amount_removes_the_prompt(bot: BotHarness) -> None:
     await members(bot, "bob", "dave")
     card = await SettleCard(bot).open()

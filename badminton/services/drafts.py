@@ -43,22 +43,27 @@ async def create_draft(
     return draft
 
 
-async def get_draft(db: AsyncSession, draft_id: int, *, now: datetime) -> Draft | None:
-    """The draft, unless it doesn't exist or has expired."""
-    draft = await db.get(Draft, draft_id)
+async def get_draft(
+    db: AsyncSession, draft_id: int, *, now: datetime, lock: bool = False
+) -> Draft | None:
+    """The draft, unless it doesn't exist or has expired. With ``lock``, the row stays
+    locked until the commit: Telegram may deliver a double-tap as two parallel requests, so
+    the second waits, then finds the draft gone if the first finished the wizard."""
+    draft = await db.get(Draft, draft_id, with_for_update=lock)
     return draft if draft is not None and draft.expires_at > now else None
 
 
 async def find_by_prompt(
-    db: AsyncSession, *, chat_id: int, prompt_message_id: int, now: datetime
+    db: AsyncSession, *, chat_id: int, prompt_message_id: int, now: datetime, lock: bool = False
 ) -> Draft | None:
-    return await db.scalar(
-        select(Draft).where(
-            Draft.chat_id == chat_id,
-            Draft.prompt_message_id == prompt_message_id,
-            Draft.expires_at > now,
-        )
+    """The draft whose open prompt this is. ``lock`` as for ``get_draft``: an answer that
+    waited finds no draft once the prompt it replies to is closed."""
+    query = select(Draft).where(
+        Draft.chat_id == chat_id,
+        Draft.prompt_message_id == prompt_message_id,
+        Draft.expires_at > now,
     )
+    return await db.scalar(query.with_for_update() if lock else query)
 
 
 def update_data(draft: Draft, **changes: Any) -> None:
