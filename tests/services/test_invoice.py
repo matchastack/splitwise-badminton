@@ -24,14 +24,14 @@ DEC_1 = at_sgt(date(2026, 12, 1), 10)
 
 
 async def seed(bot: BotHarness) -> dict[str, int]:
-    """zy booked two $15 sessions in October; shawn and nic played both, zy one."""
+    """alice booked two $15 sessions in October; bob and carol played both, alice one."""
     async with bot.sessionmaker() as db:
-        zy = Member(display_name="zy", telegram_user_id=111, username="zy_handle")
-        shawn = Member(display_name="shawn", telegram_user_id=222)
-        nic = Member(display_name="nic")
-        db.add_all([zy, shawn, nic])
+        alice = Member(display_name="alice", telegram_user_id=111, username="alice_handle")
+        bob = Member(display_name="bob", telegram_user_id=222)
+        carol = Member(display_name="carol")
+        db.add_all([alice, bob, carol])
         await db.flush()
-        for day, players in [(4, [zy, shawn, nic]), (11, [shawn, nic])]:
+        for day, players in [(4, [alice, bob, carol]), (11, [bob, carol])]:
             start = at_sgt(date(2026, 10, day), 11)
             session = Session(starts_at=start, ends_at=start + timedelta(hours=2))
             db.add(session)
@@ -39,8 +39,8 @@ async def seed(bot: BotHarness) -> dict[str, int]:
             db.add(
                 Booking(
                     session_id=session.id,
-                    payer_member_id=zy.id,
-                    submitted_by_member_id=zy.id,
+                    payer_member_id=alice.id,
+                    submitted_by_member_id=alice.id,
                     starts_at=start,
                     minutes=120,
                     amount_cents=1500,
@@ -50,7 +50,7 @@ async def seed(bot: BotHarness) -> dict[str, int]:
                 Attendance(session_id=session.id, member_id=p.id, status="in") for p in players
             )
         await db.commit()
-        return {"zy": zy.id, "shawn": shawn.id, "nic": nic.id}
+        return {"alice": alice.id, "bob": bob.id, "carol": carol.id}
 
 
 async def invoice_for(bot: BotHarness, period: str, now) -> Invoice | None:
@@ -63,7 +63,7 @@ async def test_invoice_lists_fewest_transfers_with_handles(bot: BotHarness) -> N
 
     invoice = await invoice_for(bot, "2026-10", NOV_1)
 
-    # zy: +3000 − 500 = +2500; shawn and nic: −500 − 750 = −1250 each.
+    # alice: +3000 − 500 = +2500; bob and carol: −500 − 750 = −1250 each.
     card = bot.telegram.last("sendMessage").params
     assert card["chat_id"] == GROUP_ID
     assert card["text"] == (
@@ -71,8 +71,8 @@ async def test_invoice_lists_fewest_transfers_with_handles(bot: BotHarness) -> N
         "🏸 2 sessions · court $30.00\n"
         "\n"
         "<b>Settle up</b>\n"
-        '• <a href="tg://user?id=222">shawn</a> → @zy_handle $12.50\n'
-        "• nic → @zy_handle $12.50\n"
+        '• <a href="tg://user?id=222">bob</a> → @alice_handle $12.50\n'
+        "• carol → @alice_handle $12.50\n"
         "\n"
         "Tap ✅ once you've paid."
     )
@@ -80,7 +80,7 @@ async def test_invoice_lists_fewest_transfers_with_handles(bot: BotHarness) -> N
         stored = await db.get(Invoice, invoice.id)
         assert stored.card_message_id == bot.telegram.last("sendMessage").message["message_id"]
         balances = {b.member_id: b.balance_cents for b in await db.scalars(select(InvoiceBalance))}
-        assert balances == {ids["zy"]: 2500, ids["shawn"]: -1250, ids["nic"]: -1250}
+        assert balances == {ids["alice"]: 2500, ids["bob"]: -1250, ids["carol"]: -1250}
 
 
 async def test_each_period_is_invoiced_once(bot: BotHarness) -> None:
@@ -106,12 +106,12 @@ async def test_unpaid_lines_are_carried_into_the_next_invoice(bot: BotHarness) -
     october = await invoice_for(bot, "2026-10", NOV_1)
     async with bot.sessionmaker() as db:
         paid_line = await db.scalar(
-            select(InvoiceLine).where(InvoiceLine.from_member_id == ids["shawn"])
+            select(InvoiceLine).where(InvoiceLine.from_member_id == ids["bob"])
         )
         db.add(
             Transfer(
-                from_member_id=ids["shawn"],
-                to_member_id=ids["zy"],
+                from_member_id=ids["bob"],
+                to_member_id=ids["alice"],
                 amount_cents=1250,
                 invoice_line_id=paid_line.id,
             )
@@ -130,17 +130,17 @@ async def test_unpaid_lines_are_carried_into_the_next_invoice(bot: BotHarness) -
         november_lines = list(
             await db.scalars(select(InvoiceLine).where(InvoiceLine.invoice_id == november.id))
         )
-    assert october_lines[ids["shawn"]] is None  # paid, so not carried
-    assert october_lines[ids["nic"]] == DEC_1
+    assert october_lines[ids["bob"]] is None  # paid, so not carried
+    assert october_lines[ids["carol"]] == DEC_1
     assert [(line.from_member_id, line.amount_cents) for line in november_lines] == [
-        (ids["nic"], 1250)
+        (ids["carol"], 1250)
     ]
 
     old_card = bot.telegram.last("editMessageText").params
     assert old_card["message_id"] == october.card_message_id
     assert old_card["text"].endswith(
-        '✅ <s><a href="tg://user?id=222">shawn</a> → @zy_handle $12.50</s>\n'
-        "↪️ nic → @zy_handle $12.50 (carried into November 2026)"
+        '✅ <s><a href="tg://user?id=222">bob</a> → @alice_handle $12.50</s>\n'
+        "↪️ carol → @alice_handle $12.50 (carried into November 2026)"
     )
     november_card = bot.telegram.last("sendMessage").params["text"]
     assert november_card.startswith("🧾 <b>November 2026</b>\n🏸 0 sessions · court $0.00")
@@ -177,4 +177,4 @@ async def test_an_invoice_whose_card_fails_is_retried(bot: BotHarness) -> None:
         lines = await db.scalars(
             select(InvoiceLine.from_member_id).where(InvoiceLine.invoice_id == november.id)
         )
-        assert sorted(lines) == sorted([ids["shawn"], ids["nic"]])
+        assert sorted(lines) == sorted([ids["bob"], ids["carol"]])

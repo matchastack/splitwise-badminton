@@ -20,7 +20,7 @@ NOW = datetime(2026, 10, 24, 2, 0, tzinfo=UTC)
 
 
 async def payer(db: AsyncSession) -> Member:
-    member = Member(display_name="zy")
+    member = Member(display_name="alice")
     db.add(member)
     await db.commit()
     return member

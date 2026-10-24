@@ -236,7 +236,7 @@ async def member_names(db: AsyncSession) -> dict[int, str]:
 
 
 def describe(batch: ShuttleBatch, names: dict[int, str]) -> str:
-    """``#13 ($76.79, paid by yt)``, for messages (HTML)."""
+    """``#13 ($76.79, paid by frank)``, for messages (HTML)."""
     payer = html.escape(names[batch.payer_member_id])
     return f"#{batch.id} ({fmt_sgd(batch.amount_cents)}, paid by {payer})"
 

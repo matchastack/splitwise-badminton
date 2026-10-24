@@ -10,8 +10,8 @@ from badminton.services.members import mention_html
 from tests.conftest import TEST_SETTINGS, BotHarness
 from tests.fake_telegram import ADMIN_ID, GROUP_ID, FakeTelegram, text_update, user
 
-ZY = user(ADMIN_ID, "zy", "zy_handle")
-SHAWN = user(222, "Shawn  Tan")
+ALICE = user(ADMIN_ID, "alice", "alice_handle")
+BOB = user(222, "Bob  Smith")
 OTHER_GROUP = -1009999
 
 
@@ -21,34 +21,34 @@ async def member_by_telegram_id(bot: BotHarness, telegram_id: int) -> Member | N
 
 
 async def test_start_registers_member_and_enables_dms(bot: BotHarness) -> None:
-    await bot.send(text_update("/start", sender=SHAWN, chat_id=SHAWN["id"]))
+    await bot.send(text_update("/start", sender=BOB, chat_id=BOB["id"]))
 
-    member = await member_by_telegram_id(bot, SHAWN["id"])
+    member = await member_by_telegram_id(bot, BOB["id"])
     assert member is not None
-    assert member.display_name == "Shawn Tan"
+    assert member.display_name == "Bob Smith"
     assert member.dm_enabled
     reply = bot.telegram.last("sendMessage").params
-    assert reply["chat_id"] == SHAWN["id"]
-    assert "Hi <b>Shawn Tan</b>" in reply["text"]
+    assert reply["chat_id"] == BOB["id"]
+    assert "Hi <b>Bob Smith</b>" in reply["text"]
     assert reply["parse_mode"] == "HTML"
 
 
 async def test_start_in_the_group_is_not_handled(bot: BotHarness) -> None:
-    await bot.send(text_update("/start", sender=SHAWN))
+    await bot.send(text_update("/start", sender=BOB))
 
     assert [call.method for call in bot.telegram.calls] == ["deleteMessage"]
-    assert await member_by_telegram_id(bot, SHAWN["id"]) is None
+    assert await member_by_telegram_id(bot, BOB["id"]) is None
 
 
 async def test_name_sticks_and_username_refreshes(bot: BotHarness) -> None:
-    await bot.send(text_update("/name Shawn <T>", sender=SHAWN))
-    renamed_user = {**SHAWN, "username": "shawn_t", "first_name": "Someone else"}
-    await bot.send(text_update("/start", sender=renamed_user, chat_id=SHAWN["id"]))
+    await bot.send(text_update("/name Bob <T>", sender=BOB))
+    renamed_user = {**BOB, "username": "bob_t", "first_name": "Someone else"}
+    await bot.send(text_update("/start", sender=renamed_user, chat_id=BOB["id"]))
 
-    member = await member_by_telegram_id(bot, SHAWN["id"])
-    assert member.display_name == "Shawn <T>"
-    assert member.username == "shawn_t"
-    assert "I'll call you <b>Shawn &lt;T&gt;</b>" in bot.telegram.sent_texts(GROUP_ID)[0]
+    member = await member_by_telegram_id(bot, BOB["id"])
+    assert member.display_name == "Bob <T>"
+    assert member.username == "bob_t"
+    assert "I'll call you <b>Bob &lt;T&gt;</b>" in bot.telegram.sent_texts(GROUP_ID)[0]
 
 
 @pytest.mark.parametrize(
@@ -56,14 +56,14 @@ async def test_name_sticks_and_username_refreshes(bot: BotHarness) -> None:
     [("/name", "Usage: /name &lt;your name&gt;"), ("/name " + "x" * 33, "at most 32 characters")],
 )
 async def test_name_rejects_bad_input(bot: BotHarness, command: str, error: str) -> None:
-    await bot.send(text_update(command, sender=SHAWN))
+    await bot.send(text_update(command, sender=BOB))
 
     assert error in bot.telegram.sent_texts()[0]
 
 
 async def test_help_shows_admin_commands_only_to_admin(bot: BotHarness) -> None:
-    await bot.send(text_update("/help", sender=SHAWN))
-    await bot.send(text_update("/help", sender=ZY))
+    await bot.send(text_update("/help", sender=BOB))
+    await bot.send(text_update("/help", sender=ALICE))
 
     member_help, admin_help = bot.telegram.sent_texts()
     assert "/book — " in member_help
@@ -73,21 +73,21 @@ async def test_help_shows_admin_commands_only_to_admin(bot: BotHarness) -> None:
 
 
 async def test_chatid_replies_with_the_chat_id(bot: BotHarness) -> None:
-    await bot.send(text_update("/chatid", sender=SHAWN))
+    await bot.send(text_update("/chatid", sender=BOB))
 
     assert bot.telegram.sent_texts() == [f"Chat ID: <code>{GROUP_ID}</code>"]
 
 
 async def test_foreign_groups_are_ignored(bot: BotHarness) -> None:
     for command in ("/help", "/chatid", "/name Intruder"):
-        await bot.send(text_update(command, sender=SHAWN, chat_id=OTHER_GROUP))
+        await bot.send(text_update(command, sender=BOB, chat_id=OTHER_GROUP))
 
     assert bot.telegram.calls == []
 
 
 async def test_admin_chatid_works_in_another_group(bot: BotHarness) -> None:
     for command in ("/chatid", "/help"):
-        await bot.send(text_update(command, sender=ZY, chat_id=OTHER_GROUP))
+        await bot.send(text_update(command, sender=ALICE, chat_id=OTHER_GROUP))
 
     assert [call.params["text"] for call in bot.telegram.calls] == [
         f"Chat ID: <code>{OTHER_GROUP}</code>"
@@ -101,7 +101,7 @@ async def test_chatid_works_anywhere_before_setup(bot: BotHarness) -> None:
 
     async with application:
         for command in ("/chatid", "/help"):
-            update = text_update(command, sender=SHAWN, chat_id=OTHER_GROUP)
+            update = text_update(command, sender=BOB, chat_id=OTHER_GROUP)
             await application.process_update(Update.de_json(update, application.bot))
 
     assert [call.params["text"] for call in telegram.calls] == [
@@ -112,12 +112,15 @@ async def test_chatid_works_anywhere_before_setup(bot: BotHarness) -> None:
 @pytest.mark.parametrize(
     ("member", "expected"),
     [
-        (Member(display_name="zy", username="zy_handle", telegram_user_id=1), "@zy_handle"),
         (
-            Member(display_name="Nic <3", telegram_user_id=7),
-            '<a href="tg://user?id=7">Nic &lt;3</a>',
+            Member(display_name="alice", username="alice_handle", telegram_user_id=1),
+            "@alice_handle",
         ),
-        (Member(display_name="danish"), "danish"),
+        (
+            Member(display_name="Carol <3", telegram_user_id=7),
+            '<a href="tg://user?id=7">Carol &lt;3</a>',
+        ),
+        (Member(display_name="grace"), "grace"),
     ],
 )
 def test_mention_html(member: Member, expected: str) -> None:

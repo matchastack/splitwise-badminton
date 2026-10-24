@@ -180,11 +180,11 @@ If the group kept its accounts in the spreadsheet, carry everyone's balance over
    - the bot's members, with their IDs;
    - which member each player column becomes. A column matches the member with the same name or @username. Anyone else becomes a guest member;
    - a reconciliation table: Paid, Spend and Surplus per player, as on the `Total` sheet, and the opening balance the bot carries over. The opening balances sum to $0.00.
-4. If a column matched the wrong person, or none, pick the member yourself with `--member NAME=ID`, e.g. `--member zy=1`. Repeat it for each column.
+4. If a column matched the wrong person, or none, pick the member yourself with `--member NAME=ID`, e.g. `--member alice=1`. Repeat it for each column.
 5. Import, with the same options plus `--apply`:
 
    ```sh
-   uv run --env-file .env scripts/import_spreadsheet.py Badminton.xlsx --member zy=1 --apply
+   uv run --env-file .env scripts/import_spreadsheet.py Badminton.xlsx --member alice=1 --apply
    ```
 
    Before saving, it checks with the ledger that every balance moved by exactly its opening balance. Then it posts the balances in the group. Add `--no-announce` to skip the post.

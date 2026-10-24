@@ -34,7 +34,7 @@ def test_batches_keep_their_dates_through_0004(migrated_database_url: str) -> No
         command.downgrade(config, "0003")
         with engine.begin() as connection:
             connection.execute(sa.text("TRUNCATE members RESTART IDENTITY CASCADE"))
-            connection.execute(sa.text("INSERT INTO members (display_name) VALUES ('zy')"))
+            connection.execute(sa.text("INSERT INTO members (display_name) VALUES ('alice')"))
             connection.execute(
                 sa.text(
                     "INSERT INTO shuttle_batches (payer_member_id, amount_cents, starts_at, "

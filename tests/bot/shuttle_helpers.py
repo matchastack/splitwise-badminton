@@ -16,9 +16,9 @@ from tests.bot.attendance_helpers import make_session
 from tests.conftest import BotHarness
 from tests.fake_telegram import ADMIN_ID, callback_update, text_update, user
 
-ZY = user(ADMIN_ID, "zy", "zy_handle")
-SHAWN = user(222, "shawn")
-NIC = user(333, "nic")
+ALICE = user(ADMIN_ID, "alice", "alice_handle")
+BOB = user(222, "bob")
+CAROL = user(333, "carol")
 
 
 class Card:
@@ -30,7 +30,7 @@ class Card:
         self.sender = sender
 
     @classmethod
-    async def open(cls, bot: BotHarness, command: str, sender: dict[str, Any] = ZY) -> Card:
+    async def open(cls, bot: BotHarness, command: str, sender: dict[str, Any] = ALICE) -> Card:
         await bot.send(text_update(command, sender=sender))
         return cls(bot, bot.telegram.last("sendMessage").message, sender)
 
@@ -122,7 +122,7 @@ async def balances(bot: BotHarness) -> dict[int, int]:
         return (await load_ledger(db, utc_now())).balances
 
 
-async def purchase(bot: BotHarness, price: str, sender: dict[str, Any] = SHAWN) -> Card:
+async def purchase(bot: BotHarness, price: str, sender: dict[str, Any] = BOB) -> Card:
     """Record a purchase as a member (the sender pays); returns its card."""
     card = await Card.open(bot, f"/shuttle {price}", sender)
     await card.tap("✅ Record")

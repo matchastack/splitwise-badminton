@@ -8,9 +8,9 @@ from badminton.bot.handlers.shuttle import ALREADY_CANCELLED, IN_THE_GROUP, IN_U
 from badminton.db.models import AuditLog, Draft, ShuttleBatch
 from badminton.domain.timeutil import utc_now
 from tests.bot.shuttle_helpers import (
-    NIC,
-    SHAWN,
-    ZY,
+    ALICE,
+    BOB,
+    CAROL,
     Card,
     add_batch,
     balances,
@@ -28,16 +28,16 @@ USAGE = "Usage: /shuttle &lt;price&gt;, e.g. /shuttle 76.79"
 
 
 async def test_shuttle_needs_a_price(bot: BotHarness) -> None:
-    await bot.send(text_update("/shuttle", sender=ZY))
-    await bot.send(text_update("/shuttle abc", sender=SHAWN))
+    await bot.send(text_update("/shuttle", sender=ALICE))
+    await bot.send(text_update("/shuttle abc", sender=BOB))
 
     assert bot.telegram.sent_texts() == [USAGE, USAGE]
 
 
 async def test_member_records_a_purchase_they_paid_for(bot: BotHarness) -> None:
-    card = await Card.open(bot, "/shuttle 76.79", SHAWN)
+    card = await Card.open(bot, "/shuttle 76.79", BOB)
     assert card.text == (
-        "🏸 <b>New shuttle purchase</b>: $76.79\nPaid by shawn\n"
+        "🏸 <b>New shuttle purchase</b>: $76.79\nPaid by bob\n"
         "It goes into use when the admin starts it with /shuttle_finished."
     )
     assert set(card.buttons()) == {"✅ Record", "✖ Cancel"}
@@ -45,37 +45,37 @@ async def test_member_records_a_purchase_they_paid_for(bot: BotHarness) -> None:
     await card.tap("✅ Record")
 
     (batch,) = await batches(bot)
-    shawn = await member_id(bot, SHAWN)
-    assert (batch.payer_member_id, batch.amount_cents) == (shawn, 7679)
+    bob = await member_id(bot, BOB)
+    assert (batch.payer_member_id, batch.amount_cents) == (bob, 7679)
     assert batch.waiting and batch.starts_at is None
     assert card.text == f"✅ Recorded shuttle purchase #{batch.id}."
     assert set(card.buttons()) == {"🗑 Cancel purchase"}
     assert bot.telegram.sent_texts(GROUP_ID)[-1] == (
-        f"🛍 <b>New shuttle batch #{batch.id}</b>: $76.79, paid by shawn. "
+        f"🛍 <b>New shuttle batch #{batch.id}</b>: $76.79, paid by bob. "
         "It goes into use when the admin starts it with /shuttle_finished."
     )
     async with bot.sessionmaker() as db:
         audit = await db.scalar(select(AuditLog))
-    assert (audit.action, audit.actor_member_id) == ("shuttle.add", shawn)
+    assert (audit.action, audit.actor_member_id) == ("shuttle.add", bob)
 
 
 async def test_admin_picks_the_payer(bot: BotHarness) -> None:
-    ids = await seed_members(bot, "yt", "hw")
+    ids = await seed_members(bot, "frank", "dave")
 
-    card = await Card.open(bot, "/shuttle 30", ZY)
+    card = await Card.open(bot, "/shuttle 30", ALICE)
     assert "Who paid?" in card.text
-    await card.tap("yt")
-    assert "Paid by yt" in card.text
+    await card.tap("frank")
+    assert "Paid by frank" in card.text
     await card.tap("✅ Record")
 
     (batch,) = await batches(bot)
-    assert (batch.payer_member_id, batch.amount_cents) == (ids["yt"], 3000)
+    assert (batch.payer_member_id, batch.amount_cents) == (ids["frank"], 3000)
 
 
 async def test_a_purchase_leaves_the_batch_in_use_alone(bot: BotHarness) -> None:
-    ids = await seed_members(bot, "zy2", "yt")
-    in_use = await add_batch(bot, ids["zy2"], 8000, starts_at=utc_now() - timedelta(days=30))
-    await played(bot, 300, [ids["zy2"], ids["yt"]])
+    ids = await seed_members(bot, "alice2", "frank")
+    in_use = await add_batch(bot, ids["alice2"], 8000, starts_at=utc_now() - timedelta(days=30))
+    await played(bot, 300, [ids["alice2"], ids["frank"]])
     before = await balances(bot)
 
     await purchase(bot, "76.79")
@@ -90,11 +90,11 @@ async def test_only_one_purchase_can_wait(bot: BotHarness) -> None:
     card = await purchase(bot, "76.79")
     sent = len(bot.telegram.sent_texts())
 
-    await bot.send(text_update("/shuttle 20", sender=NIC))
+    await bot.send(text_update("/shuttle 20", sender=CAROL))
 
     (waiting,) = await batches(bot)
     assert bot.telegram.sent_texts()[sent:] == [
-        f"⚠️ Batch #{waiting.id} ($76.79, paid by shawn) is already waiting to be used. "
+        f"⚠️ Batch #{waiting.id} ($76.79, paid by bob) is already waiting to be used. "
         "Only one purchase can wait at a time, so record this one after the admin finishes "
         "the current batch with /shuttle_finished."
     ]
@@ -103,20 +103,20 @@ async def test_only_one_purchase_can_wait(bot: BotHarness) -> None:
 
 async def test_a_purchase_recorded_while_the_form_was_open_wins(bot: BotHarness) -> None:
     """The database refuses the second waiting batch, as when two Record taps race."""
-    late = await Card.open(bot, "/shuttle 20", NIC)
-    await purchase(bot, "76.79", SHAWN)
+    late = await Card.open(bot, "/shuttle 20", CAROL)
+    await purchase(bot, "76.79", BOB)
 
     await late.tap("✅ Record")
 
     (waiting,) = await batches(bot)
     assert waiting.amount_cents == 7679
-    assert late.text.startswith(f"⚠️ Batch #{waiting.id} ($76.79, paid by shawn) is already")
+    assert late.text.startswith(f"⚠️ Batch #{waiting.id} ($76.79, paid by bob) is already")
 
 
 async def test_members_record_in_the_group_only(bot: BotHarness) -> None:
     stranger = user(999, "stranger")  # not in the group, but anyone can DM a bot
     await bot.send(text_update("/shuttle 999", sender=stranger, chat_id=stranger["id"]))
-    await bot.send(text_update("/shuttle 76.79", sender=SHAWN, chat_id=SHAWN["id"]))
+    await bot.send(text_update("/shuttle 76.79", sender=BOB, chat_id=BOB["id"]))
 
     assert bot.telegram.sent_texts() == [IN_THE_GROUP, IN_THE_GROUP]
     async with bot.sessionmaker() as db:
@@ -124,27 +124,27 @@ async def test_members_record_in_the_group_only(bot: BotHarness) -> None:
 
 
 async def test_the_admin_records_by_dm(bot: BotHarness) -> None:
-    await seed_members(bot, "yt")
-    await bot.send(text_update("/shuttle 30", sender=ZY, chat_id=ZY["id"]))
-    card = Card(bot, bot.telegram.last("sendMessage").message, ZY)
+    await seed_members(bot, "frank")
+    await bot.send(text_update("/shuttle 30", sender=ALICE, chat_id=ALICE["id"]))
+    card = Card(bot, bot.telegram.last("sendMessage").message, ALICE)
 
-    await card.tap("yt")
+    await card.tap("frank")
     await card.tap("✅ Record")
 
     assert len(await batches(bot)) == 1
 
 
 async def test_only_the_sender_can_fill_it_in(bot: BotHarness) -> None:
-    card = await Card.open(bot, "/shuttle 30", SHAWN)
+    card = await Card.open(bot, "/shuttle 30", BOB)
 
-    await card.tap("✅ Record", sender=NIC)
+    await card.tap("✅ Record", sender=CAROL)
 
-    assert card.last_alert() == "Only shawn can fill this in."
+    assert card.last_alert() == "Only bob can fill this in."
     assert await batches(bot) == []
 
 
 async def test_cancel_the_form(bot: BotHarness) -> None:
-    card = await Card.open(bot, "/shuttle 30", SHAWN)
+    card = await Card.open(bot, "/shuttle 30", BOB)
 
     await card.tap("✖ Cancel")
 
@@ -165,10 +165,10 @@ async def test_buyer_cancels_their_purchase(bot: BotHarness) -> None:
 
     assert await batches(bot) == []
     assert card.text == (
-        f"🗑 <s>Shuttle purchase #{batch.id} ($76.79, paid by shawn)</s>\nCancelled by shawn."
+        f"🗑 <s>Shuttle purchase #{batch.id} ($76.79, paid by bob)</s>\nCancelled by bob."
     )
     assert bot.telegram.sent_texts(GROUP_ID)[-1] == (
-        f"🗑 shawn cancelled shuttle purchase #{batch.id} ($76.79, paid by shawn). "
+        f"🗑 bob cancelled shuttle purchase #{batch.id} ($76.79, paid by bob). "
         "It wasn't in use yet, so nobody is charged for it."
     )
     async with bot.sessionmaker() as db:
