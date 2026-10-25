@@ -1,4 +1,7 @@
-"""Member commands: /start, /name, /help and /chatid (FR-MEM-2, 4, 7, FR-OPS-5)."""
+"""Member commands: /start, /name, /help and /chatid (FR-MEM-2, 4, 7, 9, FR-OPS-5).
+
+In a private chat, all but /chatid are for the group's members only (FR-MEM-9).
+"""
 
 from __future__ import annotations
 
@@ -9,9 +12,11 @@ from telegram.ext import Application, CommandHandler, ContextTypes, filters
 
 from badminton.bot.commands import ADMIN_COMMANDS, BOOKING_COMMAND, MEMBER_COMMANDS
 from badminton.bot.context import db_session, settings_of
+from badminton.bot.membership import members_only
 from badminton.services.members import upsert_from_telegram, validate_name
 
 
+@members_only
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     async with db_session(context) as db:
         member = await upsert_from_telegram(db, update.effective_user)
@@ -25,6 +30,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+@members_only
 async def set_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
     if not context.args:
@@ -42,6 +48,7 @@ async def set_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await message.reply_text(f"✅ I'll call you <b>{html.escape(name)}</b>.")
 
 
+@members_only
 async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     lines = ["🏸 <b>Badminton bot</b>", ""]
     lines += [f"/{command.command} — {command.description}" for command in MEMBER_COMMANDS]

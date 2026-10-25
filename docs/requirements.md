@@ -121,6 +121,12 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
   - For other sessions, the person counts once: *in* if either answer was *in*. Payments and settle-up lines between the two records are dropped, because they would be to themselves.
   - Open wizards that hold the account's member ID expire. The latest invoice card is refreshed.
   - The link is announced in the group and audited, and the member list closes (FR-MEM-5).
+- **FR-MEM-9:** In a private chat, the bot only serves the group's members. Anyone can message a public bot, so outsiders mustn't be able to change the group's balances.
+  - Before a member command runs in a private chat, the bot asks Telegram (`getChatMember` on `GROUP_CHAT_ID`) whether the sender is in the group: as its owner, an administrator, a member, or restricted but still a member.
+  - Anyone else is told the bot is for the group's members, and no member record is made for them (FR-MEM-1). That includes someone who has left or was removed.
+  - A lookup that fails (the user isn't found, or the bot is no longer in the group) counts as not a member, and is logged. Telegram only guarantees the lookup for a bot that is a group admin; this one is, to pin bookings (C-5).
+  - The admin is let through without a lookup. With no `GROUP_CHAT_ID` set, only the admin is.
+  - Commands in the group aren't checked: whoever sends one is in it. `/chatid` is never checked (FR-OPS-5).
 
 ### 4.2 Court bookings (BK)
 - **FR-BK-1:**
@@ -360,7 +366,7 @@ Worked examples:
 | NFR-1 | Cost | Runs entirely on free tiers: Vercel Hobby, Neon Free, and GitHub Actions free minutes for CI. |
 | NFR-2 | Correctness | Money is integer cents. Splits add up exactly. All balances sum to zero, which is tested. |
 | NFR-3 | Reliability | Scheduled steps and card/invoice posting are idempotent: they claim their work atomically in the database before sending. If a scheduled run is missed, the next one catches up. |
-| NFR-4 | Security | The webhook secret, cron bearer token and admin ID list are configured as environment variables. Secrets are never logged. Updates from other chats are ignored. |
+| NFR-4 | Security | The webhook secret, cron bearer token and admin ID list are configured as environment variables. Secrets are never logged. Updates from other groups are ignored, and private chats only serve the group's members (FR-MEM-9). |
 | NFR-5 | Privacy | Only Telegram user ID, first name, @username, booking photo `file_id`s, and the venue and courts read from them are stored. Screenshots are read through a temporary file that is deleted at once; they aren't kept. No phone numbers or payment details. |
 | NFR-6 | Transparency | Every change that affects someone's money is visible in the group and recorded in the audit log. |
 | NFR-7 | Usability | Each wizard is one message edited in place. Buttons are preferred over typing. Messages are short. All times are in SGT, e.g. "Sun 4 Oct, 11:00–13:00". |
@@ -372,8 +378,8 @@ Worked examples:
 ### 6.1 Telegram commands
 | Command | Who | Where | Purpose |
 |---|---|---|---|
-| `/start` | anyone | DM | Link account, enable DM statements |
-| `/help` | anyone | any | List available commands |
+| `/start` | member | DM | Link account, enable DM statements |
+| `/help` | member | any | List available commands |
 | `/court` | member | group | Start the booking wizard; then send the screenshot (or send it captioned `/court`) |
 | `/shuttle <price>` | member | group (admin: any) | Record a shuttle purchase; it waits until the current batch is finished |
 | `/balance` | member | any | Balance, pending shuttle hours, unpaid lines |
@@ -387,6 +393,8 @@ Worked examples:
 | `/addmember <name>` | admin | any | Add a guest member |
 | `/members` | admin | any | List, rename or deactivate members; link a guest to a Telegram account |
 | `/invoice` | admin | any | Generate the invoice now |
+
+In a private chat, a member is someone in the group (FR-MEM-9).
 
 ### 6.2 HTTP endpoints
 | Method & path | Auth | Purpose |
@@ -496,6 +504,7 @@ Acceptance criteria are brief; the referenced FRs hold the detail.
 - **US-9.1:** As the admin, I want the group to contain only bot activity, so that cards and settle-ups are easy to find. *(FR-MOD-1, FR-MOD-3)*
 - **US-9.2:** As a member, I want my replies to bot prompts to be accepted and then cleaned up. *(FR-MOD-2)*
 - **US-9.3:** As the admin, I want the bot to ignore other chats. *(FR-MOD-4)*
+- **US-9.4:** As the group, we want only our members to record bookings and purchases, so that outsiders can't change our balances. *(FR-MEM-9, NFR-4)*
 
 ### E10 — Migration from the spreadsheet
 - **US-10.1:** As the admin, I want to carry everyone's balance over from `Badminton.xlsx`, so that nothing owed is lost and the bot's figures match the sheet to the cent. *(FR-MIG-1, FR-MIG-2, FR-MIG-4)*

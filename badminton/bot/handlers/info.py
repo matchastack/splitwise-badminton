@@ -1,4 +1,4 @@
-"""/balance and /upcoming (FR-LED-8, FR-LED-9)."""
+"""/balance and /upcoming (FR-LED-8, FR-LED-9), for the group's members (FR-MEM-9)."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 
 from badminton.bot.commands import BOOKING_COMMAND
 from badminton.bot.context import db_session
+from badminton.bot.membership import members_only
 from badminton.db.models import Member, Session
 from badminton.domain.ledger import Ledger
 from badminton.domain.money import fmt_sgd
@@ -37,6 +38,7 @@ def balance_lines(ledger: Ledger, member: Member) -> list[str]:
     return lines
 
 
+@members_only
 async def show_balance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     async with db_session(context) as db:
         member = await upsert_from_telegram(db, update.effective_user)
@@ -87,6 +89,7 @@ async def upcoming_lines(db: AsyncSession, now: datetime) -> list[str]:
     return lines
 
 
+@members_only
 async def show_upcoming(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     async with db_session(context) as db:
         lines = await upcoming_lines(db, utc_now())

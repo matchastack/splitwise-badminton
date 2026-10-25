@@ -216,7 +216,7 @@ If both records are marked in for a session that has already ended, the bot won'
 | `CRON_SECRET` | yes | Generate (step 2) | Required as `Authorization: Bearer …` on `/api/cron`; Vercel sends it automatically |
 | `DATABASE_URL` | yes | Neon → Connect → pooled string (step 3) | Postgres connection. `postgresql://` and `postgres://` are accepted |
 | `ADMIN_TELEGRAM_IDS` | yes | @userinfobot or `/chatid` in a DM (step 4) | Comma-separated user IDs allowed to run admin commands |
-| `GROUP_CHAT_ID` | after step 7 | `/chatid` in the group | The one group the bot works in. Until it's set, only `/chatid` and private chats work |
+| `GROUP_CHAT_ID` | after step 7 | `/chatid` in the group | The one group the bot works in. In private chats it only answers this group's members. Until it's set, only `/chatid` and the admin's private chat work |
 | `REMINDER_DAYS_BEFORE` | no (default `2`) | — | How many days before a session the attendance card goes up |
 | `DEFAULT_COURT_RATE_CENTS` | no (default `740`) | — | Hourly court rate: a booking's suggested price is this × its court hours ($7.40/h). Members change the price of a booking that cost something else |
 | `TEST_DATABASE_URL` | tests only | Local Postgres or a Neon branch | Throwaway database for `pytest` (its schema is dropped) |
@@ -243,6 +243,7 @@ If both records are marked in for a session that has already ended, the bot won'
 - **Messages aren't deleted.** The bot isn't an admin, or lacks *Delete messages*.
 - **Bookings aren't pinned.** The bot lacks *Pin messages*. The bookings are still recorded.
 - **The bot asks for the date and time instead of reading them.** It couldn't read them off the screenshot, or the date has passed or doesn't match its weekday. Send the ActiveSG *Booking confirmed* screen, with the *When* list in view, as a photo rather than a file. Anything else it misread can be fixed with ✏️ Edit before confirming.
+- **The bot tells someone it only works for members of the group.** In a private chat, the bot only answers people who are in the group (and the admin): it asks Telegram each time. Check that they are still in the group, and haven't left or been removed. If they are, the lookup failed, and Vercel's **Logs** tab shows `Could not check whether user … is in the group`: check that the bot is still an admin in the group and that `GROUP_CHAT_ID` is right (redeploy after changing it).
 - **Someone doesn't get statements.** They haven't pressed **Start** in a private chat with the bot, or they blocked it. Pressing Start again turns statements back on.
 - **The setup script says Telegram refused an admin command menu (`Chat not found`).** The webhook and member menu are already set, so the bot works. Telegram only accepts an admin's menu once that person has started a chat with the bot. Open the bot, press **Start**, and run the script again. If it still fails, check that the ID in `ADMIN_TELEGRAM_IDS` is your own user ID (step 4), not the bot's or a group's. For the group menu, the admin must also be a member of the group.
 - **I ran the local polling script and now the deployed bot is silent.** Polling removes the webhook. Run `scripts/setup_telegram.py` again (step 6).
@@ -258,6 +259,8 @@ The bot works in one group, the one in `GROUP_CHAT_ID`. Everything it knows (mem
 5. Set `GROUP_CHAT_ID` to the new ID in Vercel (**Settings → Environment Variables**) and **redeploy**. Update your `.env` too.
 6. Run the setup script from step 6 again, so your admin command menu appears in the new group.
 7. If you use `/setjoingroups`, turn it off again.
+
+Everyone must join the new group to keep using the bot privately: in a private chat, the bot only answers members of the group in `GROUP_CHAT_ID`.
 
 From then on, cards, booking records, announcements and invoices go to the new group. The bot ignores the old group, including taps on its buttons, and doesn't repost anything from it:
 - **Attendance cards already up:** set attendance with `/edit`.
@@ -290,6 +293,8 @@ From then on, cards, booking records, announcements and invoices go to the new g
 | `/addmember <name>` | admin | anywhere | Add a guest who isn't on Telegram |
 | `/members` | admin | anywhere | Rename or deactivate members; link a guest to their Telegram account |
 | `/invoice` | admin | anywhere | Post this month's settle-up now |
+
+In a private chat, the bot only answers members of the group and the admin. Anyone else is told it's for the group's members.
 
 ## Development
 
