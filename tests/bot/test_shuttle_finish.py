@@ -30,8 +30,8 @@ async def finish(bot: BotHarness, start: str = "From the next session on") -> Ca
 
 
 async def test_finishing_needs_an_admin_and_a_waiting_batch(bot: BotHarness) -> None:
-    await bot.send(text_update("/shuttle_finished", sender=BOB))
-    await bot.send(text_update("/shuttle_finished", sender=ALICE))
+    await bot.send(text_update("/shuttle_finished", sender=BOB, chat_id=BOB["id"]))
+    await bot.send(text_update("/shuttle_finished", sender=ALICE, chat_id=ALICE["id"]))
 
     assert bot.telegram.sent_texts() == [NOT_ADMIN, NOTHING_WAITING]
 

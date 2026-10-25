@@ -7,13 +7,14 @@ A Telegram bot that tracks court bookings, attendance and shuttlecock batches fo
 
 ## What it does
 
-- **Bookings:** a member sends `/court`, then their ActiveSG booking screenshot. The bot reads the date, time, venue and court off it with OCR (Tesseract, no LLM), and shows the booking with a suggested price to confirm or edit. Once confirmed, it posts the screenshot with the booking and pins it until the session is played. The sender is recorded as the payer.
+- **Private commands, results in the group:** members send commands to the bot in a private chat with it, and only members of the group can. The bot posts what they record (bookings, purchases) in the group.
+- **Bookings:** a member sends `/court` to the bot, then their ActiveSG booking screenshot. The bot reads the date, time, venue and court off it with OCR (Tesseract, no LLM), and shows the booking with a suggested price to confirm or edit. Once confirmed, it posts the screenshot with the booking in the group and pins it until the session is played. The sender is recorded as the payer.
 - **Attendance:** 2 days before each session the bot posts a card with **[✅ I'm in] [❌ I'm out]**. People can change their answer until the session ends; no answer counts as out.
 - **Locking:** when the session ends, attendance locks and the bot posts the split. Everyone who played shares the court cost and gets hours added to the current shuttle batch (1 hour = 1 share).
-- **Shuttles:** whoever buys a tube records it in the group with `/shuttle <price>`, and is recorded as the payer. It waits until the batch in use runs out; only one purchase can wait. When the admin runs `/shuttle_finished`, that batch closes and is split by hours played, and the waiting one takes over. Until it's in use, the buyer or the admin can cancel a purchase from its card, and the admin can correct any batch with `/shuttle_edit`.
+- **Shuttles:** whoever buys a tube records it by sending `/shuttle <price>` to the bot, and is recorded as the payer. The bot announces it in the group. It waits until the batch in use runs out; only one purchase can wait. When the admin runs `/shuttle_finished`, that batch closes and is split by hours played, and the waiting one takes over. Until it's in use, the buyer or the admin can cancel a purchase from its announcement, and the admin can correct any batch with `/shuttle_edit`.
 - **Monthly settle-up:** on the 1st of each month the bot posts who pays whom, using the fewest transfers, with a **✅ paid** button on each line. Everyone who has opened a chat with the bot also gets a private statement.
-- **Admin corrections:** every change the admin makes is announced in the group.
-- **Commands-only group:** the bot deletes anything in the group that isn't a command.
+- **Admin corrections:** the admin makes them in a private chat with the bot, and every change is announced in the group.
+- **A normal group chat:** the group chats freely. The bot only posts its results there, and never deletes anyone's messages.
 
 ## Setup guide
 
@@ -115,19 +116,18 @@ uv run --env-file .env scripts/setup_telegram.py --base-url https://splitwise-ba
 
 This does two things:
 - Registers the webhook (`<base-url>/api/telegram`) with your `WEBHOOK_SECRET`.
-- Publishes the command menu: member commands for everyone, plus admin commands for you.
+- Publishes the command menus: member commands in private chats with the bot, plus admin commands in yours. Commands are sent to the bot privately, so the group gets no menu, and the script clears any an earlier version published there.
 
 It prints the webhook URL when done. Run it again whenever a change adds or renames a command, so Telegram's menus match.
 
 ### 7. Set up the Telegram group
 
 1. Create the group, or use an existing one, and add the bot as a member (search for its username).
-2. Make the bot an **admin** with the **Delete messages** and **Pin messages** rights. It deletes messages to keep the group commands-only, and pins each booking until it's played. Other rights can be off. On mobile: group → *Edit → Administrators → Add Admin*.
+2. Make the bot an **admin** with the **Pin messages** right. It pins each booking until it's played, and as an admin it can check that whoever uses it privately is in the group. Other rights can be off. On mobile: group → *Edit → Administrators → Add Admin*.
 3. Send `/chatid` in the group. The bot replies with a negative number like `-1001234567890`. This is `GROUP_CHAT_ID`.
 4. Add `GROUP_CHAT_ID` in Vercel (**Settings → Environment Variables**) and **redeploy**. Add it to your `.env` too.
-5. Run the setup script from step 6 again, so the admin command menu also appears for you in the group.
-6. Optional: in BotFather, use `/setjoingroups` → **Disable**, so nobody can add your bot to other groups. The bot ignores other chats anyway.
-7. Ask everyone to open a private chat with the bot and press **Start**. Telegram only lets a bot DM people who have done this, and the DM is how monthly statements arrive.
+5. Optional: in BotFather, use `/setjoingroups` → **Disable**, so nobody can add your bot to other groups. The bot ignores other chats anyway.
+6. Ask everyone to open a private chat with the bot and press **Start**. That's where they use it: they send it `/court`, `/shuttle` and the other commands there, and it posts the results in the group. The same chat is how monthly statements arrive. A command sent in the group gets a reply with a button that opens the chat.
 
 > If Telegram ever converts the group to a *supergroup* (it does this for some settings changes), the group ID changes. As the admin, run `/chatid` in the group again and update `GROUP_CHAT_ID`.
 
@@ -148,10 +148,10 @@ The only effect of a daily cron is that the "🔒 locked" summary can arrive up 
 
 ### 9. Check that it works
 
-1. In the group, send `/help`. The bot should reply. As the admin you also see admin commands.
-2. Send `/court`, reply to the bot's prompt with a booking screenshot, and confirm. The bot posts the screenshot with the booking and pins it. If the session is within 2 days, the attendance card appears straight away.
+1. In a private chat with the bot, send `/help`. The bot should reply. As the admin you also see admin commands. In the group, `/help` gets a reply saying to send it privately.
+2. In the private chat, send `/court`, reply to the bot's prompt with a booking screenshot, and confirm. The bot posts the screenshot with the booking in the group and pins it. If the session is within 2 days, the attendance card appears straight away.
 3. Tap **✅ I'm in** and check the card updates.
-4. Send a normal text message from a non-admin account. The bot should delete it.
+4. Send a normal text message in the group. The bot should leave it alone.
 5. Trigger the scheduler by hand:
 
    ```sh
@@ -159,7 +159,7 @@ The only effect of a daily cron is that the "🔒 locked" summary can arrive up 
    ```
 
    It should return `{"ok":true,"steps":{…}}`.
-6. Optional: as the admin, `/invoice` posts a settle-up for the current month right away.
+6. Optional: as the admin, send `/invoice` to the bot. It posts a settle-up for the current month in the group right away.
    - The scheduled run on the 1st skips a month that already has an invoice.
    - In the first week of a month, before the scheduled run has posted the previous month's invoice, `/invoice` posts that one instead.
    - Anything that happens after a manual invoice is included in the next one, because balances carry over.
@@ -216,7 +216,7 @@ If both records are marked in for a session that has already ended, the bot won'
 | `CRON_SECRET` | yes | Generate (step 2) | Required as `Authorization: Bearer …` on `/api/cron`; Vercel sends it automatically |
 | `DATABASE_URL` | yes | Neon → Connect → pooled string (step 3) | Postgres connection. `postgresql://` and `postgres://` are accepted |
 | `ADMIN_TELEGRAM_IDS` | yes | @userinfobot or `/chatid` in a DM (step 4) | Comma-separated user IDs allowed to run admin commands |
-| `GROUP_CHAT_ID` | after step 7 | `/chatid` in the group | The one group the bot works in. Until it's set, only `/chatid` and private chats work |
+| `GROUP_CHAT_ID` | after step 7 | `/chatid` in the group | The one group the bot works in. In private chats it only answers this group's members. Until it's set, only `/chatid` and the admin's private chat work |
 | `REMINDER_DAYS_BEFORE` | no (default `2`) | — | How many days before a session the attendance card goes up |
 | `DEFAULT_COURT_RATE_CENTS` | no (default `740`) | — | Hourly court rate: a booking's suggested price is this × its court hours ($7.40/h). Members change the price of a booking that cost something else |
 | `TEST_DATABASE_URL` | tests only | Local Postgres or a Neon branch | Throwaway database for `pytest` (its schema is dropped) |
@@ -240,11 +240,11 @@ If both records are marked in for a session that has already ended, the bot won'
     - `401` means `WEBHOOK_SECRET` in Vercel differs from the one the setup script used, or Deployment Protection is blocking the URL.
     - `500` means look at Vercel's **Logs** tab; often `DATABASE_URL` is wrong or migrations weren't run.
 - **The bot replies in DMs but ignores the group.** `GROUP_CHAT_ID` is missing or wrong, or you didn't redeploy after setting it. As the admin, run `/chatid` in the group again.
-- **Messages aren't deleted.** The bot isn't an admin, or lacks *Delete messages*.
 - **Bookings aren't pinned.** The bot lacks *Pin messages*. The bookings are still recorded.
 - **The bot asks for the date and time instead of reading them.** It couldn't read them off the screenshot, or the date has passed or doesn't match its weekday. Send the ActiveSG *Booking confirmed* screen, with the *When* list in view, as a photo rather than a file. Anything else it misread can be fixed with ✏️ Edit before confirming.
+- **The bot tells someone it only works for members of the group.** In a private chat, the bot only answers people who are in the group (and the admin): it asks Telegram each time. Check that they are still in the group, and haven't left or been removed. If they are, the lookup failed, and Vercel's **Logs** tab shows `Could not check whether user … is in the group`: check that the bot is still an admin in the group and that `GROUP_CHAT_ID` is right (redeploy after changing it).
 - **Someone doesn't get statements.** They haven't pressed **Start** in a private chat with the bot, or they blocked it. Pressing Start again turns statements back on.
-- **The setup script says Telegram refused an admin command menu (`Chat not found`).** The webhook and member menu are already set, so the bot works. Telegram only accepts an admin's menu once that person has started a chat with the bot. Open the bot, press **Start**, and run the script again. If it still fails, check that the ID in `ADMIN_TELEGRAM_IDS` is your own user ID (step 4), not the bot's or a group's. For the group menu, the admin must also be a member of the group.
+- **The setup script says Telegram refused an admin command menu (`Chat not found`).** The webhook and member menu are already set, so the bot works. Telegram only accepts an admin's menu once that person has started a chat with the bot. Open the bot, press **Start**, and run the script again. If it still fails, check that the ID in `ADMIN_TELEGRAM_IDS` is your own user ID (step 4), not the bot's or a group's. To clear an admin menu an earlier version published in the group, the admin must also be in the group with the bot.
 - **I ran the local polling script and now the deployed bot is silent.** Polling removes the webhook. Run `scripts/setup_telegram.py` again (step 6).
 
 ### Moving the bot to another group
@@ -253,11 +253,12 @@ The bot works in one group, the one in `GROUP_CHAT_ID`. Everything it knows (mem
 
 1. Create the new group and invite everyone.
 2. If you turned off joining groups in BotFather (`/setjoingroups`, step 7), turn it back on for now.
-3. Add the bot to the new group as an **admin** with the **Delete messages** and **Pin messages** rights, as in step 7.
+3. Add the bot to the new group as an **admin** with the **Pin messages** right, as in step 7.
 4. As the admin, send `/chatid` in the new group. The bot answers you there even though it isn't its group yet.
 5. Set `GROUP_CHAT_ID` to the new ID in Vercel (**Settings → Environment Variables**) and **redeploy**. Update your `.env` too.
-6. Run the setup script from step 6 again, so your admin command menu appears in the new group.
-7. If you use `/setjoingroups`, turn it off again.
+6. If you use `/setjoingroups`, turn it off again.
+
+Everyone must join the new group to keep using the bot privately: in a private chat, the bot only answers members of the group in `GROUP_CHAT_ID`.
 
 From then on, cards, booking records, announcements and invoices go to the new group. The bot ignores the old group, including taps on its buttons, and doesn't repost anything from it:
 - **Attendance cards already up:** set attendance with `/edit`.
@@ -274,22 +275,24 @@ From then on, cards, booking records, announcements and invoices go to the new g
 
 | Command | Who | Where | What |
 |---|---|---|---|
-| `/court` | anyone | group | Record a court booking: send it, then your booking screenshot (or send the screenshot with the caption `/court`) |
-| `/shuttle <price>` | anyone | group | Record a shuttlecock purchase you paid for; it waits until the current batch is finished |
-| `/balance` | anyone | anywhere | Your balance, shuttle hours so far, a waiting shuttle batch and unpaid settle-ups |
-| `/upcoming` | anyone | anywhere | Booked sessions |
-| `/name <name>` | anyone | anywhere | Change the name the bot shows for you |
-| `/start` | anyone | DM | Turn on monthly statements |
-| `/help` | anyone | anywhere | What the bot can do |
+| `/court` | member | private chat | Record a court booking: send it, then your booking screenshot (or send the screenshot with the caption `/court`). It's posted in the group |
+| `/shuttle <price>` | member | private chat | Record a shuttlecock purchase you paid for; it's announced in the group and waits until the current batch is finished |
+| `/balance` | member | private chat | Your balance, shuttle hours so far, a waiting shuttle batch and unpaid settle-ups |
+| `/upcoming` | member | private chat | Booked sessions |
+| `/name <name>` | member | private chat | Change the name the bot shows for you |
+| `/start` | member | private chat | Turn on monthly statements |
+| `/help` | member | private chat | What the bot can do |
 | `/chatid` | anyone (in other groups once `GROUP_CHAT_ID` is set: admin) | anywhere | Show the chat ID (setup) |
-| `/shuttle <price>` | admin | anywhere | As above, but you pick who paid |
-| `/shuttle_finished` | admin | anywhere | Finish the current shuttle batch; the waiting one takes over |
-| `/shuttle_edit` | admin | anywhere | Fix a shuttle batch's price or payer, remove a waiting one, or undo `/shuttle_finished` |
-| `/edit` | admin | anywhere | Fix a session's attendance or bookings, or cancel it |
-| `/settle` | admin | anywhere | Record a payment made outside the bot |
-| `/addmember <name>` | admin | anywhere | Add a guest who isn't on Telegram |
-| `/members` | admin | anywhere | Rename or deactivate members; link a guest to their Telegram account |
-| `/invoice` | admin | anywhere | Post this month's settle-up now |
+| `/shuttle <price>` | admin | private chat | As above, but you pick who paid |
+| `/shuttle_finished` | admin | private chat | Finish the current shuttle batch; the waiting one takes over |
+| `/shuttle_edit` | admin | private chat | Fix a shuttle batch's price or payer, remove a waiting one, or undo `/shuttle_finished` |
+| `/edit` | admin | private chat | Fix a session's attendance or bookings, or cancel it |
+| `/settle` | admin | private chat | Record a payment made outside the bot |
+| `/addmember <name>` | admin | private chat | Add a guest who isn't on Telegram |
+| `/members` | admin | private chat | Rename or deactivate members; link a guest to their Telegram account |
+| `/invoice` | admin | private chat | Post this month's settle-up now |
+
+A member is someone in the group: in a private chat, the bot only answers them and the admin, and tells anyone else it's for the group's members. Any of these commands sent in the group, the admin's too, gets a reply saying to send it privately, with a button that opens the chat. Announcements still go to the group.
 
 ## Development
 

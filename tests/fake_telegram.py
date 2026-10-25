@@ -2,7 +2,8 @@
 
 ``FakeTelegram`` replaces python-telegram-bot's HTTP transport. It records every
 API call and answers with plausible results. Files to download (e.g. a booking
-screenshot) go in ``files``, by file ID. The ``*_update`` factories build incoming
+screenshot) go in ``files``, by file ID. Everyone is a member of the group unless
+``set_member_status`` says otherwise. The ``*_update`` factories build incoming
 updates as plain dicts, the same JSON Telegram would POST to the webhook.
 """
 
@@ -25,6 +26,7 @@ _TRUE_METHODS = {
     "answerCallbackQuery",
     "deleteMessage",
     "deleteMessages",
+    "deleteMyCommands",
     "deleteWebhook",
     "pinChatMessage",
     "setMyCommands",
@@ -33,6 +35,7 @@ _TRUE_METHODS = {
 }
 _SEND_METHODS = {"sendMessage", "sendPhoto"}
 _EDIT_METHODS = {"editMessageText", "editMessageReplyMarkup", "editMessageCaption"}
+_OTHER_METHODS = {"getChatMember", "getFile"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +61,7 @@ class FakeTelegram(BaseRequest):
 
     calls: list[ApiCall] = field(default_factory=list)
     files: dict[str, bytes] = field(default_factory=dict)
+    _statuses: dict[int, tuple[str, bool]] = field(default_factory=dict)  # see set_member_status
     _photo_ids: set[int] = field(default_factory=set)  # the bot's photo messages
     _text_ids: set[int] = field(default_factory=set)  # and its text messages
     _failures: dict[str, list[tuple[int, str, int | None]]] = field(default_factory=dict)
@@ -83,7 +87,7 @@ class FakeTelegram(BaseRequest):
         if "/file/bot" in url:  # a download, from the file_path getFile gave
             return 200, self.files.get(api_method, b"")
 
-        # setMyCommands names its chat inside ``scope`` rather than as a top-level chat_id.
+        # The *MyCommands methods name their chat inside ``scope``, not as a top-level chat_id.
         target_chat = params.get("chat_id") or (params.get("scope") or {}).get("chat_id")
         if failure := self._take_failure(api_method, target_chat) or self._wrong_kind(
             api_method, params
@@ -91,7 +95,7 @@ class FakeTelegram(BaseRequest):
             code, description = failure
             self.calls.append(ApiCall(api_method, params))
             return code, _encode({"ok": False, "error_code": code, "description": description})
-        if api_method not in _TRUE_METHODS | _SEND_METHODS | _EDIT_METHODS | {"getFile"}:
+        if api_method not in _TRUE_METHODS | _SEND_METHODS | _EDIT_METHODS | _OTHER_METHODS:
             description = f"FakeTelegram does not support {api_method}; add it to the fake"
             return 400, _encode({"ok": False, "error_code": 400, "description": description})
 
@@ -102,6 +106,11 @@ class FakeTelegram(BaseRequest):
     def fail(self, method: str, code: int, description: str, *, chat_id: int | None = None) -> None:
         """Make the next call to ``method`` (to ``chat_id``, if given) fail."""
         self._failures.setdefault(method, []).append((code, description, chat_id))
+
+    def set_member_status(self, user_id: int, status: str, *, is_member: bool = True) -> None:
+        """Make getChatMember report ``user_id`` with ``status``, e.g. ``"left"`` for an
+        outsider. ``is_member`` is for ``"restricted"``: whether they are still in the group."""
+        self._statuses[user_id] = (status, is_member)
 
     def _take_failure(self, method: str, chat_id: object) -> tuple[int, str] | None:
         queued = self._failures.get(method, [])
@@ -144,6 +153,10 @@ class FakeTelegram(BaseRequest):
     # Responses ------------------------------------------------------------
 
     def _result(self, method: str, params: dict[str, Any]) -> Any:
+        if method == "getChatMember":
+            user_id = int(params["user_id"])
+            status, is_member = self._statuses.get(user_id, ("member", True))
+            return _chat_member(user_id, status, is_member)
         if method == "getFile":
             file_id = params["file_id"]
             return {"file_id": file_id, "file_unique_id": f"u-{file_id}", "file_path": file_id}
@@ -182,6 +195,57 @@ def _encode(payload: dict[str, Any]) -> bytes:
     return json.dumps(payload).encode()
 
 
+def _chat_member(user_id: int, status: str, is_member: bool) -> dict[str, Any]:
+    """A ChatMember as Telegram sends it, with the fields its status requires."""
+    member: dict[str, Any] = {"user": user(user_id), "status": status}
+    if status == "creator":
+        member["is_anonymous"] = False
+    elif status == "administrator":
+        member |= dict.fromkeys(
+            (
+                "can_be_edited",
+                "is_anonymous",
+                "can_manage_chat",
+                "can_delete_messages",
+                "can_manage_video_chats",
+                "can_restrict_members",
+                "can_promote_members",
+                "can_change_info",
+                "can_invite_users",
+                "can_post_stories",
+                "can_edit_stories",
+                "can_delete_stories",
+            ),
+            False,
+        )
+    elif status == "restricted":
+        member |= dict.fromkeys(
+            (
+                "can_change_info",
+                "can_invite_users",
+                "can_pin_messages",
+                "can_send_messages",
+                "can_send_polls",
+                "can_send_other_messages",
+                "can_add_web_page_previews",
+                "can_manage_topics",
+                "can_send_audios",
+                "can_send_documents",
+                "can_send_photos",
+                "can_send_videos",
+                "can_send_video_notes",
+                "can_send_voice_notes",
+                "can_edit_tag",
+                "can_react_to_messages",
+            ),
+            False,
+        )
+        member |= {"is_member": is_member, "until_date": 0}
+    elif status == "kicked":
+        member["until_date"] = 0
+    return member
+
+
 def _chat(chat_id: int) -> dict[str, Any]:
     if chat_id < 0:
         return {"id": chat_id, "type": "supergroup", "title": "Badminton"}
@@ -204,13 +268,17 @@ def user(user_id: int, first_name: str = "Member", username: str | None = None) 
 def message(
     *,
     sender: dict[str, Any],
-    chat_id: int = GROUP_ID,
+    chat_id: int | None = None,
     text: str | None = None,
     reply_to: dict[str, Any] | None = None,
     message_id: int | None = None,
     **extra: Any,
 ) -> dict[str, Any]:
-    """An incoming message. A leading ``/command`` gets a bot_command entity, as from Telegram."""
+    """An incoming message, in the group unless ``chat_id`` says otherwise; a reply is in
+    the chat of the message it replies to. A leading ``/command`` gets a bot_command
+    entity, as from Telegram."""
+    if chat_id is None:
+        chat_id = reply_to["chat"]["id"] if reply_to is not None else GROUP_ID
     data: dict[str, Any] = {
         "message_id": message_id or next(_incoming_message_ids),
         "date": int(time.time()),
@@ -231,7 +299,7 @@ def photo_message(
     *,
     sender: dict[str, Any],
     caption: str | None = None,
-    chat_id: int = GROUP_ID,
+    chat_id: int | None = None,
     file_id: str = "photo",
     reply_to: dict[str, Any] | None = None,
 ) -> dict[str, Any]:

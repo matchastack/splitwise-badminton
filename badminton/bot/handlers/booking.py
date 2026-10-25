@@ -1,13 +1,14 @@
 """The booking wizard (FR-BK-1 to FR-BK-9, FR-BK-12).
 
-A member sends /court in the group and replies to the bot's prompt with their booking
-screenshot, or sends the screenshot with the caption /court. The bot reads the date,
-time, venue and courts off it (OCR) and replies with one card, edited in place: it
-asks for anything it couldn't read, then shows the booking to confirm or edit. Only
+A member sends /court to the bot in a private chat and then their booking screenshot,
+or sends the screenshot with the caption /court. The bot reads the
+date, time, venue and courts off it (OCR) and replies with one card, edited in place:
+it asks for anything it couldn't read, then shows the booking to confirm or edit. Only
 the submitter can operate it (FR-BK-2); the sender is the payer.
 
-Once confirmed, the bot posts the screenshot captioned with the booking and pins it.
-That post is the booking's record; the card and the member's own copy are deleted.
+Once confirmed, the bot posts the screenshot in the group, captioned with the booking,
+and pins it. That post is the booking's record. In the private chat, the card becomes a
+one-line confirmation, and the member's screenshot stays.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from telegram import (
     MessageEntity,
     Update,
 )
+from telegram.constants import ChatType
 from telegram.error import BadRequest, TelegramError
 from telegram.ext import (
     Application,
@@ -42,8 +44,6 @@ from telegram.ext import (
 from badminton.bot import prompts
 from badminton.bot.commands import BOOKING_COMMAND, OLD_BOOKING_COMMAND
 from badminton.bot.context import db_session, ocr_of, settings_of
-from badminton.bot.handlers import guard
-from badminton.bot.handlers.guard import caption_command, is_booking_photo
 from badminton.bot.keyboards import (
     BACK,
     NOOP,
@@ -57,6 +57,7 @@ from badminton.bot.keyboards import (
     parse_day,
     parse_month,
 )
+from badminton.bot.membership import members_only, open_chat_markup, private_only, send_privately
 from badminton.db.models import Booking, Draft, Member, Session
 from badminton.domain.money import fmt_sgd, parse_amount
 from badminton.domain.screenshot import fmt_courts, parse_courts, parse_venue, read_booking
@@ -140,13 +141,13 @@ NEEDS_SCHEDULE = {
     EDIT_PRICE,
 }
 
-ASK_SCREENSHOT = "send your booking screenshot as a reply to this message."
+ASK_SCREENSHOT = "send me your booking screenshot."
 EXPIRED = f"This booking form has expired. Send /{BOOKING_COMMAND} again."
-IN_THE_GROUP = f"📸 Send /{BOOKING_COMMAND} in the group, then your booking screenshot."
 MOVED = (
-    f"📸 /{OLD_BOOKING_COMMAND} is now /{BOOKING_COMMAND}: send /{BOOKING_COMMAND} in the group, "
-    "then your booking screenshot."
+    f"📸 /{OLD_BOOKING_COMMAND} is now /{BOOKING_COMMAND}: send /{BOOKING_COMMAND} to me in a "
+    "private chat, then your booking screenshot."
 )
+NO_GROUP = "Set GROUP_CHAT_ID first: each booking is posted in the group."
 MERGE_FIRST = "There's now a session next to this one: is it part of it?"
 UNREAD = "🔍 I couldn't work out the date and time from the screenshot."
 NOT_READ = "📍 Venue and court not read: add them with ✏️ Edit"
@@ -337,6 +338,8 @@ async def refresh_wizard(
 # Handlers ---------------------------------------------------------------------
 
 
+@private_only
+@members_only
 async def ask_for_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/court: ask for the booking screenshot, as a reply to the prompt."""
     message = update.effective_message
@@ -357,17 +360,17 @@ async def ask_for_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await db.commit()
 
 
+@members_only
 async def on_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """A screenshot replying to the sender's /court prompt, or captioned /court."""
+    """In a private chat: a screenshot for the sender's form waiting for one, replying to its
+    prompt or not, or captioned /court. Any other image is ignored."""
     message = update.effective_message
     user = update.effective_user
     async with db_session(context) as db:
-        draft = await _prompt_draft(db, message, user.id)
+        draft = await _waiting_draft(db, message.chat_id, user.id)
         if draft is None and not is_booking_photo(message, context.bot.username):
             if caption_command(message, context.bot.username) == OLD_BOOKING_COMMAND:
                 await point_to_new_command(update, context)
-            else:
-                await guard.delete_unless_exempt(update, context)
             return
         if not message.photo:  # an image sent as a file
             await delete_message_quietly(context.bot, message.chat_id, message.message_id)
@@ -402,33 +405,57 @@ async def on_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await db.commit()
 
 
+async def on_group_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """A photo captioned with a command, in the group: a booking is sent privately now.
+    Any other photo is the group chatting, and left alone."""
+    command = caption_command(update.effective_message, context.bot.username)
+    if command == BOOKING_COMMAND:
+        await send_privately(update, context)
+    elif command == OLD_BOOKING_COMMAND:
+        await point_to_new_command(update, context)
+
+
 async def point_to_new_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/book, as before T44, as text or a caption: say what replaced it. In the group the
-    message is then removed, like any other that isn't a command the bot handles."""
-    await context.bot.send_message(update.effective_chat.id, MOVED)
-    await guard.delete_unless_exempt(update, context)
+    """/book, as before T44, as text or a caption: say what replaced it. In the group, with
+    a button that opens the private chat."""
+    chat = update.effective_chat
+    markup = None if chat.type == ChatType.PRIVATE else open_chat_markup(context.bot.username)
+    await context.bot.send_message(chat.id, MOVED, reply_markup=markup)
 
 
-async def in_the_group(update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.effective_message.reply_text(IN_THE_GROUP)
-
-
-async def _prompt_draft(db: AsyncSession, message: Message, user_id: int) -> Draft | None:
-    """The sender's booking draft whose screenshot prompt the message replies to. It may
-    have expired: the prompt stays up until the tick cleans it away."""
-    if message.reply_to_message is None:
+def caption_command(message: Message, bot_username: str) -> str | None:
+    """The command a caption starts with, if it is for this bot. Matched as
+    CommandHandler matches a text command: in any case, with no @handle or ours."""
+    entities = message.caption_entities
+    if not entities or entities[0].type != MessageEntity.BOT_COMMAND or entities[0].offset:
         return None
-    draft = await db.scalar(
+    command, _, handle = message.parse_caption_entity(entities[0])[1:].partition("@")
+    if handle and handle.lower() != bot_username.lower():
+        return None
+    return command.lower()
+
+
+def is_booking_photo(message: Message, bot_username: str) -> bool:
+    """A photo captioned /court: the booking screenshot, sent without the prompt (FR-BK-1)."""
+    return bool(message.photo) and caption_command(message, bot_username) == BOOKING_COMMAND
+
+
+async def _waiting_draft(db: AsyncSession, chat_id: int, user_id: int) -> Draft | None:
+    """The sender's booking draft in this chat waiting for its screenshot. In a private
+    chat the screenshot needn't reply to the prompt: it can only be for this form. The
+    draft may have expired: the prompt stays up until the tick cleans it away."""
+    return await db.scalar(
         select(Draft)
         .where(
             Draft.kind == KIND,
-            Draft.chat_id == message.chat_id,
+            Draft.chat_id == chat_id,
             Draft.user_id == user_id,
-            Draft.prompt_message_id == message.reply_to_message.message_id,
+            Draft.data["awaiting"].astext == "photo",
         )
+        .order_by(Draft.id.desc())  # /court closes older ones; the newest, to be sure
+        .limit(1)
         .with_for_update()  # one screenshot at a time, as for typed answers
     )
-    return draft if draft is not None and draft.data.get("awaiting") == "photo" else None
 
 
 async def _close_waiting(bot: Bot, db: AsyncSession, chat_id: int, user_id: int) -> None:
@@ -452,13 +479,7 @@ async def _read_screenshot(
     """Fill the draft in from the screenshot and reply to it with the wizard card."""
     file_id = message.photo[-1].file_id
     found = read_booking(await _screenshot_text(context, file_id), sgt_date(utc_now()))
-    update_data(
-        draft,
-        photo_file_id=file_id,
-        owned_message_ids=[message.message_id],  # the record will carry the screenshot
-        venue=found.venue,
-        courts=found.courts,
-    )
+    update_data(draft, photo_file_id=file_id, venue=found.venue, courts=found.courts)
     if found.starts_at is None:
         update_data(draft, step=STEP_DATE)
     else:
@@ -625,7 +646,7 @@ async def _summary(db: AsyncSession, draft: Draft) -> dict[str, Any]:
 async def _cancel(
     update: Update, context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Draft
 ) -> None:
-    await delete_draft(context.bot, db, draft)  # and the member's screenshot
+    await delete_draft(context.bot, db, draft)
     await update.callback_query.edit_message_text("✖ Booking cancelled.")
 
 
@@ -644,6 +665,9 @@ async def _confirm(
     data = draft.data
     starts_at, ends_at = _booking_times(data)
     now = utc_now()
+    group_chat_id = settings_of(context).group_chat_id
+    if group_chat_id is None:  # only the admin gets this far before setup (FR-MEM-9)
+        return NO_GROUP
     if starts_at <= now:
         return "That time has passed. Change the date or time first."
     if not data.get("merge_session_id") and not data.get("separate"):
@@ -669,7 +693,7 @@ async def _confirm(
         photo_file_id=data["photo_file_id"],
         venue=data.get("venue"),
         courts=data.get("courts"),
-        record_chat_id=draft.chat_id,
+        record_chat_id=group_chat_id,
         record_message_id=None,
         session_id=merge_into.id if merge_into is not None else None,
     )
@@ -680,23 +704,26 @@ async def _confirm(
     lines.append(
         card_note(session.starts_at, settings_of(context).reminder_days_before, sgt_date(now))
     )
-    # The record: the screenshot, captioned with the booking (FR-BK-8).
+    # The record, in the group: the screenshot, captioned with the booking (FR-BK-8).
     record = await context.bot.send_photo(
-        draft.chat_id,
+        group_chat_id,
         data["photo_file_id"],
         caption="\n".join(lines),
         reply_markup=cancel_markup(booking.id),
     )
     booking.record_message_id = record.message_id
-    await delete_draft(context.bot, db, draft)  # and the member's screenshot: the record has it
+    await delete_draft(context.bot, db, draft)
     await db.commit()
 
-    # The attendance card first; pinning and removing the wizard are only tidying up.
+    # The attendance card first; pinning and confirming privately are only tidying up.
     if merge_into is not None:
         await refresh_card(context.bot, db, session.id)
     await post_card_if_due(context.bot, db, session, settings_of(context), now)
     await pin(context.bot, record.chat_id, record.message_id)
-    await delete_message_quietly(context.bot, draft.chat_id, draft.message_id)
+    await update.callback_query.edit_message_text(
+        f"✅ Booked {fmt_session(starts_at, ends_at)} ({fmt_hours(booking.minutes)}), "
+        "and posted it in the group."
+    )
     return None
 
 
@@ -732,15 +759,9 @@ async def on_typed_answer(
 def register(application: Application) -> None:
     # A captioned command is checked in the handler, as CommandHandler checks text commands.
     captioned = filters.PHOTO & filters.CaptionEntity(MessageEntity.BOT_COMMAND)
-    replied = filters.REPLY & (filters.PHOTO | filters.Document.IMAGE)
-    application.add_handler(
-        MessageHandler(filters.ChatType.GROUPS & (captioned | replied), on_screenshot)
-    )
-    application.add_handler(
-        CommandHandler(BOOKING_COMMAND, ask_for_screenshot, filters=filters.ChatType.GROUPS)
-    )
-    application.add_handler(
-        CommandHandler(BOOKING_COMMAND, in_the_group, filters=filters.ChatType.PRIVATE)
-    )
+    images = filters.PHOTO | filters.Document.IMAGE
+    application.add_handler(MessageHandler(filters.ChatType.PRIVATE & images, on_screenshot))
+    application.add_handler(MessageHandler(filters.ChatType.GROUPS & captioned, on_group_photo))
+    application.add_handler(CommandHandler(BOOKING_COMMAND, ask_for_screenshot))
     application.add_handler(CommandHandler(OLD_BOOKING_COMMAND, point_to_new_command))
     application.add_handler(CallbackQueryHandler(on_button, pattern=rf"^{CALLBACK_KIND}:\d+:"))

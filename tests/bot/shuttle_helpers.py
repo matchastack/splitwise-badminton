@@ -31,7 +31,8 @@ class Card:
 
     @classmethod
     async def open(cls, bot: BotHarness, command: str, sender: dict[str, Any] = ALICE) -> Card:
-        await bot.send(text_update(command, sender=sender))
+        """Send ``command`` in the sender's private chat; the card the bot replies with."""
+        await bot.send(text_update(command, sender=sender, chat_id=sender["id"]))
         return cls(bot, bot.telegram.last("sendMessage").message, sender)
 
     @property
@@ -123,10 +124,11 @@ async def balances(bot: BotHarness) -> dict[int, int]:
 
 
 async def purchase(bot: BotHarness, price: str, sender: dict[str, Any] = BOB) -> Card:
-    """Record a purchase as a member (the sender pays); returns its card."""
+    """Record a purchase as a member (the sender pays); returns its announcement in the
+    group, which carries 🗑 Cancel purchase."""
     card = await Card.open(bot, f"/shuttle {price}", sender)
     await card.tap("✅ Record")
-    return card
+    return Card(bot, bot.telegram.last("sendMessage").message, sender)
 
 
 def miss_once(monkeypatch: pytest.MonkeyPatch, module: object) -> None:

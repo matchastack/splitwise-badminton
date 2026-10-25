@@ -7,6 +7,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 
 from badminton.bot.admin import admin_only
 from badminton.bot.context import db_session, settings_of
+from badminton.bot.membership import private_only
 from badminton.db.models import Invoice, InvoiceLine, Member
 from badminton.domain.timeutil import fmt_period, utc_now
 from badminton.services import audit
@@ -51,6 +52,7 @@ async def on_paid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await refresh_invoice_card(context.bot, db, invoice)
 
 
+@private_only
 @admin_only
 async def invoice_now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/invoice: post the settle-up now (FR-INV-1). Early in a month that's the previous
@@ -65,7 +67,7 @@ async def invoice_now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             f"{fmt_period(period)} already has an invoice. "
             "New activity goes on next month's invoice."
         )
-    elif message.chat_id != settings_of(context).group_chat_id:
+    else:
         await message.reply_text(f"🧾 Posted the {fmt_period(period)} invoice in the group.")
 
 

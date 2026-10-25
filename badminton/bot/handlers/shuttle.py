@@ -2,9 +2,9 @@
 
 The purchase waits until the admin finishes the batch in use with /shuttle_finished,
 so recording it closes nothing. Only one purchase can wait at a time. Members record
-in the group, like a booking, and are the payer; the admin can record anywhere and
-picks the payer, to record a purchase for someone else. Until it is in use, its payer
-or the admin can cancel it from its card.
+in a private chat with the bot, like a booking, and are the payer; the admin picks the
+payer, to record a purchase for someone else. The purchase is announced in the group,
+and until it is in use, its payer or the admin can cancel it from that announcement.
 """
 
 from __future__ import annotations
@@ -14,11 +14,11 @@ import html
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.constants import ChatType
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
 from badminton.bot.context import db_session, settings_of
 from badminton.bot.keyboards import decode, encode
+from badminton.bot.membership import members_only, private_only
 from badminton.db.models import Draft, Member, ShuttleBatch
 from badminton.domain.money import fmt_sgd, parse_amount
 from badminton.domain.timeutil import utc_now
@@ -41,7 +41,6 @@ KIND = "shuttle"
 CALLBACK_KIND = "sh"
 MAX_SHUTTLE_CENTS = 100_000
 USAGE = "Usage: /shuttle &lt;price&gt;, e.g. /shuttle 76.79"
-IN_THE_GROUP = "🏸 Send /shuttle &lt;price&gt; in the group, so everyone sees the purchase."
 ALREADY_CANCELLED = "This purchase is already cancelled."
 
 PAYER = "pay"
@@ -98,19 +97,17 @@ async def render(db: AsyncSession, draft: Draft) -> tuple[str, InlineKeyboardMar
 
 
 def cancel_markup(batch_id: int) -> InlineKeyboardMarkup:
-    """The button on a recorded purchase that lets its payer or the admin cancel it."""
+    """The button on a purchase's announcement that lets its payer or the admin cancel it."""
     return InlineKeyboardMarkup(
         [[InlineKeyboardButton("🗑 Cancel purchase", callback_data=f"{ASK}:{batch_id}")]]
     )
 
 
+@private_only
+@members_only
 async def start_shuttle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
     is_admin = settings_of(context).is_admin(update.effective_user.id)
-    if not is_admin and message.chat.type == ChatType.PRIVATE:
-        # Only people in the group spend the group's money, as with /court.
-        await message.reply_text(IN_THE_GROUP)
-        return
     try:
         amount = parse_amount(" ".join(context.args or ()), max_cents=MAX_SHUTTLE_CENTS)
     except ValueError:
@@ -197,13 +194,14 @@ async def _record(
     names = await member_names(db)
     payer = html.escape(names[batch.payer_member_id])
     await query.edit_message_text(
-        f"✅ Recorded shuttle purchase #{batch.id}.", reply_markup=cancel_markup(batch.id)
+        f"✅ Recorded shuttle purchase #{batch.id}, and posted it in the group."
     )
     await announce(
         context.bot,
         settings_of(context),
         f"🛍 <b>New shuttle batch #{batch.id}</b>: {fmt_sgd(batch.amount_cents)}, "
         f"paid by {payer}. {await use_note(db)}",
+        reply_markup=cancel_markup(batch.id),
     )
 
 

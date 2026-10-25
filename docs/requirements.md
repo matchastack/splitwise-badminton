@@ -71,16 +71,16 @@ Out of scope for v1 is listed in [§8](#8-out-of-scope-v1).
   - The bot uses python-telegram-bot in webhook mode.
 - **Database:** Neon Postgres (free tier), using its pooled connection string. Access is through SQLAlchemy 2 (async) with psycopg 3. Migrations use Alembic.
 - **Scheduler:** a Vercel cron runs once a day. An external free scheduler (e.g. cron-job.org) can optionally call the same endpoint more often.
-- **Chat:** a single Telegram group. The bot is a group admin with the *Delete messages* permission.
+- **Chat:** a single Telegram group, which chats freely; members send commands to the bot in private chats (FR-MEM-9). The bot is a group admin with the *Pin messages* permission.
 
 ### 3.2 Platform constraints
 | ID | Constraint | Consequence for the design |
 |---|---|---|
 | C-1 | Vercel Hobby crons run at most once a day, at any time within the scheduled hour. | Locking can't depend on cron timing. It is enforced against the clock on every interaction (FR-ATT-5). All scheduled work is idempotent. |
-| C-2 | A bot can't message a user who hasn't opened a chat with it (`/start`). | Settle-ups are always posted in the group. Personal DM statements are a bonus for members who have run `/start`. |
+| C-2 | A bot can't message a user who hasn't opened a chat with it (`/start`). | Members use the bot in a private chat with it, so whoever records anything has opened one. Settle-ups are still always posted in the group; personal DM statements go to members who have run `/start`. |
 | C-3 | A bot can't list the members of a group. | Members are registered when they interact with the bot (FR-MEM-1). |
 | C-4 | Inline-button `callback_data` is limited to 64 bytes. | Callbacks carry short IDs only. |
-| C-5 | A bot can delete other users' messages, or pin messages, only if it is an admin with those rights. | The setup guide makes the bot an admin with both (FR-OPS-4). |
+| C-5 | A bot can pin messages only if it is an admin with that right. | The setup guide makes the bot an admin with *Pin messages* (FR-OPS-4). As an admin, it can also check who is in the group (FR-MEM-9). |
 | C-6 | Serverless functions keep no memory between requests. | Wizard state is stored in the database (FR-BK-9). |
 
 ### 3.3 Assumptions
@@ -109,11 +109,12 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
   - rename or deactivate any member.
   - Inactive members are hidden from pickers, but their history is kept.
   - Once a change is made (rename, deactivate, reactivate or link, FR-MEM-8), the list closes: it shows the updated members without buttons, so scrolling past it later can't change anyone by accident. `/members` opens a fresh list.
+  - Renaming asks for the name with a reply prompt, so only from a list in the admin's private chat (FR-MOD-2). On a list left in the group from before (FR-ADM-6), ✏️ says to send `/members` privately.
 - **FR-MEM-6:**
   - Wherever the bot names someone a payment is owed to, it must show their @username.
   - Members without a username are shown as a text mention, i.e. a tappable name.
   - Guest members are shown by display name.
-- **FR-MEM-7:** `/help` must list the commands available to the caller. Admin commands are shown to the admin only.
+- **FR-MEM-7:** `/help` must list the commands available to the caller. Admin commands are shown to the admin only. It says to send commands to the bot privately; the group gets what they record.
 - **FR-MEM-8:** In `/members`, the admin can link a guest to a Telegram account. This covers someone who was a guest (for example, imported from the spreadsheet, FR-MIG-4) and has since joined, so the bot made them a second member record (FR-MEM-1).
   - The admin taps 🔗 on the guest, picks the member the bot made for their account (newest first), and confirms. The confirmation shows both balances and their sum.
   - The two records become one, with the account's name and Telegram identity, as for a member who joined normally (FR-MEM-1, FR-MEM-4). Everything the account did (bookings, attendance, shuttle purchases, payments, settle-up lines, stored balances) moves to the guest. Nobody else's figures change, so the linked balance is the two balances added together.
@@ -121,12 +122,18 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
   - For other sessions, the person counts once: *in* if either answer was *in*. Payments and settle-up lines between the two records are dropped, because they would be to themselves.
   - Open wizards that hold the account's member ID expire. The latest invoice card is refreshed.
   - The link is announced in the group and audited, and the member list closes (FR-MEM-5).
+- **FR-MEM-9:** In a private chat, the bot only serves the group's members. Anyone can message a public bot, so outsiders mustn't be able to change the group's balances.
+  - Before a member command runs in a private chat, the bot asks Telegram (`getChatMember` on `GROUP_CHAT_ID`) whether the sender is in the group: as its owner, an administrator, a member, or restricted but still a member.
+  - Anyone else is told the bot is for the group's members, and no member record is made for them (FR-MEM-1). That includes someone who has left or was removed.
+  - A lookup that fails (the user isn't found, or the bot is no longer in the group) counts as not a member, and is logged. Telegram only guarantees the lookup for a bot that is a group admin; this one is, to pin bookings (C-5).
+  - The admin is let through without a lookup. With no `GROUP_CHAT_ID` set, only the admin is.
+  - Commands in the group aren't checked: whoever sends one is in it. `/chatid` is never checked (FR-OPS-5).
 
 ### 4.2 Court bookings (BK)
 - **FR-BK-1:**
-  - A member starts a booking by sending `/court` in the group. The bot asks for the booking screenshot with a reply prompt, and the member replies with it.
+  - A member starts a booking by sending `/court` to the bot in a private chat (FR-MEM-9). The bot asks for the booking screenshot with a reply prompt, and the member sends it. In a private chat, prompts don't @mention the member, and the screenshot needn't be a reply: the member's next photo answers their waiting form. With no form waiting, a photo without the `/court` caption is ignored.
   - Sending the screenshot with the caption `/court` does both at once. The caption is matched like a command: in any case, and only addressed to this bot, if to any.
-  - `/court` in a private chat is answered with a pointer to the group. `/book`, its name before, is answered with a pointer to `/court`.
+  - `/court` in the group, as text or as a caption, gets a short reply saying to send it to the bot privately, with a button that opens that chat. `/book`, its name before, is answered with a pointer to `/court`.
   - A new booking replaces the member's earlier one still waiting for its screenshot, and that prompt is removed. A screenshot answering a prompt whose form has expired starts a new booking.
   - The sender is the payer, whether or not they play.
   - The photo's Telegram `file_id` is stored as proof.
@@ -151,11 +158,11 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
 - **FR-BK-8:**
   - **Confirm**: the booking (date, start–end, hours, venue and courts, price and payer) with **[✅ Confirm] [✏️ Edit] [✖ Cancel]**.
   - **✏️ Edit** changes the date, time or hours (as in FR-BK-3 to FR-BK-5), or the venue, courts or price (reply prompts).
-  - On confirm, the bot posts the screenshot captioned with the booking: its permanent record, which also shows when the attendance card will be posted.
-  - The bot pins the record without notifying anyone (FR-ATT-4), and deletes the wizard and the member's screenshot.
+  - On confirm, the bot posts the screenshot in the group, captioned with the booking: its permanent record, which also shows when the attendance card will be posted.
+  - The bot pins the record without notifying anyone (FR-ATT-4). In the private chat, the wizard becomes a one-line confirmation, and the member's screenshot stays.
 - **FR-BK-9:**
   - Wizard state is stored in the database.
-  - A wizard that isn't finished within 24 hours expires. Its message, and the member's booking screenshot, are deleted.
+  - A wizard that isn't finished within 24 hours expires, and its message is deleted. The member's booking screenshot stays in their private chat.
 - **FR-BK-10:** The submitter or the admin can cancel a booking before its session starts.
   - Its record is unpinned.
   - A session left with no bookings is cancelled.
@@ -192,11 +199,10 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
   - The admin is notified by DM so they can fix the attendance or cancel the session.
 
 ### 4.4 Shuttlecock batches (SH)
-- **FR-SH-1:** Any member records a shuttlecock purchase by sending `/shuttle <price>` in the group, as for a booking (FR-BK-1).
-  - The sender is the payer. In a private chat, a member is asked to send it in the group instead, so someone outside the group can't record a purchase.
-  - The admin can use it anywhere, and picks the payer from a list of members, to record a purchase for someone else.
+- **FR-SH-1:** Any member records a shuttlecock purchase by sending `/shuttle <price>` to the bot in a private chat, as for a booking (FR-BK-1). Only the group's members can (FR-MEM-9). In the group, it gets the same reply as `/court`.
+  - The sender is the payer. The admin picks the payer from a list of members, to record a purchase for someone else.
   - The card shows the price and payer with **[✅ Record] [✖ Cancel]**. Only the sender can operate it.
-  - The purchase becomes the *waiting* batch, for when the batch in use runs out. Nothing closes and nothing is billed. It is announced in the group.
+  - The purchase becomes the *waiting* batch, for when the batch in use runs out. Nothing closes and nothing is billed. It is announced in the group, and the card becomes a one-line confirmation.
 - **FR-SH-2:** `/shuttle_finished` (admin) finishes the open batch: it closes, and the waiting batch becomes the open one. The admin picks the waiting batch's start point: **[Next session]** (default) or **[Last session]**, the latter for shuttles already used in the most recent session.
   - With no waiting batch, `/shuttle_finished` is refused: the next purchase must be recorded first.
   - With no open batch yet (the very first purchase), it puts the waiting batch in use.
@@ -208,7 +214,7 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
 - **FR-SH-5:** At most one batch waits.
   - `/shuttle <price>` while a batch is waiting is refused with a warning that names it.
   - The database enforces this too, so two purchases recorded at the same moment can't both wait.
-- **FR-SH-6:** While a purchase is waiting, its payer or the admin can cancel it from its card. A second tap confirms.
+- **FR-SH-6:** While a purchase is waiting, its payer or the admin can cancel it from its announcement in the group. A second tap confirms.
   - Anyone else gets an alert.
   - Once the batch is in use it can't be cancelled; the admin corrects it instead (FR-SH-7).
   - The cancellation is announced in the group and audited.
@@ -293,20 +299,19 @@ Worked examples:
   - `/settle` (admin) records a manual transfer: from, to and amount.
   - It is announced in the group.
 - **FR-ADM-5:** Every admin change, every shuttle purchase, and every booking or purchase cancellation is written to an audit log: who, what, before and after, and when.
-- **FR-ADM-6:** Admin commands work in the group or in a private chat with the bot. Announcements always go to the group.
+- **FR-ADM-6:** Admin commands work only in the admin's private chat with the bot, like member commands (FR-MEM-9). In the group, they get the same reply as member commands: send it to the bot privately (FR-BK-1). Announcements always go to the group.
 
 ### 4.8 Group moderation (MOD)
-- **FR-MOD-1:**
-  - In the group, the bot must delete every message from a non-admin member unless it is one of these:
-    - a command the bot handles;
-    - a `/court` photo;
-    - a reply to an active bot prompt.
-  - This covers plain text, stickers, media, unknown commands and forwards.
+- **FR-MOD-1:** The group is a normal chat.
+  - The bot posts its results there (booking records, attendance cards, announcements and invoices) and handles taps on their buttons.
+  - It answers its commands there, as text or a `/court` caption, with the reply that says to send them privately (FR-BK-1).
+  - It ignores everything else: plain text, stickers, media, replies, forwards, unknown commands and other bots' commands. None of it costs a database query.
 - **FR-MOD-2:**
-  - A reply to a bot prompt (FR-BK-1, FR-BK-5, FR-BK-8 and the admin wizards) is processed.
-  - After processing, both the reply and the prompt are deleted, so the group only holds bot cards.
-  - The exception is the booking screenshot: it stays until the booking is confirmed or cancelled, so it can be checked against (FR-BK-8).
-- **FR-MOD-3:** Messages from the admin and service messages (joins, leaves, pins, title changes) are never deleted.
+  - Every bot prompt (FR-BK-1, FR-BK-5, FR-BK-8 and the admin wizards) is asked in a private chat, where the wizard is. A reply to one there is processed.
+  - After processing, both the reply and the prompt are deleted, so the chat only holds the bot's cards.
+  - A reply in the group is never looked up, so it costs no database query (NFR-1).
+  - The exception is the booking screenshot, sent in the member's private chat: it stays (FR-BK-8).
+- **FR-MOD-3:** The bot never deletes anyone's messages in the group, so it doesn't need the *Delete messages* right (C-5).
 - **FR-MOD-4:** The bot ignores updates from any chat other than the configured group and private chats.
 
 ### 4.9 Operations (OPS)
@@ -320,10 +325,11 @@ Worked examples:
   4. clean up expired wizards.
 - **FR-OPS-3:** A setup script must:
   - register the webhook, with its secret and the allowed update types;
-  - publish the command list to Telegram.
+  - publish the command menus to Telegram: member commands in private chats, and admin commands in the admin's private chat;
+  - clear the menus earlier versions published for the group (the default menu and the admin's menu there), so the group offers none.
 - **FR-OPS-4:** The README must explain the full setup:
   - BotFather;
-  - adding the bot to the group as an admin with *Delete messages* and *Pin messages*;
+  - adding the bot to the group as an admin with *Pin messages*;
   - finding the group ID with `/chatid`;
   - Neon and migrations;
   - Vercel environment variables;
@@ -360,7 +366,7 @@ Worked examples:
 | NFR-1 | Cost | Runs entirely on free tiers: Vercel Hobby, Neon Free, and GitHub Actions free minutes for CI. |
 | NFR-2 | Correctness | Money is integer cents. Splits add up exactly. All balances sum to zero, which is tested. |
 | NFR-3 | Reliability | Scheduled steps and card/invoice posting are idempotent: they claim their work atomically in the database before sending. If a scheduled run is missed, the next one catches up. |
-| NFR-4 | Security | The webhook secret, cron bearer token and admin ID list are configured as environment variables. Secrets are never logged. Updates from other chats are ignored. |
+| NFR-4 | Security | The webhook secret, cron bearer token and admin ID list are configured as environment variables. Secrets are never logged. Updates from other groups are ignored, and private chats only serve the group's members (FR-MEM-9). |
 | NFR-5 | Privacy | Only Telegram user ID, first name, @username, booking photo `file_id`s, and the venue and courts read from them are stored. Screenshots are read through a temporary file that is deleted at once; they aren't kept. No phone numbers or payment details. |
 | NFR-6 | Transparency | Every change that affects someone's money is visible in the group and recorded in the audit log. |
 | NFR-7 | Usability | Each wizard is one message edited in place. Buttons are preferred over typing. Messages are short. All times are in SGT, e.g. "Sun 4 Oct, 11:00–13:00". |
@@ -372,21 +378,23 @@ Worked examples:
 ### 6.1 Telegram commands
 | Command | Who | Where | Purpose |
 |---|---|---|---|
-| `/start` | anyone | DM | Link account, enable DM statements |
-| `/help` | anyone | any | List available commands |
-| `/court` | member | group | Start the booking wizard; then send the screenshot (or send it captioned `/court`) |
-| `/shuttle <price>` | member | group (admin: any) | Record a shuttle purchase; it waits until the current batch is finished |
-| `/balance` | member | any | Balance, pending shuttle hours, unpaid lines |
-| `/upcoming` | member | any | Scheduled sessions |
-| `/name <name>` | member | any | Set display name |
+| `/start` | member | DM | Link account, enable DM statements |
+| `/help` | member | DM | List available commands |
+| `/court` | member | DM | Start the booking wizard; then send the screenshot (or send it captioned `/court`) |
+| `/shuttle <price>` | member | DM | Record a shuttle purchase; it waits until the current batch is finished |
+| `/balance` | member | DM | Balance, pending shuttle hours, unpaid lines |
+| `/upcoming` | member | DM | Scheduled sessions |
+| `/name <name>` | member | DM | Set display name |
 | `/chatid` | anyone | any | Show chat ID (setup) |
-| `/edit` | admin | any | Correct a session's attendance, bookings, or cancel it |
-| `/shuttle_finished` | admin | any | Finish the open shuttle batch; the waiting one takes over |
-| `/shuttle_edit` | admin | any | Correct a shuttle batch's price or payer, remove a waiting one, or undo a finish |
-| `/settle` | admin | any | Record a manual transfer |
-| `/addmember <name>` | admin | any | Add a guest member |
-| `/members` | admin | any | List, rename or deactivate members; link a guest to a Telegram account |
-| `/invoice` | admin | any | Generate the invoice now |
+| `/edit` | admin | DM | Correct a session's attendance, bookings, or cancel it |
+| `/shuttle_finished` | admin | DM | Finish the open shuttle batch; the waiting one takes over |
+| `/shuttle_edit` | admin | DM | Correct a shuttle batch's price or payer, remove a waiting one, or undo a finish |
+| `/settle` | admin | DM | Record a manual transfer |
+| `/addmember <name>` | admin | DM | Add a guest member |
+| `/members` | admin | DM | List, rename or deactivate members; link a guest to a Telegram account |
+| `/invoice` | admin | DM | Generate the invoice now |
+
+A member is someone in the group (FR-MEM-9). A member or admin command sent in the group gets a short reply saying to send it to the bot privately, with a button that opens that chat; the results (booking records, announcements, cards) are posted in the group.
 
 ### 6.2 HTTP endpoints
 | Method & path | Auth | Purpose |
@@ -493,9 +501,10 @@ Acceptance criteria are brief; the referenced FRs hold the detail.
 - **US-8.5:** As the admin, I want to correct a shuttle batch's price or payer, remove a mistaken purchase, or undo a mistaken finish. *(FR-SH-7, FR-ADM-3)*
 
 ### E9 — Group moderation
-- **US-9.1:** As the admin, I want the group to contain only bot activity, so that cards and settle-ups are easy to find. *(FR-MOD-1, FR-MOD-3)*
+- **US-9.1:** As the group, we want to chat freely, with the bot posting only its results. *(FR-MOD-1, FR-MOD-3)*
 - **US-9.2:** As a member, I want my replies to bot prompts to be accepted and then cleaned up. *(FR-MOD-2)*
 - **US-9.3:** As the admin, I want the bot to ignore other chats. *(FR-MOD-4)*
+- **US-9.4:** As the group, we want only our members to record bookings and purchases, so that outsiders can't change our balances. *(FR-MEM-9, NFR-4)*
 
 ### E10 — Migration from the spreadsheet
 - **US-10.1:** As the admin, I want to carry everyone's balance over from `Badminton.xlsx`, so that nothing owed is lost and the bot's figures match the sheet to the cent. *(FR-MIG-1, FR-MIG-2, FR-MIG-4)*

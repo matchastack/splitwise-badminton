@@ -13,11 +13,13 @@ import html
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.constants import ChatType
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
 from badminton.bot import prompts
 from badminton.bot.admin import admin_only
 from badminton.bot.context import db_session, settings_of
+from badminton.bot.membership import private_only
 from badminton.db.models import Draft, Member
 from badminton.domain.money import fmt_signed
 from badminton.domain.timeutil import fmt_date, sgt_date, utc_now
@@ -45,6 +47,9 @@ ALERT_LIMIT = 200  # characters Telegram shows in an alert
 # Shown once a change is made: the list closes, so scrolling past it later can't tap a
 # button by accident. /members opens a fresh one.
 LIST_CLOSED = "🔒 Done. Send /members again to make more changes."
+RENAME_PRIVATELY = (
+    "Send /members to me privately to rename someone: I can only ask for the name there."
+)
 
 
 def render_members(members: list[Member]) -> tuple[str, InlineKeyboardMarkup]:
@@ -69,6 +74,7 @@ async def closed_list(db: AsyncSession) -> str:
     return f"{text}\n\n{LIST_CLOSED}"
 
 
+@private_only
 @admin_only
 async def add_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
@@ -92,6 +98,7 @@ async def add_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     )
 
 
+@private_only
 @admin_only
 async def list_members(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     async with db_session(context) as db:
@@ -129,6 +136,11 @@ async def toggle_active(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 @admin_only
 async def start_rename(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
+    if query.message.chat.type != ChatType.PRIVATE:
+        # A list opened in the group before commands moved to private chats: a reply to a
+        # prompt there is never read (FR-MOD-2), so don't ask one.
+        await query.answer(RENAME_PRIVATELY, show_alert=True)
+        return
     member_id = int(query.data.rsplit(":", 1)[1])
     async with db_session(context) as db:
         member = await db.get(Member, member_id)

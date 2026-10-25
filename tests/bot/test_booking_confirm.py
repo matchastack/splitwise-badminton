@@ -6,7 +6,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import SAWarning
 
 from badminton.bot.context import SETTINGS_KEY
-from badminton.bot.handlers.booking import EXPIRED, UNREAD
+from badminton.bot.handlers.booking import EXPIRED, NO_GROUP, UNREAD
 from badminton.db.models import Booking, Draft, Member, Session
 from badminton.domain.timeutil import at_sgt, fmt_date
 from tests.bot.booking_helpers import ALICE, BOB, Wizard, activesg_text, book, future_day
@@ -21,7 +21,7 @@ async def stored(bot: BotHarness) -> tuple[list[Session], list[Booking]]:
     return sessions, bookings
 
 
-async def test_confirm_posts_the_screenshot_with_the_booking_and_pins_it(bot: BotHarness) -> None:
+async def test_confirm_posts_the_screenshot_in_the_group_and_pins_it(bot: BotHarness) -> None:
     day = future_day(14)
     wizard = await book(bot, BOB, day)
 
@@ -62,8 +62,14 @@ async def test_confirm_posts_the_screenshot_with_the_booking_and_pins_it(bot: Bo
         "message_id": record.card["message_id"],
         "disable_notification": True,
     }
-    deleted = {call.params["message_id"] for call in bot.telegram.calls_to("deleteMessage")}
-    assert {wizard.card["message_id"], wizard.photo["message_id"]} <= deleted
+    # In the private chat, the card says so in a line, and the member's screenshot stays.
+    assert wizard.card["chat"]["id"] == BOB["id"]
+    assert (
+        wizard.text == f"✅ Booked {fmt_date(day)}, 11:00–13:00 (2h), and posted it in the group."
+    )
+    assert wizard.buttons() == {}
+    deleted = [call.params["message_id"] for call in bot.telegram.calls_to("deleteMessage")]
+    assert deleted == [wizard.prompt["message_id"]]  # only the answered prompt
 
 
 async def test_a_booking_without_venue_or_court_is_recorded_without_them(bot: BotHarness) -> None:
@@ -87,8 +93,7 @@ async def test_a_pin_the_bot_may_not_make_still_records_the_booking(bot: BotHarn
 
     (booking,) = (await stored(bot))[1]
     assert booking.record_message_id == wizard.record().card["message_id"]
-    deleted = [call.params["message_id"] for call in bot.telegram.calls_to("deleteMessage")]
-    assert wizard.card["message_id"] in deleted
+    assert wizard.text.startswith("✅ Booked ")
 
 
 async def test_a_second_confirm_tap_keeps_the_record(bot: BotHarness) -> None:
@@ -222,9 +227,21 @@ async def test_a_network_error_pinning_still_finishes_the_booking(bot: BotHarnes
     await wizard.tap("✅ Confirm")
 
     assert len((await stored(bot))[1]) == 1
-    deleted = [call.params["message_id"] for call in bot.telegram.calls_to("deleteMessage")]
-    assert {wizard.card["message_id"], wizard.photo["message_id"]} <= set(deleted)
+    assert wizard.text.startswith("✅ Booked ")
     assert any("No answer = not playing." in text for text in bot.telegram.sent_texts(GROUP_ID))
+
+
+async def test_a_booking_needs_the_group_to_be_set(bot: BotHarness) -> None:
+    """Before setup, only the admin can use the bot privately (FR-MEM-9)."""
+    wizard = await book(bot, ALICE, future_day(14))
+    unconfigured = dataclasses.replace(bot.settings, group_chat_id=None)
+    bot.application.bot_data[SETTINGS_KEY] = unconfigured
+
+    await wizard.tap("✅ Confirm")
+
+    assert wizard.last_alert() == NO_GROUP
+    assert await stored(bot) == ([], [])
+    assert bot.telegram.calls_to("sendPhoto") == []
 
 
 async def test_a_session_booked_meanwhile_is_offered_before_confirming(bot: BotHarness) -> None:

@@ -1,10 +1,21 @@
 """Self-tests for the bot-flow harness, using throwaway handlers.
 
-They go in handler group -1 so they run before the real handlers (and the guard).
+They go in handler group -1 so they run before the real handlers.
 """
 
 import pytest
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import (
+    ChatMember,
+    ChatMemberAdministrator,
+    ChatMemberBanned,
+    ChatMemberLeft,
+    ChatMemberMember,
+    ChatMemberOwner,
+    ChatMemberRestricted,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Update,
+)
 from telegram.error import BadRequest, Forbidden
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
@@ -90,3 +101,28 @@ async def test_unsupported_method_fails_loudly(bot: BotHarness) -> None:
 
     with pytest.raises(BadRequest, match="does not support getChat"):
         await bot.send(text_update("/chat", sender=ALICE))
+
+
+@pytest.mark.parametrize(
+    ("status", "is_member", "expected"),
+    [
+        (None, True, ChatMemberMember),
+        ("creator", True, ChatMemberOwner),
+        ("administrator", True, ChatMemberAdministrator),
+        ("restricted", False, ChatMemberRestricted),
+        ("left", True, ChatMemberLeft),
+        ("kicked", True, ChatMemberBanned),
+    ],
+)
+async def test_chat_members_default_to_members(
+    bot: BotHarness, status: str | None, is_member: bool, expected: type[ChatMember]
+) -> None:
+    if status is not None:
+        bot.telegram.set_member_status(BOB["id"], status, is_member=is_member)
+
+    member = await bot.application.bot.get_chat_member(GROUP_ID, BOB["id"])
+
+    assert type(member) is expected
+    assert member.user.id == BOB["id"]
+    if status == "restricted":
+        assert not member.is_member

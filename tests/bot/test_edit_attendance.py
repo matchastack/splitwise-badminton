@@ -45,7 +45,7 @@ async def ins(bot: BotHarness, session_id: int) -> set[int]:
 
 
 async def test_edit_is_admin_only(bot: BotHarness) -> None:
-    await bot.send(text_update("/edit", sender=user(222, "bob")))
+    await bot.send(text_update("/edit", sender=user(222, "bob"), chat_id=222))
 
     assert bot.telegram.sent_texts() == [NOT_ADMIN]
 

@@ -19,6 +19,7 @@ from badminton.bot.admin import admin_only
 from badminton.bot.context import db_session, settings_of
 from badminton.bot.handlers.booking import refresh_record
 from badminton.bot.keyboards import decode, encode
+from badminton.bot.membership import private_only
 from badminton.db.models import Booking, Draft, Member, Session
 from badminton.domain.money import fmt_sgd, parse_amount
 from badminton.domain.timeutil import (
@@ -212,6 +213,7 @@ async def _current_ins(db: AsyncSession, session_id: int) -> list[int]:
     return sorted(a.member_id for a in view.session.attendance if a.status == IN)
 
 
+@private_only
 @admin_only
 async def start_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message

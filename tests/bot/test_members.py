@@ -38,19 +38,28 @@ async def test_start_registers_member_and_enables_dms(bot: BotHarness) -> None:
 async def test_start_in_the_group_is_not_handled(bot: BotHarness) -> None:
     await bot.send(text_update("/start", sender=BOB))
 
-    assert [call.method for call in bot.telegram.calls] == ["deleteMessage"]
+    assert bot.telegram.calls == []
     assert await member_by_telegram_id(bot, BOB["id"]) is None
 
 
+async def test_start_says_to_send_commands_here(bot: BotHarness) -> None:
+    await bot.send(text_update("/start", sender=BOB, chat_id=BOB["id"]))
+
+    assert (
+        "Send me your commands here, and I'll post what you record in the group."
+        in (bot.telegram.sent_texts(BOB["id"])[0])
+    )
+
+
 async def test_name_sticks_and_username_refreshes(bot: BotHarness) -> None:
-    await bot.send(text_update("/name Bob <T>", sender=BOB))
+    await bot.send(text_update("/name Bob <T>", sender=BOB, chat_id=BOB["id"]))
     renamed_user = {**BOB, "username": "bob_t", "first_name": "Someone else"}
     await bot.send(text_update("/start", sender=renamed_user, chat_id=BOB["id"]))
 
     member = await member_by_telegram_id(bot, BOB["id"])
     assert member.display_name == "Bob <T>"
     assert member.username == "bob_t"
-    assert "I'll call you <b>Bob &lt;T&gt;</b>" in bot.telegram.sent_texts(GROUP_ID)[0]
+    assert "I'll call you <b>Bob &lt;T&gt;</b>" in bot.telegram.sent_texts(BOB["id"])[0]
 
 
 @pytest.mark.parametrize(
@@ -58,18 +67,19 @@ async def test_name_sticks_and_username_refreshes(bot: BotHarness) -> None:
     [("/name", "Usage: /name &lt;your name&gt;"), ("/name " + "x" * 33, "at most 32 characters")],
 )
 async def test_name_rejects_bad_input(bot: BotHarness, command: str, error: str) -> None:
-    await bot.send(text_update(command, sender=BOB))
+    await bot.send(text_update(command, sender=BOB, chat_id=BOB["id"]))
 
     assert error in bot.telegram.sent_texts()[0]
 
 
 async def test_help_shows_admin_commands_only_to_admin(bot: BotHarness) -> None:
-    await bot.send(text_update("/help", sender=BOB))
-    await bot.send(text_update("/help", sender=ALICE))
+    await bot.send(text_update("/help", sender=BOB, chat_id=BOB["id"]))
+    await bot.send(text_update("/help", sender=ALICE, chat_id=ALICE["id"]))
 
     member_help, admin_help = bot.telegram.sent_texts()
     assert "/court — " in member_help
     assert "/edit" not in member_help
+    assert "Send these to me here; I post what you record in the group." in member_help
     assert "/edit — " in admin_help
     assert admin_help.count("/court — ") == 1
 

@@ -16,7 +16,7 @@ class EditCard:
         self.message: dict[str, Any] = {}
 
     async def open(self, sender: dict[str, Any] = ALICE) -> EditCard:
-        await self.bot.send(text_update("/edit", sender=sender))
+        await self.bot.send(text_update("/edit", sender=sender, chat_id=sender["id"]))
         self.message = self.bot.telegram.last("sendMessage").message
         return self
 

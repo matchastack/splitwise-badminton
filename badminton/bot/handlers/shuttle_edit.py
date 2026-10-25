@@ -19,6 +19,7 @@ from badminton.bot.admin import admin_only
 from badminton.bot.context import db_session, settings_of
 from badminton.bot.handlers.shuttle import MAX_SHUTTLE_CENTS
 from badminton.bot.keyboards import decode, encode
+from badminton.bot.membership import private_only
 from badminton.db.models import Draft, ShuttleBatch
 from badminton.domain.money import fmt_sgd, parse_amount
 from badminton.domain.timeutil import fmt_date, sgt_date, utc_now
@@ -148,6 +149,7 @@ async def _when(db: AsyncSession, batch: ShuttleBatch, status: str) -> str:
     return f"Used from {since} until {until}."
 
 
+@private_only
 @admin_only
 async def start_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message

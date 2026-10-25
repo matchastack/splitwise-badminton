@@ -82,7 +82,7 @@ async def test_a_typed_price_stays_when_the_hours_change(bot: BotHarness) -> Non
     wizard = await book(bot, BOB, DAY)
 
     await edit(wizard, "💵 Price")
-    assert "how much did you pay" in bot.telegram.last("sendMessage").params["text"]
+    assert "How much did you pay" in bot.telegram.last("sendMessage").params["text"]
     assert (await answer(bot, "abc")).startswith("⚠️ Enter an amount like 14.80")
     await answer(bot, "15.5")
     assert "💵 $15.50, paid by @bob_t" in wizard.text
