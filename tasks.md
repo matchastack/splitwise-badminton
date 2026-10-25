@@ -85,6 +85,8 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T46 | Member commands in private chat | `feat/t46-member-commands-private` | E9 | T45 | ✅ | [#77](https://github.com/matchastack/splitwise-badminton/pull/77) |
 | T47 | Admin commands in private chat | `feat/t47-admin-commands-private` | E9 | T46 | ✅ | [#78](https://github.com/matchastack/splitwise-badminton/pull/78) |
 | T48 | Let the group chat freely | `feat/t48-group-chat` | E9 | T47 | ✅ | [#79](https://github.com/matchastack/splitwise-badminton/pull/79) |
+| T49 | Screenshots in a private chat needn't be replies | `fix/t49-private-screenshots` | E3 | T48 | ⬜ | — |
+| T50 | Renaming from a member list left in the group | `fix/t50-group-member-list-rename` | E9 | T47, T49 | ⬜ | — |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
@@ -329,6 +331,14 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
   - One constant names the command for the menu, the handlers, the caption check and the messages; a test checks every menu command has a handler.
 - **Done when:** the booking tests run through `/court`, and tests cover the `/book` pointer (text and caption), captions for other bots or in other cases, and `/court` in a private chat.
 
+### T49 · Screenshots in a private chat needn't be replies
+`fix/t49-private-screenshots` · Stories US-3.1 · FR-BK-1 · Depends on T48
+- **Scope:** from review of #77. A booking's screenshot only counted as one if it replied to the `/court` prompt or was captioned `/court`. That showed whose screenshot it was in the group, but in a private chat it adds nothing, and a member who closes the ForceReply bar, or whose client doesn't reply, is silently ignored while their form waits.
+  - In a private chat, the member's next photo answers their waiting `/court` form, reply or not. An image sent as a file is asked again as a photo, as now.
+  - With no form waiting, only a photo captioned `/court` starts a booking (and `/book` gets its pointer). Any other photo is ignored, so a picture sent to the bot for another reason doesn't open a form.
+  - Requirements: FR-BK-1.
+- **Done when:** tests cover a photo sent without replying after `/court`, an image file sent without replying while a form waits, and a photo with no form waiting and no caption (no reply, no form, not downloaded).
+
 ## E4 — Attendance and locking
 
 ### T25 · Attendance card
@@ -488,6 +498,13 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
   - `/help` drops "In the group, only commands are allowed; other messages are removed."
   - Requirements: FR-MOD-1 and FR-MOD-3 say the above (IDs kept); US-9.1 becomes "As the group, we want to chat freely, with the bot posting only its results".
 - **Done when:** `tests/bot/test_guard.py` is replaced by tests showing that plain text, stickers, photos, replies, unknown commands and other bots' commands in the group get no Telegram call, from a member and from the admin; `tests/test_scripts.py` covers the new menus and the cleared group menus.
+
+### T50 · Renaming from a member list left in the group
+`fix/t50-group-member-list-rename` · Stories US-2.4 · FR-MEM-5, FR-MOD-2 · Depends on T47, T49
+- **Scope:** from review of #78. A `/members` list keeps its buttons until a change is made from it (T40), so lists the admin opened in the group before T47 stay usable. ✏️ on one asks for the new name in the group, where replies are no longer read (FR-MOD-2), so nothing happens and the prompt waits until it expires.
+  - ✏️ on a list outside a private chat answers with an alert to send `/members` privately, and asks nothing. Deactivating, reactivating and linking need no prompt and still work from such a list.
+  - Requirements: FR-MEM-5.
+- **Done when:** a test taps ✏️ on a list in the group and gets the alert, with no draft and no message sent.
 
 ## E1 — Documentation
 
