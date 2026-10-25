@@ -71,7 +71,7 @@ Out of scope for v1 is listed in [§8](#8-out-of-scope-v1).
   - The bot uses python-telegram-bot in webhook mode.
 - **Database:** Neon Postgres (free tier), using its pooled connection string. Access is through SQLAlchemy 2 (async) with psycopg 3. Migrations use Alembic.
 - **Scheduler:** a Vercel cron runs once a day. An external free scheduler (e.g. cron-job.org) can optionally call the same endpoint more often.
-- **Chat:** a single Telegram group. The bot is a group admin with the *Delete messages* permission.
+- **Chat:** a single Telegram group, which chats freely; members send commands to the bot in private chats (FR-MEM-9). The bot is a group admin with the *Pin messages* permission.
 
 ### 3.2 Platform constraints
 | ID | Constraint | Consequence for the design |
@@ -80,7 +80,7 @@ Out of scope for v1 is listed in [§8](#8-out-of-scope-v1).
 | C-2 | A bot can't message a user who hasn't opened a chat with it (`/start`). | Members use the bot in a private chat with it, so whoever records anything has opened one. Settle-ups are still always posted in the group; personal DM statements go to members who have run `/start`. |
 | C-3 | A bot can't list the members of a group. | Members are registered when they interact with the bot (FR-MEM-1). |
 | C-4 | Inline-button `callback_data` is limited to 64 bytes. | Callbacks carry short IDs only. |
-| C-5 | A bot can delete other users' messages, or pin messages, only if it is an admin with those rights. | The setup guide makes the bot an admin with both (FR-OPS-4). |
+| C-5 | A bot can pin messages only if it is an admin with that right. | The setup guide makes the bot an admin with *Pin messages* (FR-OPS-4). As an admin, it can also check who is in the group (FR-MEM-9). |
 | C-6 | Serverless functions keep no memory between requests. | Wizard state is stored in the database (FR-BK-9). |
 
 ### 3.3 Assumptions
@@ -301,17 +301,16 @@ Worked examples:
 - **FR-ADM-6:** Admin commands work only in the admin's private chat with the bot, like member commands (FR-MEM-9). In the group, they get the same reply as member commands: send it to the bot privately (FR-BK-1). Announcements always go to the group.
 
 ### 4.8 Group moderation (MOD)
-- **FR-MOD-1:**
-  - In the group, the bot must delete every message from a non-admin member unless it is one of these:
-    - a command the bot handles;
-    - a `/court` photo.
-  - This covers plain text, stickers, media, unknown commands and forwards.
+- **FR-MOD-1:** The group is a normal chat.
+  - The bot posts its results there (booking records, attendance cards, announcements and invoices) and handles taps on their buttons.
+  - It answers its commands there, as text or a `/court` caption, with the reply that says to send them privately (FR-BK-1).
+  - It ignores everything else: plain text, stickers, media, replies, forwards, unknown commands and other bots' commands. None of it costs a database query.
 - **FR-MOD-2:**
   - Every bot prompt (FR-BK-1, FR-BK-5, FR-BK-8 and the admin wizards) is asked in a private chat, where the wizard is. A reply to one there is processed.
   - After processing, both the reply and the prompt are deleted, so the chat only holds the bot's cards.
   - A reply in the group is never looked up, so it costs no database query (NFR-1).
   - The exception is the booking screenshot, sent in the member's private chat: it stays (FR-BK-8).
-- **FR-MOD-3:** Messages from the admin and service messages (joins, leaves, pins, title changes) are never deleted.
+- **FR-MOD-3:** The bot never deletes anyone's messages in the group, so it doesn't need the *Delete messages* right (C-5).
 - **FR-MOD-4:** The bot ignores updates from any chat other than the configured group and private chats.
 
 ### 4.9 Operations (OPS)
@@ -325,10 +324,11 @@ Worked examples:
   4. clean up expired wizards.
 - **FR-OPS-3:** A setup script must:
   - register the webhook, with its secret and the allowed update types;
-  - publish the command list to Telegram.
+  - publish the command menus to Telegram: member commands in private chats, and admin commands in the admin's private chat;
+  - clear the menus earlier versions published for the group (the default menu and the admin's menu there), so the group offers none.
 - **FR-OPS-4:** The README must explain the full setup:
   - BotFather;
-  - adding the bot to the group as an admin with *Delete messages* and *Pin messages*;
+  - adding the bot to the group as an admin with *Pin messages*;
   - finding the group ID with `/chatid`;
   - Neon and migrations;
   - Vercel environment variables;
@@ -500,7 +500,7 @@ Acceptance criteria are brief; the referenced FRs hold the detail.
 - **US-8.5:** As the admin, I want to correct a shuttle batch's price or payer, remove a mistaken purchase, or undo a mistaken finish. *(FR-SH-7, FR-ADM-3)*
 
 ### E9 — Group moderation
-- **US-9.1:** As the admin, I want the group to contain only bot activity, so that cards and settle-ups are easy to find. *(FR-MOD-1, FR-MOD-3)*
+- **US-9.1:** As the group, we want to chat freely, with the bot posting only its results. *(FR-MOD-1, FR-MOD-3)*
 - **US-9.2:** As a member, I want my replies to bot prompts to be accepted and then cleaned up. *(FR-MOD-2)*
 - **US-9.3:** As the admin, I want the bot to ignore other chats. *(FR-MOD-4)*
 - **US-9.4:** As the group, we want only our members to record bookings and purchases, so that outsiders can't change our balances. *(FR-MEM-9, NFR-4)*

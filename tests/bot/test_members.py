@@ -38,7 +38,7 @@ async def test_start_registers_member_and_enables_dms(bot: BotHarness) -> None:
 async def test_start_in_the_group_is_not_handled(bot: BotHarness) -> None:
     await bot.send(text_update("/start", sender=BOB))
 
-    assert [call.method for call in bot.telegram.calls] == ["deleteMessage"]
+    assert bot.telegram.calls == []
     assert await member_by_telegram_id(bot, BOB["id"]) is None
 
 

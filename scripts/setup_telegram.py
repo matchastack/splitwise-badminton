@@ -1,4 +1,7 @@
-"""Register the webhook and publish the command menu (FR-OPS-3).
+"""Register the webhook and publish the command menus (FR-OPS-3).
+
+Commands are sent to the bot in a private chat, so the menus are there: member commands
+in every private chat, and admin commands in each admin's. The group has none.
 
 Run after each deployment whose URL or commands changed:
 
@@ -14,7 +17,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from telegram import Bot, BotCommandScopeChat, BotCommandScopeChatMember, BotCommandScopeDefault
+from telegram import (
+    Bot,
+    BotCommandScopeAllPrivateChats,
+    BotCommandScopeChat,
+    BotCommandScopeChatMember,
+    BotCommandScopeDefault,
+)
 from telegram.error import BadRequest
 
 from badminton.bot.commands import ADMIN_COMMANDS, ALLOWED_UPDATES, MEMBER_COMMANDS
@@ -32,11 +41,16 @@ def webhook_url(base_url: str) -> str:
 async def configure(
     bot: Bot, settings: Settings, base_url: str, *, drop_pending_updates: bool = False
 ) -> list[str]:
-    """Register the webhook and menus; return a note for each admin menu Telegram refused.
+    """Register the webhook and menus; return a note for each admin menu Telegram refused
+    to set or clear.
 
     The webhook and member menu are what the bot needs to work, so they raise on failure.
     An admin menu is only a convenience, and Telegram refuses it ("Chat not found") until
     that admin has started a chat with the bot, so those failures are reported, not raised.
+
+    Earlier versions published menus for the group: the member menu as the default for
+    every chat, and the admin menu for each admin in the group. Both are cleared, so the
+    group offers no commands.
     """
     await bot.set_webhook(
         url=webhook_url(base_url),
@@ -44,20 +58,25 @@ async def configure(
         allowed_updates=list(ALLOWED_UPDATES),
         drop_pending_updates=drop_pending_updates,
     )
-    await bot.set_my_commands(MEMBER_COMMANDS, scope=BotCommandScopeDefault())
+    await bot.set_my_commands(MEMBER_COMMANDS, scope=BotCommandScopeAllPrivateChats())
+    await bot.delete_my_commands(scope=BotCommandScopeDefault())
 
     refused: list[str] = []
     for admin_id in sorted(settings.admin_ids):
-        scopes = {f"admin {admin_id}, private chat": BotCommandScopeChat(admin_id)}
+        try:
+            await bot.set_my_commands(ADMIN_COMMANDS, scope=BotCommandScopeChat(admin_id))
+        except BadRequest as error:
+            refused.append(f"admin {admin_id}, private chat: {error.message}")
         if settings.group_chat_id is not None:
-            scopes[f"admin {admin_id}, group {settings.group_chat_id}"] = BotCommandScopeChatMember(
-                settings.group_chat_id, admin_id
-            )
-        for label, scope in scopes.items():
             try:
-                await bot.set_my_commands(ADMIN_COMMANDS, scope=scope)
+                await bot.delete_my_commands(
+                    scope=BotCommandScopeChatMember(settings.group_chat_id, admin_id)
+                )
             except BadRequest as error:
-                refused.append(f"{label}: {error.message}")
+                refused.append(
+                    f"admin {admin_id}, clearing the menu in group {settings.group_chat_id}: "
+                    f"{error.message}"
+                )
     return refused
 
 
@@ -92,8 +111,8 @@ async def main(argv: list[str] | None = None) -> None:
         for note in refused:
             print(f"  - {note}", file=sys.stderr)
         print(
-            "Each admin must open the bot in Telegram and press Start (and, for the group menu,"
-            "\nbe in the group with the bot). Then run this script again.",
+            "Each admin must open the bot in Telegram and press Start (and, to clear an old"
+            "\ngroup menu, be in the group with the bot). Then run this script again.",
             file=sys.stderr,
         )
 

@@ -1,6 +1,6 @@
 """Self-tests for the bot-flow harness, using throwaway handlers.
 
-They go in handler group -1 so they run before the real handlers (and the guard).
+They go in handler group -1 so they run before the real handlers.
 """
 
 import pytest

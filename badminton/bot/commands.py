@@ -1,5 +1,6 @@
-"""The command menu Telegram shows (requirements §6.1). /start and /chatid are left out:
-Telegram offers Start itself, and /chatid is only needed during setup."""
+"""The command menus Telegram shows in private chats, where commands are sent (requirements
+§6.1). /start and /chatid are left out: Telegram offers Start itself, and /chatid is only
+needed during setup."""
 
 from __future__ import annotations
 

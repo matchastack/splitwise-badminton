@@ -44,8 +44,6 @@ from telegram.ext import (
 from badminton.bot import prompts
 from badminton.bot.commands import BOOKING_COMMAND, OLD_BOOKING_COMMAND
 from badminton.bot.context import db_session, ocr_of, settings_of
-from badminton.bot.handlers import guard
-from badminton.bot.handlers.guard import caption_command, is_booking_photo
 from badminton.bot.keyboards import (
     BACK,
     NOOP,
@@ -373,8 +371,6 @@ async def on_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         if draft is None and not is_booking_photo(message, context.bot.username):
             if caption_command(message, context.bot.username) == OLD_BOOKING_COMMAND:
                 await point_to_new_command(update, context)
-            else:
-                await guard.delete_unless_exempt(update, context)
             return
         if not message.photo:  # an image sent as a file
             await delete_message_quietly(context.bot, message.chat_id, message.message_id)
@@ -410,24 +406,38 @@ async def on_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def on_group_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """A photo captioned with a command, in the group: a booking is sent privately now."""
+    """A photo captioned with a command, in the group: a booking is sent privately now.
+    Any other photo is the group chatting, and left alone."""
     command = caption_command(update.effective_message, context.bot.username)
     if command == BOOKING_COMMAND:
         await send_privately(update, context)
     elif command == OLD_BOOKING_COMMAND:
         await point_to_new_command(update, context)
-    else:
-        await guard.delete_unless_exempt(update, context)
 
 
 async def point_to_new_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/book, as before T44, as text or a caption: say what replaced it. In the group, with
-    a button that opens the private chat; the message is then removed, like any other that
-    isn't a command the bot handles."""
+    a button that opens the private chat."""
     chat = update.effective_chat
     markup = None if chat.type == ChatType.PRIVATE else open_chat_markup(context.bot.username)
     await context.bot.send_message(chat.id, MOVED, reply_markup=markup)
-    await guard.delete_unless_exempt(update, context)
+
+
+def caption_command(message: Message, bot_username: str) -> str | None:
+    """The command a caption starts with, if it is for this bot. Matched as
+    CommandHandler matches a text command: in any case, with no @handle or ours."""
+    entities = message.caption_entities
+    if not entities or entities[0].type != MessageEntity.BOT_COMMAND or entities[0].offset:
+        return None
+    command, _, handle = message.parse_caption_entity(entities[0])[1:].partition("@")
+    if handle and handle.lower() != bot_username.lower():
+        return None
+    return command.lower()
+
+
+def is_booking_photo(message: Message, bot_username: str) -> bool:
+    """A photo captioned /court: the booking screenshot, sent without the prompt (FR-BK-1)."""
+    return bool(message.photo) and caption_command(message, bot_username) == BOOKING_COMMAND
 
 
 async def _prompt_draft(db: AsyncSession, message: Message, user_id: int) -> Draft | None:

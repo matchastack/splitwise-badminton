@@ -1,3 +1,4 @@
+import dataclasses
 import subprocess
 import sys
 from datetime import datetime
@@ -46,10 +47,42 @@ async def test_configure_sets_webhook_and_command_menus() -> None:
     members = [c.command for c in MEMBER_COMMANDS]
     admins = [c.command for c in ADMIN_COMMANDS]
     assert menus == [
-        ({"type": "default"}, members),
+        ({"type": "all_private_chats"}, members),
         ({"type": "chat", "chat_id": ADMIN_ID}, admins),
-        ({"type": "chat_member", "chat_id": GROUP_ID, "user_id": ADMIN_ID}, admins),
     ]
+
+
+async def test_configure_clears_the_group_menus_published_before() -> None:
+    """The member menu was the default, which groups showed too, and the admin had one in
+    the group. With both gone, the group offers no commands."""
+    telegram = FakeTelegram()
+    async with Bot(TEST_SETTINGS.bot_token, request=telegram) as bot:
+        await configure(bot, TEST_SETTINGS, "https://example.vercel.app")
+
+    cleared = [c.params["scope"] for c in telegram.calls_to("deleteMyCommands")]
+    assert cleared == [
+        {"type": "default"},
+        {"type": "chat_member", "chat_id": GROUP_ID, "user_id": ADMIN_ID},
+    ]
+
+
+async def test_configure_reports_a_group_menu_it_could_not_clear() -> None:
+    telegram = FakeTelegram()
+    telegram.fail("deleteMyCommands", 400, "Bad Request: chat not found", chat_id=GROUP_ID)
+    async with Bot(TEST_SETTINGS.bot_token, request=telegram) as bot:
+        refused = await configure(bot, TEST_SETTINGS, "https://example.vercel.app")
+
+    assert refused == [f"admin {ADMIN_ID}, clearing the menu in group {GROUP_ID}: Chat not found"]
+
+
+async def test_configure_before_the_group_is_set_clears_only_the_default() -> None:
+    telegram = FakeTelegram()
+    unconfigured = dataclasses.replace(TEST_SETTINGS, group_chat_id=None)
+    async with Bot(TEST_SETTINGS.bot_token, request=telegram) as bot:
+        await configure(bot, unconfigured, "https://example.vercel.app")
+
+    cleared = [c.params["scope"] for c in telegram.calls_to("deleteMyCommands")]
+    assert cleared == [{"type": "default"}]
 
 
 async def test_configure_reports_an_admin_who_has_not_started_the_bot() -> None:
@@ -60,7 +93,7 @@ async def test_configure_reports_an_admin_who_has_not_started_the_bot() -> None:
 
     assert refused == [f"admin {ADMIN_ID}, private chat: Chat not found"]
     assert telegram.last("setWebhook").params["url"] == "https://example.vercel.app/api/telegram"
-    scopes = [c.params["scope"] for c in telegram.calls_to("setMyCommands")]
+    scopes = [c.params["scope"] for c in telegram.calls_to("deleteMyCommands")]
     assert {"type": "chat_member", "chat_id": GROUP_ID, "user_id": ADMIN_ID} in scopes
 
 

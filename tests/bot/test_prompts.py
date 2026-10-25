@@ -106,20 +106,12 @@ def no_lookups(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.usefixtures("no_lookups")
-async def test_replies_in_the_group_are_not_looked_up(bot: BotHarness) -> None:
+@pytest.mark.parametrize("sender", [ALICE, CAROL])
+async def test_replies_in_the_group_are_not_looked_up(bot: BotHarness, sender: dict) -> None:
     """Prompts are only asked in private chats, so a reply in the group costs no query."""
     bot_message = message(sender=BOT_USER, text="📅 Upcoming sessions")
-    reply = message(sender=ALICE, text="3", reply_to=bot_message)  # the admin isn't removed
+    reply = message(sender=sender, text="3", reply_to=bot_message)
 
     await bot.send({"update_id": 1, "message": reply})
 
     assert bot.telegram.calls == []
-
-
-@pytest.mark.usefixtures("no_lookups")
-async def test_a_members_reply_in_the_group_is_only_removed(bot: BotHarness) -> None:
-    reply = message(sender=CAROL, text="3", reply_to=message(sender=BOT_USER, text="card"))
-
-    await bot.send({"update_id": 1, "message": reply})
-
-    assert [call.method for call in bot.telegram.calls] == ["deleteMessage"]  # by the guard

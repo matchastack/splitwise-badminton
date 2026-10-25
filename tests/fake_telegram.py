@@ -26,6 +26,7 @@ _TRUE_METHODS = {
     "answerCallbackQuery",
     "deleteMessage",
     "deleteMessages",
+    "deleteMyCommands",
     "deleteWebhook",
     "pinChatMessage",
     "setMyCommands",
@@ -86,7 +87,7 @@ class FakeTelegram(BaseRequest):
         if "/file/bot" in url:  # a download, from the file_path getFile gave
             return 200, self.files.get(api_method, b"")
 
-        # setMyCommands names its chat inside ``scope`` rather than as a top-level chat_id.
+        # The *MyCommands methods name their chat inside ``scope``, not as a top-level chat_id.
         target_chat = params.get("chat_id") or (params.get("scope") or {}).get("chat_id")
         if failure := self._take_failure(api_method, target_chat) or self._wrong_kind(
             api_method, params

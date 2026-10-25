@@ -249,7 +249,7 @@ async def test_book_points_to_court(bot: BotHarness) -> None:
     assert open_chat_button(bot.telegram.last("sendMessage")) == [
         [{"text": OPEN_CHAT, "url": "https://t.me/badminton_bot"}]
     ]
-    assert deleted(bot) == [sent["message"]["message_id"]]  # not a command any more
+    assert deleted(bot) == []
     assert await the_draft(bot) is None
 
 
@@ -269,7 +269,7 @@ async def test_a_screenshot_captioned_book_points_to_court(bot: BotHarness, chat
     await bot.send(message_update(photo))
 
     assert bot.telegram.sent_texts(chat_id) == [MOVED]
-    assert deleted(bot) == ([photo["message_id"]] if chat_id == GROUP_ID else [])
+    assert deleted(bot) == []
     assert await the_draft(bot) is None
 
 
@@ -291,17 +291,6 @@ async def test_a_screenshot_captioned_for_another_bot_is_left_alone(bot: BotHarn
     assert bot.telegram.sent_texts() == []
     assert bot.telegram.calls_to("getFile") == []
     assert await the_draft(bot) is None
-
-
-async def test_a_screenshot_captioned_for_another_bot_is_removed_from_the_group(
-    bot: BotHarness,
-) -> None:
-    photo = photo_message(sender=BOB, caption="/court@some_other_bot")
-
-    await bot.send(message_update(photo))
-
-    assert deleted(bot) == [photo["message_id"]]
-    assert bot.telegram.sent_texts() == []
 
 
 @pytest.mark.parametrize("caption", [False, True])

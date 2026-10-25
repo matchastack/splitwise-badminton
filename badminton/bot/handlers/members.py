@@ -62,11 +62,7 @@ async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             for command in ADMIN_COMMANDS
             if command not in MEMBER_COMMANDS
         ]
-    lines += [
-        "",
-        "Send these to me here; I post what you record in the group.",
-        "In the group, only commands are allowed; other messages are removed.",
-    ]
+    lines += ["", "Send these to me here; I post what you record in the group."]
     await update.effective_message.reply_text("\n".join(lines))
 
 

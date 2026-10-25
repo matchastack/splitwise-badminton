@@ -11,7 +11,6 @@ from badminton.bot.handlers import (
     booking_cancel,
     edit,
     gate,
-    guard,
     info,
     invoice,
     member_admin,
@@ -38,4 +37,3 @@ def register_handlers(application: Application) -> None:
     edit.register(application)
     settle.register(application)
     prompts.register(application)  # after commands: typed answers to wizard prompts
-    guard.register(application)  # last: removes whatever nothing else handled
