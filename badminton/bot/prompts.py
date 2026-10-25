@@ -56,13 +56,16 @@ async def ask(
     field: str,
     error: str | None = None,
 ) -> None:
-    """Ask the draft's owner to type an answer for ``field``. Replaces any open prompt."""
+    """Ask the draft's owner to type an answer for ``field``. Replaces any open prompt. In
+    the group the question names the owner; in their private chat, it needn't."""
     await delete_message_quietly(bot, draft.chat_id, draft.prompt_message_id)
     warning = f"⚠️ {html.escape(error)}\n" if error else ""
+    if draft.chat_id == owner.id:  # a private chat's ID is its user's
+        asked = question[:1].upper() + question[1:]
+    else:
+        asked = f"{owner.mention_html()}, {question}"
     prompt = await bot.send_message(
-        draft.chat_id,
-        f"{warning}{owner.mention_html()}, {question}",
-        reply_markup=ForceReply(selective=True),
+        draft.chat_id, f"{warning}{asked}", reply_markup=ForceReply(selective=True)
     )
     draft.prompt_message_id = prompt.message_id
     update_data(draft, awaiting=field, question=question)

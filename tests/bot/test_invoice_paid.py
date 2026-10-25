@@ -105,9 +105,9 @@ async def test_replaced_invoice_has_no_buttons(bot: BotHarness) -> None:
 async def test_balance_lists_unpaid_lines(bot: BotHarness) -> None:
     await october_card(bot)
 
-    await bot.send(text_update("/balance", sender=BOB))
+    await bot.send(text_update("/balance", sender=BOB, chat_id=BOB["id"]))
     bob = bot.telegram.last("sendMessage").params["text"]
-    await bot.send(text_update("/balance", sender=ALICE))
+    await bot.send(text_update("/balance", sender=ALICE, chat_id=ALICE["id"]))
     alice = bot.telegram.last("sendMessage").params["text"]
 
     assert bob.splitlines()[-1] == "🧾 To settle: pay @alice_handle $12.50"

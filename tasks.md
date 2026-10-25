@@ -82,7 +82,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T43 | Read booking screenshots (OCR); pin bookings | `claude/inspiring-euler-fdophp` | E3 | T23, T24, T27, T42 | ✅ | [#72](https://github.com/matchastack/splitwise-badminton/pull/72) |
 | T44 | Rename `/book` to `/court` | `feat/t44-court-command` | E3 | T43 | ✅ | [#73](https://github.com/matchastack/splitwise-badminton/pull/73) |
 | T45 | Only group members use the bot in private chat | `feat/t45-group-member-check` | E9 | T44 | ✅ | [#76](https://github.com/matchastack/splitwise-badminton/pull/76) |
-| T46 | Member commands in private chat | `feat/t46-member-commands-private` | E9 | T45 | ⬜ | — |
+| T46 | Member commands in private chat | `feat/t46-member-commands-private` | E9 | T45 | ✅ | — |
 | T47 | Admin commands in private chat | `feat/t47-admin-commands-private` | E9 | T46 | ⬜ | — |
 | T48 | Let the group chat freely | `feat/t48-group-chat` | E9 | T47 | ⬜ | — |
 

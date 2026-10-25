@@ -108,14 +108,17 @@ class Wizard(Card):
         self.photo: dict[str, Any] = {}
 
     async def start(self, *, caption: bool = False) -> Wizard:
-        """Send /court, then the screenshot in reply to the bot's prompt; or, with
-        ``caption``, the screenshot captioned /court."""
+        """Send /court in the sender's private chat, then the screenshot in reply to the
+        bot's prompt; or, with ``caption``, the screenshot captioned /court."""
         file_id = f"shot{next(_screenshots)}"
         self.bot.telegram.files[f"{file_id}-1280"] = self.screenshot.encode()
+        chat_id = self.sender["id"]
         if caption:
-            self.photo = photo_message(sender=self.sender, caption="/court", file_id=file_id)
+            self.photo = photo_message(
+                sender=self.sender, caption="/court", file_id=file_id, chat_id=chat_id
+            )
         else:
-            await self.bot.send(text_update("/court", sender=self.sender))
+            await self.bot.send(text_update("/court", sender=self.sender, chat_id=chat_id))
             self.prompt = self.bot.telegram.last("sendMessage").message
             self.photo = photo_message(sender=self.sender, file_id=file_id, reply_to=self.prompt)
         await self.bot.send(message_update(self.photo))
@@ -132,7 +135,7 @@ class Wizard(Card):
         return day.strftime("%b %Y") in self.buttons()
 
     def record(self) -> Card:
-        """The booking's record: the screenshot the bot posted on confirming."""
+        """The booking's record: the screenshot the bot posted in the group on confirming."""
         calls = self.bot.telegram.calls
         index = max(i for i, call in enumerate(calls) if call.method == "sendPhoto")
         return Card(self.bot, self.sender, calls[index].message, index + 1)

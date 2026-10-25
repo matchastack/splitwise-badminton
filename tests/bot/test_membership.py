@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from telegram import Update
 
 from badminton.bot.app import build_application
-from badminton.bot.membership import NOT_A_MEMBER
+from badminton.bot.membership import NOT_A_MEMBER, OPEN_CHAT, PRIVATELY
 from badminton.db.models import Member
 from tests.conftest import TEST_SETTINGS, BotHarness
 from tests.fake_telegram import ADMIN_ID, GROUP_ID, FakeTelegram, text_update, user
@@ -89,15 +89,26 @@ async def test_admin_is_let_through_without_a_lookup(bot: BotHarness) -> None:
         assert not bot.telegram.calls_to("getChatMember")
 
 
-@pytest.mark.parametrize("command", ["/name Bobby", "/help", "/balance", "/upcoming"])
-async def test_no_lookup_for_commands_in_the_group(bot: BotHarness, command: str) -> None:
+@pytest.mark.parametrize(
+    "command", ["/court", "/shuttle 76.79", "/balance", "/upcoming", "/name Bobby", "/help"]
+)
+async def test_member_commands_in_the_group_point_to_the_private_chat(
+    bot: BotHarness, command: str
+) -> None:
     bot.telegram.set_member_status(BOB["id"], "left")  # it would refuse, if it looked
+    sent = text_update(command, sender=BOB)
 
-    await bot.send(text_update(command, sender=BOB))
+    await bot.send(sent)
 
-    assert NOT_A_MEMBER not in bot.telegram.sent_texts(GROUP_ID)
-    assert bot.telegram.sent_texts(GROUP_ID)
+    reply = bot.telegram.last("sendMessage").params
+    name = command.split()[0]
+    assert (reply["chat_id"], reply["text"]) == (GROUP_ID, PRIVATELY.format(command=name))
+    assert reply["reply_parameters"]["message_id"] == sent["message"]["message_id"]
+    assert reply["reply_markup"]["inline_keyboard"] == [
+        [{"text": OPEN_CHAT, "url": "https://t.me/badminton_bot"}]
+    ]
     assert not bot.telegram.calls_to("getChatMember")
+    assert await member_count(bot) == 0
 
 
 async def test_chatid_stays_open_in_private(bot: BotHarness) -> None:

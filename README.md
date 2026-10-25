@@ -7,10 +7,11 @@ A Telegram bot that tracks court bookings, attendance and shuttlecock batches fo
 
 ## What it does
 
-- **Bookings:** a member sends `/court`, then their ActiveSG booking screenshot. The bot reads the date, time, venue and court off it with OCR (Tesseract, no LLM), and shows the booking with a suggested price to confirm or edit. Once confirmed, it posts the screenshot with the booking and pins it until the session is played. The sender is recorded as the payer.
+- **Private commands, results in the group:** members send commands to the bot in a private chat with it, and only members of the group can. The bot posts what they record (bookings, purchases) in the group.
+- **Bookings:** a member sends `/court` to the bot, then their ActiveSG booking screenshot. The bot reads the date, time, venue and court off it with OCR (Tesseract, no LLM), and shows the booking with a suggested price to confirm or edit. Once confirmed, it posts the screenshot with the booking in the group and pins it until the session is played. The sender is recorded as the payer.
 - **Attendance:** 2 days before each session the bot posts a card with **[✅ I'm in] [❌ I'm out]**. People can change their answer until the session ends; no answer counts as out.
 - **Locking:** when the session ends, attendance locks and the bot posts the split. Everyone who played shares the court cost and gets hours added to the current shuttle batch (1 hour = 1 share).
-- **Shuttles:** whoever buys a tube records it in the group with `/shuttle <price>`, and is recorded as the payer. It waits until the batch in use runs out; only one purchase can wait. When the admin runs `/shuttle_finished`, that batch closes and is split by hours played, and the waiting one takes over. Until it's in use, the buyer or the admin can cancel a purchase from its card, and the admin can correct any batch with `/shuttle_edit`.
+- **Shuttles:** whoever buys a tube records it by sending `/shuttle <price>` to the bot, and is recorded as the payer. The bot announces it in the group. It waits until the batch in use runs out; only one purchase can wait. When the admin runs `/shuttle_finished`, that batch closes and is split by hours played, and the waiting one takes over. Until it's in use, the buyer or the admin can cancel a purchase from its announcement, and the admin can correct any batch with `/shuttle_edit`.
 - **Monthly settle-up:** on the 1st of each month the bot posts who pays whom, using the fewest transfers, with a **✅ paid** button on each line. Everyone who has opened a chat with the bot also gets a private statement.
 - **Admin corrections:** every change the admin makes is announced in the group.
 - **Commands-only group:** the bot deletes anything in the group that isn't a command.
@@ -127,7 +128,7 @@ It prints the webhook URL when done. Run it again whenever a change adds or rena
 4. Add `GROUP_CHAT_ID` in Vercel (**Settings → Environment Variables**) and **redeploy**. Add it to your `.env` too.
 5. Run the setup script from step 6 again, so the admin command menu also appears for you in the group.
 6. Optional: in BotFather, use `/setjoingroups` → **Disable**, so nobody can add your bot to other groups. The bot ignores other chats anyway.
-7. Ask everyone to open a private chat with the bot and press **Start**. Telegram only lets a bot DM people who have done this, and the DM is how monthly statements arrive.
+7. Ask everyone to open a private chat with the bot and press **Start**. That's where they use it: they send it `/court`, `/shuttle` and the other commands there, and it posts the results in the group. The same chat is how monthly statements arrive. A command sent in the group gets a reply with a button that opens the chat.
 
 > If Telegram ever converts the group to a *supergroup* (it does this for some settings changes), the group ID changes. As the admin, run `/chatid` in the group again and update `GROUP_CHAT_ID`.
 
@@ -148,8 +149,8 @@ The only effect of a daily cron is that the "🔒 locked" summary can arrive up 
 
 ### 9. Check that it works
 
-1. In the group, send `/help`. The bot should reply. As the admin you also see admin commands.
-2. Send `/court`, reply to the bot's prompt with a booking screenshot, and confirm. The bot posts the screenshot with the booking and pins it. If the session is within 2 days, the attendance card appears straight away.
+1. In a private chat with the bot, send `/help`. The bot should reply. As the admin you also see admin commands. In the group, `/help` gets a reply saying to send it privately.
+2. In the private chat, send `/court`, reply to the bot's prompt with a booking screenshot, and confirm. The bot posts the screenshot with the booking in the group and pins it. If the session is within 2 days, the attendance card appears straight away.
 3. Tap **✅ I'm in** and check the card updates.
 4. Send a normal text message from a non-admin account. The bot should delete it.
 5. Trigger the scheduler by hand:
@@ -277,15 +278,15 @@ From then on, cards, booking records, announcements and invoices go to the new g
 
 | Command | Who | Where | What |
 |---|---|---|---|
-| `/court` | anyone | group | Record a court booking: send it, then your booking screenshot (or send the screenshot with the caption `/court`) |
-| `/shuttle <price>` | anyone | group | Record a shuttlecock purchase you paid for; it waits until the current batch is finished |
-| `/balance` | anyone | anywhere | Your balance, shuttle hours so far, a waiting shuttle batch and unpaid settle-ups |
-| `/upcoming` | anyone | anywhere | Booked sessions |
-| `/name <name>` | anyone | anywhere | Change the name the bot shows for you |
-| `/start` | anyone | DM | Turn on monthly statements |
-| `/help` | anyone | anywhere | What the bot can do |
+| `/court` | member | private chat | Record a court booking: send it, then your booking screenshot (or send the screenshot with the caption `/court`). It's posted in the group |
+| `/shuttle <price>` | member | private chat | Record a shuttlecock purchase you paid for; it's announced in the group and waits until the current batch is finished |
+| `/balance` | member | private chat | Your balance, shuttle hours so far, a waiting shuttle batch and unpaid settle-ups |
+| `/upcoming` | member | private chat | Booked sessions |
+| `/name <name>` | member | private chat | Change the name the bot shows for you |
+| `/start` | member | private chat | Turn on monthly statements |
+| `/help` | member | private chat | What the bot can do |
 | `/chatid` | anyone (in other groups once `GROUP_CHAT_ID` is set: admin) | anywhere | Show the chat ID (setup) |
-| `/shuttle <price>` | admin | anywhere | As above, but you pick who paid |
+| `/shuttle <price>` | admin | private chat | As above, but you pick who paid |
 | `/shuttle_finished` | admin | anywhere | Finish the current shuttle batch; the waiting one takes over |
 | `/shuttle_edit` | admin | anywhere | Fix a shuttle batch's price or payer, remove a waiting one, or undo `/shuttle_finished` |
 | `/edit` | admin | anywhere | Fix a session's attendance or bookings, or cancel it |
@@ -294,7 +295,7 @@ From then on, cards, booking records, announcements and invoices go to the new g
 | `/members` | admin | anywhere | Rename or deactivate members; link a guest to their Telegram account |
 | `/invoice` | admin | anywhere | Post this month's settle-up now |
 
-In a private chat, the bot only answers members of the group and the admin. Anyone else is told it's for the group's members.
+A member is someone in the group: in a private chat, the bot only answers them and the admin, and tells anyone else it's for the group's members. A member command sent in the group gets a reply saying to send it privately, with a button that opens the chat.
 
 ## Development
 

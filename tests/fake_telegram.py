@@ -267,13 +267,17 @@ def user(user_id: int, first_name: str = "Member", username: str | None = None) 
 def message(
     *,
     sender: dict[str, Any],
-    chat_id: int = GROUP_ID,
+    chat_id: int | None = None,
     text: str | None = None,
     reply_to: dict[str, Any] | None = None,
     message_id: int | None = None,
     **extra: Any,
 ) -> dict[str, Any]:
-    """An incoming message. A leading ``/command`` gets a bot_command entity, as from Telegram."""
+    """An incoming message, in the group unless ``chat_id`` says otherwise; a reply is in
+    the chat of the message it replies to. A leading ``/command`` gets a bot_command
+    entity, as from Telegram."""
+    if chat_id is None:
+        chat_id = reply_to["chat"]["id"] if reply_to is not None else GROUP_ID
     data: dict[str, Any] = {
         "message_id": message_id or next(_incoming_message_ids),
         "date": int(time.time()),
@@ -294,7 +298,7 @@ def photo_message(
     *,
     sender: dict[str, Any],
     caption: str | None = None,
-    chat_id: int = GROUP_ID,
+    chat_id: int | None = None,
     file_id: str = "photo",
     reply_to: dict[str, Any] | None = None,
 ) -> dict[str, Any]:

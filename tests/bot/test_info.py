@@ -34,7 +34,8 @@ async def played_session(bot: BotHarness, *player_ids: int) -> int:
 
 
 async def reply(bot: BotHarness, command: str, sender: dict) -> str:
-    await bot.send(text_update(command, sender=sender))
+    """Send ``command`` in the sender's private chat; the bot's reply."""
+    await bot.send(text_update(command, sender=sender, chat_id=sender["id"]))
     return bot.telegram.last("sendMessage").params["text"]
 
 
@@ -108,7 +109,7 @@ async def test_balance_shows_a_waiting_batch(bot: BotHarness) -> None:
 
 async def test_upcoming_lists_scheduled_sessions(bot: BotHarness) -> None:
     assert await reply(bot, "/upcoming", BOB) == (
-        "No sessions booked yet. Send /court in the group to record one."
+        "No sessions booked yet. Send me /court to record one."
     )
     start = utc_now().replace(microsecond=0) + timedelta(days=3)
     await make_session(bot, starts_at=start)
