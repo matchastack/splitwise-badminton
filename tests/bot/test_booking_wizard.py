@@ -41,7 +41,7 @@ async def test_court_asks_for_the_screenshot(bot: BotHarness) -> None:
 
     prompt = bot.telegram.last("sendMessage")
     assert prompt.params["chat_id"] == BOB["id"]
-    assert prompt.params["text"] == "Send your booking screenshot as a reply to this message."
+    assert prompt.params["text"] == "Send me your booking screenshot."
     assert prompt.params["reply_markup"]["force_reply"] is True
     draft = await the_draft(bot)
     assert (draft.prompt_message_id, draft.message_id) == (prompt.message["message_id"], None)
@@ -121,11 +121,15 @@ async def test_typed_answer_to_the_screenshot_prompt_is_asked_again(bot: BotHarn
     assert (await the_draft(bot)).data["awaiting"] == "photo"
 
 
-async def test_image_sent_as_a_file_is_asked_again(bot: BotHarness) -> None:
+@pytest.mark.parametrize("as_reply", [True, False])
+async def test_image_sent_as_a_file_is_asked_again(bot: BotHarness, as_reply: bool) -> None:
     await bot.send(text_update("/court", sender=BOB, chat_id=BOB["id"]))
     prompt = bot.telegram.last("sendMessage").message
     document = {"file_id": "doc", "file_unique_id": "d", "mime_type": "image/jpeg"}
-    sent = message(sender=BOB, reply_to=prompt, document=document)
+    if as_reply:
+        sent = message(sender=BOB, reply_to=prompt, document=document)
+    else:
+        sent = message(sender=BOB, chat_id=BOB["id"], document=document)
 
     await bot.send(message_update(sent))
 
@@ -281,6 +285,37 @@ async def test_the_caption_is_matched_like_a_command(bot: BotHarness) -> None:
         await bot.send(message_update(photo))
 
         assert bot.telegram.last("sendMessage").params["text"].endswith("Is this right?")
+
+
+async def test_a_screenshot_needs_not_reply_to_the_prompt(bot: BotHarness) -> None:
+    """The ForceReply bar can be closed, and in a private chat the photo can only be for
+    the form waiting for it."""
+    await bot.send(text_update("/court", sender=BOB, chat_id=BOB["id"]))
+    prompt = bot.telegram.last("sendMessage").message
+    bot.telegram.files["loose-1280"] = activesg_text(future_day()).encode()
+
+    await bot.send(message_update(photo_message(sender=BOB, file_id="loose", chat_id=BOB["id"])))
+
+    assert bot.telegram.last("sendMessage").params["text"].endswith("Is this right?")
+    assert prompt["message_id"] in deleted(bot)
+    async with bot.sessionmaker() as db:
+        assert await db.scalar(select(func.count()).select_from(Draft)) == 1
+
+
+@pytest.mark.parametrize(
+    "image",
+    [
+        {"photo": [{"file_id": "pic", "file_unique_id": "p", "width": 90, "height": 90}]},
+        {"document": {"file_id": "doc", "file_unique_id": "d", "mime_type": "image/jpeg"}},
+    ],
+    ids=["photo", "file"],
+)
+async def test_an_image_with_no_form_waiting_is_ignored(bot: BotHarness, image: dict) -> None:
+    await bot.send(message_update(message(sender=BOB, chat_id=BOB["id"], **image)))
+
+    assert bot.telegram.sent_texts() == []
+    assert bot.telegram.calls_to("getFile") == []
+    assert await the_draft(bot) is None
 
 
 async def test_a_screenshot_captioned_for_another_bot_is_left_alone(bot: BotHarness) -> None:

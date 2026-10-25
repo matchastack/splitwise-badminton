@@ -130,7 +130,7 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
 
 ### 4.2 Court bookings (BK)
 - **FR-BK-1:**
-  - A member starts a booking by sending `/court` to the bot in a private chat (FR-MEM-9). The bot asks for the booking screenshot with a reply prompt, and the member replies with it. In a private chat, prompts don't @mention the member.
+  - A member starts a booking by sending `/court` to the bot in a private chat (FR-MEM-9). The bot asks for the booking screenshot with a reply prompt, and the member sends it. In a private chat, prompts don't @mention the member, and the screenshot needn't be a reply: the member's next photo answers their waiting form. With no form waiting, a photo without the `/court` caption is ignored.
   - Sending the screenshot with the caption `/court` does both at once. The caption is matched like a command: in any case, and only addressed to this bot, if to any.
   - `/court` in the group, as text or as a caption, gets a short reply saying to send it to the bot privately, with a button that opens that chat. `/book`, its name before, is answered with a pointer to `/court`.
   - A new booking replaces the member's earlier one still waiting for its screenshot, and that prompt is removed. A screenshot answering a prompt whose form has expired starts a new booking.

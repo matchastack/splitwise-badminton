@@ -1,7 +1,7 @@
 """The booking wizard (FR-BK-1 to FR-BK-9, FR-BK-12).
 
-A member sends /court to the bot in a private chat and replies to its prompt with their
-booking screenshot, or sends the screenshot with the caption /court. The bot reads the
+A member sends /court to the bot in a private chat and then their booking screenshot,
+or sends the screenshot with the caption /court. The bot reads the
 date, time, venue and courts off it (OCR) and replies with one card, edited in place:
 it asks for anything it couldn't read, then shows the booking to confirm or edit. Only
 the submitter can operate it (FR-BK-2); the sender is the payer.
@@ -141,7 +141,7 @@ NEEDS_SCHEDULE = {
     EDIT_PRICE,
 }
 
-ASK_SCREENSHOT = "send your booking screenshot as a reply to this message."
+ASK_SCREENSHOT = "send me your booking screenshot."
 EXPIRED = f"This booking form has expired. Send /{BOOKING_COMMAND} again."
 MOVED = (
     f"📸 /{OLD_BOOKING_COMMAND} is now /{BOOKING_COMMAND}: send /{BOOKING_COMMAND} to me in a "
@@ -362,12 +362,12 @@ async def ask_for_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 @members_only
 async def on_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """In a private chat: a screenshot replying to the sender's /court prompt, or captioned
-    /court."""
+    """In a private chat: a screenshot for the sender's form waiting for one, replying to its
+    prompt or not, or captioned /court. Any other image is ignored."""
     message = update.effective_message
     user = update.effective_user
     async with db_session(context) as db:
-        draft = await _prompt_draft(db, message, user.id)
+        draft = await _waiting_draft(db, message.chat_id, user.id)
         if draft is None and not is_booking_photo(message, context.bot.username):
             if caption_command(message, context.bot.username) == OLD_BOOKING_COMMAND:
                 await point_to_new_command(update, context)
@@ -440,22 +440,22 @@ def is_booking_photo(message: Message, bot_username: str) -> bool:
     return bool(message.photo) and caption_command(message, bot_username) == BOOKING_COMMAND
 
 
-async def _prompt_draft(db: AsyncSession, message: Message, user_id: int) -> Draft | None:
-    """The sender's booking draft whose screenshot prompt the message replies to. It may
-    have expired: the prompt stays up until the tick cleans it away."""
-    if message.reply_to_message is None:
-        return None
-    draft = await db.scalar(
+async def _waiting_draft(db: AsyncSession, chat_id: int, user_id: int) -> Draft | None:
+    """The sender's booking draft in this chat waiting for its screenshot. In a private
+    chat the screenshot needn't reply to the prompt: it can only be for this form. The
+    draft may have expired: the prompt stays up until the tick cleans it away."""
+    return await db.scalar(
         select(Draft)
         .where(
             Draft.kind == KIND,
-            Draft.chat_id == message.chat_id,
+            Draft.chat_id == chat_id,
             Draft.user_id == user_id,
-            Draft.prompt_message_id == message.reply_to_message.message_id,
+            Draft.data["awaiting"].astext == "photo",
         )
+        .order_by(Draft.id.desc())  # /court closes older ones; the newest, to be sure
+        .limit(1)
         .with_for_update()  # one screenshot at a time, as for typed answers
     )
-    return draft if draft is not None and draft.data.get("awaiting") == "photo" else None
 
 
 async def _close_waiting(bot: Bot, db: AsyncSession, chat_id: int, user_id: int) -> None:
@@ -759,10 +759,8 @@ async def on_typed_answer(
 def register(application: Application) -> None:
     # A captioned command is checked in the handler, as CommandHandler checks text commands.
     captioned = filters.PHOTO & filters.CaptionEntity(MessageEntity.BOT_COMMAND)
-    replied = filters.REPLY & (filters.PHOTO | filters.Document.IMAGE)
-    application.add_handler(
-        MessageHandler(filters.ChatType.PRIVATE & (captioned | replied), on_screenshot)
-    )
+    images = filters.PHOTO | filters.Document.IMAGE
+    application.add_handler(MessageHandler(filters.ChatType.PRIVATE & images, on_screenshot))
     application.add_handler(MessageHandler(filters.ChatType.GROUPS & captioned, on_group_photo))
     application.add_handler(CommandHandler(BOOKING_COMMAND, ask_for_screenshot))
     application.add_handler(CommandHandler(OLD_BOOKING_COMMAND, point_to_new_command))
