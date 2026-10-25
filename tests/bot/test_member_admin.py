@@ -36,8 +36,8 @@ async def members(bot: BotHarness) -> dict[str, Member]:
 
 
 async def open_member_list(bot: BotHarness) -> dict:
-    await bot.send(text_update("/addmember grace", sender=ALICE))
-    await bot.send(text_update("/members", sender=ALICE))
+    await bot.send(text_update("/addmember grace", sender=ALICE, chat_id=ALICE["id"]))
+    await bot.send(text_update("/members", sender=ALICE, chat_id=ALICE["id"]))
     return bot.telegram.last("sendMessage").message
 
 
@@ -50,7 +50,7 @@ def button(card: dict, text_prefix: str) -> str:
 
 
 async def test_admin_adds_a_guest_member(bot: BotHarness) -> None:
-    await bot.send(text_update("/addmember  grace  ", sender=ALICE))
+    await bot.send(text_update("/addmember  grace  ", sender=ALICE, chat_id=ALICE["id"]))
 
     guest = (await members(bot))["grace"]
     assert guest.telegram_user_id is None
@@ -65,8 +65,8 @@ async def test_admin_adds_a_guest_member(bot: BotHarness) -> None:
 
 
 async def test_addmember_needs_a_name_and_an_admin(bot: BotHarness) -> None:
-    await bot.send(text_update("/addmember", sender=ALICE))
-    await bot.send(text_update("/addmember sneaky", sender=BOB))
+    await bot.send(text_update("/addmember", sender=ALICE, chat_id=ALICE["id"]))
+    await bot.send(text_update("/addmember sneaky", sender=BOB, chat_id=BOB["id"]))
 
     assert bot.telegram.sent_texts() == ["Usage: /addmember &lt;name&gt;", NOT_ADMIN]
     assert "sneaky" not in await members(bot)
@@ -95,7 +95,9 @@ async def test_deactivate_and_reactivate(bot: BotHarness) -> None:
     async with bot.sessionmaker() as db:
         assert [m.display_name for m in await active_members(db)] == ["alice"]
 
-    await bot.send(text_update("/members", sender=ALICE))  # a fresh list for the next change
+    await bot.send(
+        text_update("/members", sender=ALICE, chat_id=ALICE["id"])
+    )  # a fresh list for the next change
     card = bot.telegram.last("sendMessage").message
     assert buttons(card)[-1] == "↩️ Reactivate"
     await bot.send(callback_update(button(card, "↩️"), sender=ALICE, on_message=card))
@@ -109,7 +111,7 @@ async def test_rename_through_a_prompt(bot: BotHarness) -> None:
 
     await bot.send(callback_update(button(card, "✏️ grace"), sender=ALICE, on_message=card))
     prompt = bot.telegram.last("sendMessage")
-    assert prompt.params["text"].endswith("what should <b>grace</b> be called?")
+    assert prompt.params["text"] == "What should <b>grace</b> be called?"
 
     await bot.send(
         {"update_id": 1, "message": message(sender=ALICE, text="x" * 40, reply_to=prompt.message)}
@@ -251,7 +253,9 @@ async def test_the_admin_can_link_a_guest_to_their_own_account(bot: BotHarness) 
     async with bot.sessionmaker() as db:
         db.add(Member(display_name="alice (sheet)"))  # imported before the admin used the bot
         await db.commit()
-    await bot.send(text_update("/members", sender=ALICE))  # the admin isn't a member yet
+    await bot.send(
+        text_update("/members", sender=ALICE, chat_id=ALICE["id"])
+    )  # the admin isn't a member yet
     await bot.send(text_update("/balance", sender=ALICE, chat_id=ALICE["id"]))
     card = bot.telegram.calls_to("sendMessage")[0].message
 
@@ -270,7 +274,7 @@ async def test_linking_needs_someone_on_telegram_and_an_up_to_date_card(bot: Bot
     async with bot.sessionmaker() as db:
         db.add(Member(display_name="grace"))
         await db.commit()
-    await bot.send(text_update("/members", sender=ALICE))
+    await bot.send(text_update("/members", sender=ALICE, chat_id=ALICE["id"]))
     card = bot.telegram.last("sendMessage").message
 
     await bot.send(callback_update(button(card, "🔗"), sender=ALICE, on_message=card))
@@ -361,8 +365,12 @@ async def test_linking_refreshes_the_latest_invoice_card(bot: BotHarness) -> Non
     card = await open_member_list(bot)
     await bot.send(text_update("/balance", sender=DANISH, chat_id=DANISH["id"]))
     await played_together(bot, "alice", "Grace K")
-    await bot.send(text_update("/invoice", sender=ALICE))
-    invoice_card = bot.telegram.last("sendMessage").message
+    await bot.send(text_update("/invoice", sender=ALICE, chat_id=ALICE["id"]))
+    invoice_card = next(
+        call.message
+        for call in reversed(bot.telegram.calls_to("sendMessage"))
+        if call.params["chat_id"] == GROUP_ID
+    )
     assert buttons(invoice_card) == ["✅ Grace K → alice $7.40 paid"]
 
     confirm = await tap(bot, await tap(bot, card, "🔗"), "Grace K")
@@ -379,7 +387,7 @@ async def test_linking_refreshes_the_latest_invoice_card(bot: BotHarness) -> Non
 
 
 async def test_a_second_tap_on_link_waits_then_finds_it_done(bot: BotHarness) -> None:
-    await bot.send(text_update("/addmember grace", sender=ALICE))
+    await bot.send(text_update("/addmember grace", sender=ALICE, chat_id=ALICE["id"]))
     await bot.send(text_update("/balance", sender=DANISH, chat_id=DANISH["id"]))
     by_name = await members(bot)
     ids = by_name["grace"].id, by_name["Grace K"].id

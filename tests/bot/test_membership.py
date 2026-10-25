@@ -7,7 +7,7 @@ from telegram import Update
 
 from badminton.bot.app import build_application
 from badminton.bot.membership import NOT_A_MEMBER, OPEN_CHAT, PRIVATELY
-from badminton.db.models import Member
+from badminton.db.models import AuditLog, Draft, Member
 from tests.conftest import TEST_SETTINGS, BotHarness
 from tests.fake_telegram import ADMIN_ID, GROUP_ID, FakeTelegram, text_update, user
 
@@ -109,6 +109,35 @@ async def test_member_commands_in_the_group_point_to_the_private_chat(
     ]
     assert not bot.telegram.calls_to("getChatMember")
     assert await member_count(bot) == 0
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "/edit",
+        "/shuttle_finished",
+        "/shuttle_edit",
+        "/settle",
+        "/addmember grace",
+        "/members",
+        "/invoice",
+    ],
+)
+@pytest.mark.parametrize("sender", [ALICE, BOB])
+async def test_admin_commands_in_the_group_point_to_the_private_chat(
+    bot: BotHarness, command: str, sender: dict
+) -> None:
+    await bot.send(text_update(command, sender=sender))
+
+    reply = bot.telegram.last("sendMessage").params
+    name = command.split()[0]
+    assert bot.telegram.sent_texts() == [PRIVATELY.format(command=name)]
+    assert reply["reply_markup"]["inline_keyboard"] == [
+        [{"text": OPEN_CHAT, "url": "https://t.me/badminton_bot"}]
+    ]
+    async with bot.sessionmaker() as db:
+        assert await db.scalar(select(func.count()).select_from(Draft)) == 0
+        assert await db.scalar(select(func.count()).select_from(AuditLog)) == 0
 
 
 async def test_chatid_stays_open_in_private(bot: BotHarness) -> None:

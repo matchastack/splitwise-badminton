@@ -23,7 +23,7 @@ class SettleCard:
         self.message: dict = {}
 
     async def open(self) -> "SettleCard":
-        await self.bot.send(text_update("/settle", sender=ALICE))
+        await self.bot.send(text_update("/settle", sender=ALICE, chat_id=ALICE["id"]))
         self.message = self.bot.telegram.last("sendMessage").message
         return self
 
@@ -58,7 +58,7 @@ async def members(bot: BotHarness, *names: str) -> dict[str, int]:
 
 
 async def test_settle_is_admin_only(bot: BotHarness) -> None:
-    await bot.send(text_update("/settle", sender=user(222, "bob")))
+    await bot.send(text_update("/settle", sender=user(222, "bob"), chat_id=222))
 
     assert bot.telegram.sent_texts() == [NOT_ADMIN]
 

@@ -60,7 +60,7 @@ async def test_admin_invoice_command(bot: BotHarness) -> None:
     await seed(bot)
     this_month = fmt_period(period_of(utc_now()))
 
-    await bot.send(text_update("/invoice", sender=ALICE))
+    await bot.send(text_update("/invoice", sender=ALICE, chat_id=ALICE["id"]))
     assert await periods(bot) == [period_of(utc_now())]
     assert bot.telegram.sent_texts(GROUP_ID)[-1].startswith(f"🧾 <b>{this_month}</b>")
 
@@ -78,7 +78,7 @@ async def test_invoice_command_early_in_the_month_takes_the_monthly_invoice(
     await seed(bot)
     monkeypatch.setattr(invoice_handlers, "utc_now", lambda: at_sgt(date(2026, 11, 1), 8))
 
-    await bot.send(text_update("/invoice", sender=ALICE))
+    await bot.send(text_update("/invoice", sender=ALICE, chat_id=ALICE["id"]))
     await tick(bot, date(2026, 11, 1))
     await tick(bot, date(2026, 12, 1))
 
@@ -94,7 +94,7 @@ async def test_invoice_command_after_the_monthly_invoice_takes_this_month(
     await tick(bot, date(2026, 11, 1))
     monkeypatch.setattr(invoice_handlers, "utc_now", lambda: at_sgt(date(2026, 11, 3), 8))
 
-    await bot.send(text_update("/invoice", sender=ALICE))
+    await bot.send(text_update("/invoice", sender=ALICE, chat_id=ALICE["id"]))
 
     assert await periods(bot) == ["2026-10", "2026-11"]
 
@@ -110,7 +110,7 @@ async def test_invoice_command_in_a_dm_confirms(bot: BotHarness) -> None:
 
 
 async def test_invoice_command_is_admin_only(bot: BotHarness) -> None:
-    await bot.send(text_update("/invoice", sender=BOB))
+    await bot.send(text_update("/invoice", sender=BOB, chat_id=BOB["id"]))
 
     assert bot.telegram.sent_texts() == [NOT_ADMIN]
     assert await periods(bot) == []

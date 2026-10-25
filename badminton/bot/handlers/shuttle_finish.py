@@ -16,6 +16,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 from badminton.bot.admin import admin_only
 from badminton.bot.context import db_session, settings_of
 from badminton.bot.keyboards import decode, encode
+from badminton.bot.membership import private_only
 from badminton.db.models import Draft, Session, ShuttleBatch
 from badminton.domain.timeutil import fmt_date, sgt_date, utc_now
 from badminton.services import audit
@@ -85,6 +86,7 @@ async def render(
     return "\n".join(lines), InlineKeyboardMarkup(rows)
 
 
+@private_only
 @admin_only
 async def start_finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message

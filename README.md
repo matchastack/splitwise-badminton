@@ -13,7 +13,7 @@ A Telegram bot that tracks court bookings, attendance and shuttlecock batches fo
 - **Locking:** when the session ends, attendance locks and the bot posts the split. Everyone who played shares the court cost and gets hours added to the current shuttle batch (1 hour = 1 share).
 - **Shuttles:** whoever buys a tube records it by sending `/shuttle <price>` to the bot, and is recorded as the payer. The bot announces it in the group. It waits until the batch in use runs out; only one purchase can wait. When the admin runs `/shuttle_finished`, that batch closes and is split by hours played, and the waiting one takes over. Until it's in use, the buyer or the admin can cancel a purchase from its announcement, and the admin can correct any batch with `/shuttle_edit`.
 - **Monthly settle-up:** on the 1st of each month the bot posts who pays whom, using the fewest transfers, with a **✅ paid** button on each line. Everyone who has opened a chat with the bot also gets a private statement.
-- **Admin corrections:** every change the admin makes is announced in the group.
+- **Admin corrections:** the admin makes them in a private chat with the bot, and every change is announced in the group.
 - **Commands-only group:** the bot deletes anything in the group that isn't a command.
 
 ## Setup guide
@@ -160,7 +160,7 @@ The only effect of a daily cron is that the "🔒 locked" summary can arrive up 
    ```
 
    It should return `{"ok":true,"steps":{…}}`.
-6. Optional: as the admin, `/invoice` posts a settle-up for the current month right away.
+6. Optional: as the admin, send `/invoice` to the bot. It posts a settle-up for the current month in the group right away.
    - The scheduled run on the 1st skips a month that already has an invoice.
    - In the first week of a month, before the scheduled run has posted the previous month's invoice, `/invoice` posts that one instead.
    - Anything that happens after a manual invoice is included in the next one, because balances carry over.
@@ -287,15 +287,15 @@ From then on, cards, booking records, announcements and invoices go to the new g
 | `/help` | member | private chat | What the bot can do |
 | `/chatid` | anyone (in other groups once `GROUP_CHAT_ID` is set: admin) | anywhere | Show the chat ID (setup) |
 | `/shuttle <price>` | admin | private chat | As above, but you pick who paid |
-| `/shuttle_finished` | admin | anywhere | Finish the current shuttle batch; the waiting one takes over |
-| `/shuttle_edit` | admin | anywhere | Fix a shuttle batch's price or payer, remove a waiting one, or undo `/shuttle_finished` |
-| `/edit` | admin | anywhere | Fix a session's attendance or bookings, or cancel it |
-| `/settle` | admin | anywhere | Record a payment made outside the bot |
-| `/addmember <name>` | admin | anywhere | Add a guest who isn't on Telegram |
-| `/members` | admin | anywhere | Rename or deactivate members; link a guest to their Telegram account |
-| `/invoice` | admin | anywhere | Post this month's settle-up now |
+| `/shuttle_finished` | admin | private chat | Finish the current shuttle batch; the waiting one takes over |
+| `/shuttle_edit` | admin | private chat | Fix a shuttle batch's price or payer, remove a waiting one, or undo `/shuttle_finished` |
+| `/edit` | admin | private chat | Fix a session's attendance or bookings, or cancel it |
+| `/settle` | admin | private chat | Record a payment made outside the bot |
+| `/addmember <name>` | admin | private chat | Add a guest who isn't on Telegram |
+| `/members` | admin | private chat | Rename or deactivate members; link a guest to their Telegram account |
+| `/invoice` | admin | private chat | Post this month's settle-up now |
 
-A member is someone in the group: in a private chat, the bot only answers them and the admin, and tells anyone else it's for the group's members. A member command sent in the group gets a reply saying to send it privately, with a button that opens the chat.
+A member is someone in the group: in a private chat, the bot only answers them and the admin, and tells anyone else it's for the group's members. Any of these commands sent in the group, the admin's too, gets a reply saying to send it privately, with a button that opens the chat. Announcements still go to the group.
 
 ## Development
 

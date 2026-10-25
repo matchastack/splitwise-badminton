@@ -17,6 +17,7 @@ from badminton.bot import prompts
 from badminton.bot.admin import admin_only
 from badminton.bot.context import db_session, settings_of
 from badminton.bot.keyboards import decode, encode
+from badminton.bot.membership import private_only
 from badminton.db.models import Draft, Invoice, Member, Transfer
 from badminton.domain.money import fmt_sgd, parse_amount
 from badminton.domain.timeutil import utc_now
@@ -80,6 +81,7 @@ async def _show(context: ContextTypes.DEFAULT_TYPE, db: AsyncSession, draft: Dra
     await show_draft(context.bot, draft, text, markup)
 
 
+@private_only
 @admin_only
 async def start_settle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message

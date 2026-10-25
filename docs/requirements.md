@@ -298,18 +298,18 @@ Worked examples:
   - `/settle` (admin) records a manual transfer: from, to and amount.
   - It is announced in the group.
 - **FR-ADM-5:** Every admin change, every shuttle purchase, and every booking or purchase cancellation is written to an audit log: who, what, before and after, and when.
-- **FR-ADM-6:** Admin commands work in the group or in a private chat with the bot. Announcements always go to the group.
+- **FR-ADM-6:** Admin commands work only in the admin's private chat with the bot, like member commands (FR-MEM-9). In the group, they get the same reply as member commands: send it to the bot privately (FR-BK-1). Announcements always go to the group.
 
 ### 4.8 Group moderation (MOD)
 - **FR-MOD-1:**
   - In the group, the bot must delete every message from a non-admin member unless it is one of these:
     - a command the bot handles;
-    - a `/court` photo;
-    - a reply to an active bot prompt.
+    - a `/court` photo.
   - This covers plain text, stickers, media, unknown commands and forwards.
 - **FR-MOD-2:**
-  - A reply to a bot prompt (FR-BK-1, FR-BK-5, FR-BK-8 and the admin wizards) is processed.
-  - After processing, both the reply and the prompt are deleted, so the group only holds bot cards.
+  - Every bot prompt (FR-BK-1, FR-BK-5, FR-BK-8 and the admin wizards) is asked in a private chat, where the wizard is. A reply to one there is processed.
+  - After processing, both the reply and the prompt are deleted, so the chat only holds the bot's cards.
+  - A reply in the group is never looked up, so it costs no database query (NFR-1).
   - The exception is the booking screenshot, sent in the member's private chat: it stays (FR-BK-8).
 - **FR-MOD-3:** Messages from the admin and service messages (joins, leaves, pins, title changes) are never deleted.
 - **FR-MOD-4:** The bot ignores updates from any chat other than the configured group and private chats.
@@ -385,15 +385,15 @@ Worked examples:
 | `/upcoming` | member | DM | Scheduled sessions |
 | `/name <name>` | member | DM | Set display name |
 | `/chatid` | anyone | any | Show chat ID (setup) |
-| `/edit` | admin | any | Correct a session's attendance, bookings, or cancel it |
-| `/shuttle_finished` | admin | any | Finish the open shuttle batch; the waiting one takes over |
-| `/shuttle_edit` | admin | any | Correct a shuttle batch's price or payer, remove a waiting one, or undo a finish |
-| `/settle` | admin | any | Record a manual transfer |
-| `/addmember <name>` | admin | any | Add a guest member |
-| `/members` | admin | any | List, rename or deactivate members; link a guest to a Telegram account |
-| `/invoice` | admin | any | Generate the invoice now |
+| `/edit` | admin | DM | Correct a session's attendance, bookings, or cancel it |
+| `/shuttle_finished` | admin | DM | Finish the open shuttle batch; the waiting one takes over |
+| `/shuttle_edit` | admin | DM | Correct a shuttle batch's price or payer, remove a waiting one, or undo a finish |
+| `/settle` | admin | DM | Record a manual transfer |
+| `/addmember <name>` | admin | DM | Add a guest member |
+| `/members` | admin | DM | List, rename or deactivate members; link a guest to a Telegram account |
+| `/invoice` | admin | DM | Generate the invoice now |
 
-A member is someone in the group (FR-MEM-9). A member command sent in the group gets a short reply saying to send it to the bot privately, with a button that opens that chat; the results (booking records, announcements, cards) are posted in the group.
+A member is someone in the group (FR-MEM-9). A member or admin command sent in the group gets a short reply saying to send it to the bot privately, with a button that opens that chat; the results (booking records, announcements, cards) are posted in the group.
 
 ### 6.2 HTTP endpoints
 | Method & path | Auth | Purpose |

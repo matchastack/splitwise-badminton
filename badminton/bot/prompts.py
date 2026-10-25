@@ -1,9 +1,10 @@
 """Typed answers to wizard questions (FR-BK-5, FR-BK-6, FR-MOD-2).
 
-``ask`` sends a ForceReply prompt tied to a draft. When the draft's owner replies,
-the handler registered for the draft's kind gets the text. Afterwards the reply and
-the prompt are both deleted, so the group only keeps the bot's cards. A handler
-raises ``PromptError`` to ask again with an explanation.
+``ask`` sends a ForceReply prompt tied to a draft, in the owner's private chat with the
+bot: every wizard is there. When the owner replies, the handler registered for the
+draft's kind gets the text. Afterwards the reply and the prompt are both deleted, so
+the chat only keeps the bot's cards. A handler raises ``PromptError`` to ask again with
+an explanation. Replies in the group are never looked up.
 """
 
 from __future__ import annotations
@@ -16,7 +17,6 @@ from telegram import Bot, ForceReply, Update, User
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
 from badminton.bot.context import db_session
-from badminton.bot.handlers import guard
 from badminton.db.models import Draft
 from badminton.domain.timeutil import utc_now
 from badminton.services.drafts import (
@@ -92,7 +92,6 @@ async def handle_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             lock=True,
         )
         if draft is None or draft.user_id != update.effective_user.id:
-            await guard.delete_unless_exempt(update, context)
             return
         handler = _reply_handlers[draft.kind]
         await delete_message_quietly(context.bot, message.chat_id, message.message_id)
@@ -117,5 +116,8 @@ async def handle_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 def register(application: Application) -> None:
     application.add_handler(
-        MessageHandler(filters.REPLY & filters.TEXT & ~filters.COMMAND, handle_reply)
+        MessageHandler(
+            filters.ChatType.PRIVATE & filters.REPLY & filters.TEXT & ~filters.COMMAND,
+            handle_reply,
+        )
     )

@@ -18,6 +18,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 from badminton.bot import prompts
 from badminton.bot.admin import admin_only
 from badminton.bot.context import db_session, settings_of
+from badminton.bot.membership import private_only
 from badminton.db.models import Draft, Member
 from badminton.domain.money import fmt_signed
 from badminton.domain.timeutil import fmt_date, sgt_date, utc_now
@@ -69,6 +70,7 @@ async def closed_list(db: AsyncSession) -> str:
     return f"{text}\n\n{LIST_CLOSED}"
 
 
+@private_only
 @admin_only
 async def add_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
@@ -92,6 +94,7 @@ async def add_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     )
 
 
+@private_only
 @admin_only
 async def list_members(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     async with db_session(context) as db:

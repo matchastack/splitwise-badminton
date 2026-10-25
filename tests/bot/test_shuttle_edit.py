@@ -58,7 +58,7 @@ async def test_other_members_cannot_cancel_or_remove_a_purchase(bot: BotHarness)
     assert receipt.last_alert() == "Only bob or the admin can cancel this purchase."
     assert set(receipt.buttons()) == {"🗑 Cancel purchase"}
     # ...from /shuttle_edit...
-    await bot.send(text_update("/shuttle_edit", sender=CAROL))
+    await bot.send(text_update("/shuttle_edit", sender=CAROL, chat_id=CAROL["id"]))
     assert bot.telegram.sent_texts()[-1] == NOT_ADMIN
     # ...or from the admin's open /shuttle_edit card.
     await editor.tap_starting(f"#{batch.id} ·", sender=CAROL)
@@ -67,8 +67,8 @@ async def test_other_members_cannot_cancel_or_remove_a_purchase(bot: BotHarness)
     (still,) = await batches(bot)
     assert still.waiting
     assert await audit_actions(bot) == ["shuttle.add"]
-    # Nothing was announced: the only new message in the group is the refusal.
-    assert bot.telegram.sent_texts(GROUP_ID)[announced:] == [NOT_ADMIN]
+    # Nothing was announced, and the refusal was in carol's private chat.
+    assert bot.telegram.sent_texts(GROUP_ID)[announced:] == []
 
     # The payer still can.
     await receipt.tap("🗑 Cancel purchase", sender=BOB)

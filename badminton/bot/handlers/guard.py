@@ -1,7 +1,7 @@
 """Keep the group commands-only (FR-MOD-1, FR-MOD-3).
 
 Registered last, so it only sees messages no other handler took: plain chat,
-stickers, media, unknown commands, and replies that don't answer one's own prompt.
+stickers, media, unknown commands, and replies (prompts are asked in private chats).
 The bot must be a group admin with "Delete messages" for this to work.
 """
 
