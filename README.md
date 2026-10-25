@@ -247,6 +247,29 @@ If both records are marked in for a session that has already ended, the bot won'
 - **The setup script says Telegram refused an admin command menu (`Chat not found`).** The webhook and member menu are already set, so the bot works. Telegram only accepts an admin's menu once that person has started a chat with the bot. Open the bot, press **Start**, and run the script again. If it still fails, check that the ID in `ADMIN_TELEGRAM_IDS` is your own user ID (step 4), not the bot's or a group's. For the group menu, the admin must also be a member of the group.
 - **I ran the local polling script and now the deployed bot is silent.** Polling removes the webhook. Run `scripts/setup_telegram.py` again (step 6).
 
+### Moving the bot to another group
+
+The bot works in one group, the one in `GROUP_CHAT_ID`. Everything it knows (members, balances, sessions, bookings, shuttle batches, invoices and the audit log) is in the database, so it all moves with the bot. To move it:
+
+1. Create the new group and invite everyone.
+2. If you turned off joining groups in BotFather (`/setjoingroups`, step 7), turn it back on for now.
+3. Add the bot to the new group as an **admin** with the **Delete messages** and **Pin messages** rights, as in step 7.
+4. As the admin, send `/chatid` in the new group. The bot answers you there even though it isn't its group yet.
+5. Set `GROUP_CHAT_ID` to the new ID in Vercel (**Settings → Environment Variables**) and **redeploy**. Update your `.env` too.
+6. Run the setup script from step 6 again, so your admin command menu appears in the new group.
+7. If you use `/setjoingroups`, turn it off again.
+
+From then on, cards, booking records, announcements and invoices go to the new group. The bot ignores the old group, including taps on its buttons, and doesn't repost anything from it:
+- **Attendance cards already up:** set attendance with `/edit`.
+- **The latest invoice's ✅ Paid buttons:** record payments with `/settle`. Unpaid lines carry into the next invoice, in the new group.
+- **🗑 Cancel booking:** cancel the whole session with `/edit`. One booking of several can't be cancelled once its record is left behind.
+- **🗑 Cancel purchase:** remove a waiting purchase with `/shuttle_edit`.
+- **Pins:** the new group only gets pins for bookings made after the move.
+
+**Pick a quiet moment:** after a session and before the next attendance card goes up (`REMINDER_DAYS_BEFORE` days ahead), ideally once the month's invoice is paid. Then nothing live is left behind.
+
+**Keep the bot in the old group for a while,** until the sessions whose cards are there have ended and the next month's invoice is out: the bot still updates its cards there. If it leaves sooner, those sessions' "🔒 locked" summaries never post (the scheduler logs an error on every run), and the first invoice after the move goes out without its private statements. Balances are right either way.
+
 ## Commands
 
 | Command | Who | Where | What |
