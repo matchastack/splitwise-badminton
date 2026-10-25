@@ -8,6 +8,7 @@ from badminton.bot.handlers.member_admin import (
     LINK_GONE,
     LIST_CLOSED,
     NOBODY_TO_LINK,
+    RENAME_PRIVATELY,
     _link_pair,
 )
 from badminton.db.models import (
@@ -104,6 +105,26 @@ async def test_deactivate_and_reactivate(bot: BotHarness) -> None:
 
     assert (await members(bot))["grace"].active
     assert bot.telegram.sent_texts(GROUP_ID)[-1] == "↩️ Admin reactivated <b>grace</b>."
+
+
+async def test_a_list_left_in_the_group_does_not_ask_for_a_name(bot: BotHarness) -> None:
+    """Lists opened in the group before commands moved to private chats keep their buttons,
+    but a reply there is never read, so ✏️ says to use /members privately."""
+    private = await open_member_list(bot)
+    old = {**private, "chat": {"id": GROUP_ID, "type": "supergroup", "title": "Badminton"}}
+    bot.telegram.clear()
+
+    await bot.send(callback_update(button(old, "✏️ grace"), sender=ALICE, on_message=old))
+
+    alert = bot.telegram.last("answerCallbackQuery").params
+    assert (alert["text"], alert["show_alert"]) == (RENAME_PRIVATELY, True)
+    assert bot.telegram.calls_to("sendMessage") == []
+    async with bot.sessionmaker() as db:
+        assert await db.scalar(select(func.count()).select_from(Draft)) == 0
+
+    # Changes that need no prompt still work from such a list.
+    await bot.send(callback_update(button(old, "🚫"), sender=ALICE, on_message=old))
+    assert not (await members(bot))["alice"].active
 
 
 async def test_rename_through_a_prompt(bot: BotHarness) -> None:

@@ -109,6 +109,7 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
   - rename or deactivate any member.
   - Inactive members are hidden from pickers, but their history is kept.
   - Once a change is made (rename, deactivate, reactivate or link, FR-MEM-8), the list closes: it shows the updated members without buttons, so scrolling past it later can't change anyone by accident. `/members` opens a fresh list.
+  - Renaming asks for the name with a reply prompt, so only from a list in the admin's private chat (FR-MOD-2). On a list left in the group from before (FR-ADM-6), ✏️ says to send `/members` privately.
 - **FR-MEM-6:**
   - Wherever the bot names someone a payment is owed to, it must show their @username.
   - Members without a username are shown as a text mention, i.e. a tappable name.
