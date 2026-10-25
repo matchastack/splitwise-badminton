@@ -81,6 +81,10 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T42 | Share the wizard card refresh | `claude/dazzling-noether-dpbhbz` | E3 | T17, T41 | ✅ | [#69](https://github.com/matchastack/splitwise-badminton/pull/69) |
 | T43 | Read booking screenshots (OCR); pin bookings | `claude/inspiring-euler-fdophp` | E3 | T23, T24, T27, T42 | ✅ | [#72](https://github.com/matchastack/splitwise-badminton/pull/72) |
 | T44 | Rename `/book` to `/court` | `feat/t44-court-command` | E3 | T43 | ✅ | [#73](https://github.com/matchastack/splitwise-badminton/pull/73) |
+| T45 | Only group members use the bot in private chat | `feat/t45-group-member-check` | E9 | T44 | ⬜ | — |
+| T46 | Member commands in private chat | `feat/t46-member-commands-private` | E9 | T45 | ⬜ | — |
+| T47 | Admin commands in private chat | `feat/t47-admin-commands-private` | E9 | T46 | ⬜ | — |
+| T48 | Let the group chat freely | `feat/t48-group-chat` | E9 | T47 | ⬜ | — |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
@@ -447,6 +451,44 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
   - If it lacks delete rights, it logs a warning.
 - **Done when:** tests cover plain text, a sticker and an unknown command (all deleted), and an admin message, a service message and a prompt reply (all kept).
 
+### T45 · Only group members use the bot in private chat
+`feat/t45-group-member-check` · Stories US-9.3, US-9.4 · FR-MEM-9, NFR-4 · Depends on T44
+- **Scope:** commands are moving to private chats (T46, T47), and anyone can message a public bot, so the bot checks who it's talking to first.
+  - A `members_only` decorator, like `admin_only` (`badminton/bot/admin.py`), lets a private-chat command through only for the admin or a member of the group: someone `getChatMember` on `GROUP_CHAT_ID` reports as the owner, an administrator, a member, or restricted but still a member. Anyone else is told the bot is for the group's members, and no member record is made for them. With no `GROUP_CHAT_ID` set, only the admin gets through.
+  - It wraps `/start`, `/name`, `/help`, `/balance` and `/upcoming`. In the group it does nothing, and `/chatid` stays open (FR-OPS-5).
+  - A failed lookup (user not found, or the bot is no longer in the group) counts as not a member and is logged. Telegram only guarantees the lookup for a bot that is a group admin; this one stays an admin to pin bookings.
+  - `tests/fake_telegram.py` answers `getChatMember`: a member by default, with a way to make someone an outsider.
+  - Requirements: a new FR-MEM-9; a new US-9.4, "As the group, we want only our members to record bookings and purchases, so that outsiders can't change our balances"; NFR-4. README: a troubleshooting entry for a member the bot doesn't recognise, and *Moving the bot to another group* says members must be in the new group to use the bot privately.
+- **Done when:** tests cover an outsider refused with no member record made, a member and a restricted member let through, a restricted ex-member and a failed lookup refused, the admin let through without a lookup, and no lookup for commands in the group.
+
+### T46 · Member commands in private chat
+`feat/t46-member-commands-private` · Stories US-2.3, US-2.5, US-3.1, US-5.1, US-5.5 · FR-BK-1, FR-BK-8, FR-BK-9, FR-SH-1, FR-SH-6, FR-MEM-7 · Depends on T45
+- **Scope:** members use the bot in a private chat with it; the group gets the results.
+  - `/court` (or a screenshot captioned `/court`), `/shuttle`, `/balance`, `/upcoming`, `/name` and `/help` work only in a private chat, behind `members_only`. In the group, each gets a short reply saying to send it to the bot privately, with a button that opens the chat (`https://t.me/<bot username>`).
+  - Booking: the prompt, the screenshot and the wizard are in the private chat, and the screenshot handler only listens there. On confirm, the record (the screenshot captioned with the booking, with 🗑 Cancel booking) is posted in the group and pinned, as now. In the private chat, the wizard becomes a one-line confirmation instead of disappearing, and the member's screenshot stays.
+  - Shuttle: the card is in the private chat. Once the purchase is recorded, the group announcement carries 🗑 Cancel purchase, so the payer or the admin can still cancel it while it waits.
+  - Prompts in a private chat don't @mention the member. `/start`, `/help` and the `/book` pointer say to send commands to the bot privately.
+  - Requirements: FR-BK-1, FR-BK-8, FR-BK-9, FR-SH-1, FR-SH-6, FR-MEM-7, §6.1 and C-2. README: the Commands table, and step 7's "press **Start**" becomes how members use the bot.
+- **Done when:** the booking, shuttle, `/balance`, `/upcoming`, `/name` and `/help` tests run from private chats; tests cover the group reply for each command (as text and as a captioned photo), the record posted and pinned in the group, the private confirmation, and cancelling a purchase from the announcement as the payer, as the admin and as someone else.
+
+### T47 · Admin commands in private chat
+`feat/t47-admin-commands-private` · Stories US-2.4, US-7.4, US-8.1 to US-8.5, US-9.2 · FR-ADM-6, FR-MOD-2 · Depends on T46
+- **Scope:**
+  - `/edit`, `/shuttle_finished`, `/shuttle_edit`, `/settle`, `/addmember`, `/members` and `/invoice` work only in the admin's private chat. In the group they get the same reply as member commands. Announcements still go to the group (FR-ADM-3).
+  - No prompt is asked in the group any more, so the reply-prompt handler (`prompts.handle_reply`) only listens in private chats, and replies in the group never query the database (NFR-1).
+  - Requirements: FR-ADM-6, FR-MOD-2 and §6.1. README: the Commands table.
+- **Done when:** the admin flow tests run from the admin's private chat, and tests cover admin commands in the group and a reply in the group that looks up no draft and makes no Telegram call.
+
+### T48 · Let the group chat freely
+`feat/t48-group-chat` · Stories US-9.1, US-1.3 · FR-MOD-1, FR-MOD-3, FR-OPS-3, FR-OPS-4 · Depends on T47
+- **Scope:** the group becomes a normal chat. The bot posts its results there, handles taps on their buttons, and answers its commands with the reply from T46. It deletes no one's messages and ignores everything else.
+  - Remove the guard (`badminton/bot/handlers/guard.py` and its registration in `badminton/bot/handlers/__init__.py`). `caption_command` and `is_booking_photo` move to `booking.py`.
+  - The bot needs only *Pin messages*: README step 7, *Moving the bot to another group*, §3.1, C-5 and FR-OPS-4 say so, and the "Messages aren't deleted" troubleshooting entry goes.
+  - `scripts/setup_telegram.py` publishes member commands for private chats only and admin commands for the admin's private chat only, and clears the group menus it published before, so the group offers none. The README drops the steps that rerun it for the group's menu.
+  - `/help` drops "In the group, only commands are allowed; other messages are removed."
+  - Requirements: FR-MOD-1 and FR-MOD-3 say the above (IDs kept); US-9.1 becomes "As the group, we want to chat freely, with the bot posting only its results".
+- **Done when:** `tests/bot/test_guard.py` is replaced by tests showing that plain text, stickers, photos, replies, unknown commands and other bots' commands in the group get no Telegram call, from a member and from the admin; `tests/test_scripts.py` covers the new menus and the cleared group menus.
+
 ## E1 — Documentation
 
 ### T37 · Setup and deployment guide
@@ -486,3 +528,12 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
 - **Scope:** when a guest is linked, the merged member takes the account's display name (their Telegram first name, or what they set with `/name`) instead of keeping the guest's spreadsheet name. The confirm step, audit row and docs say so.
   - After any change from `/members` (rename, deactivate, reactivate, link), the list closes without buttons, so scrolling past it later can't tap one by accident; `/members` opens a fresh one.
 - **Done when:** tests cover the linked member's name, the confirm text, `/balance`, and the member list closing after a rename, a deactivation and a link.
+
+## E11 — Future enhancements
+
+Not planned yet. An idea here gets a task ID, a branch and a row in the Summary once it's needed.
+
+### Move the bot to another group
+Today this is manual (README, *Moving the bot to another group*), and what was posted in the old group stays behind with its buttons ignored. An admin command could finish the move:
+- Repost what's still live in the new group and update the stored chat and message IDs: the booking records of upcoming sessions (pinned again), attendance cards already up, a waiting shuttle purchase, and the latest invoice with its unpaid lines.
+- Let edits to a chat the bot has left fail quietly. `attendance.refresh_card`, `invoice.refresh_invoice_card` and `booking.refresh_record` only ignore `BadRequest`; the `Forbidden` Telegram sends instead stops `finalize_session` from locking a session and `run_invoice` from sending statements.
