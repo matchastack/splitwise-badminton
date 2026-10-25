@@ -85,7 +85,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T46 | Member commands in private chat | `feat/t46-member-commands-private` | E9 | T45 | ✅ | [#77](https://github.com/matchastack/splitwise-badminton/pull/77) |
 | T47 | Admin commands in private chat | `feat/t47-admin-commands-private` | E9 | T46 | ✅ | [#78](https://github.com/matchastack/splitwise-badminton/pull/78) |
 | T48 | Let the group chat freely | `feat/t48-group-chat` | E9 | T47 | ✅ | [#79](https://github.com/matchastack/splitwise-badminton/pull/79) |
-| T49 | Screenshots in a private chat needn't be replies | `fix/t49-private-screenshots` | E3 | T48 | ✅ | — |
+| T49 | Screenshots in a private chat needn't be replies | `fix/t49-private-screenshots` | E3 | T48 | ✅ | [#80](https://github.com/matchastack/splitwise-badminton/pull/80) |
 | T50 | Renaming from a member list left in the group | `fix/t50-group-member-list-rename` | E9 | T47, T49 | ⬜ | — |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
