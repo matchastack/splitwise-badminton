@@ -14,7 +14,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CallbackQueryHandler, ContextTypes
 
 from badminton.bot.context import db_session, settings_of
-from badminton.bot.handlers.booking import cancel_markup, refresh_record
+from badminton.bot.handlers.booking import record_markup, refresh_record
 from badminton.db.models import Booking, Member, Session
 from badminton.domain.money import fmt_sgd
 from badminton.domain.timeutil import fmt_session, utc_now
@@ -69,7 +69,7 @@ async def on_cancel_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             return
         if action == KEEP:
             await query.answer()
-            await query.edit_message_reply_markup(cancel_markup(booking.id))
+            await query.edit_message_reply_markup(record_markup(booking.id, context.bot.username))
             return
 
         actor = await upsert_from_telegram(db, update.effective_user)

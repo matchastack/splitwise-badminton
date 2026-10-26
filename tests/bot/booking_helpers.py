@@ -84,8 +84,13 @@ class Card:
         return self.current.get("text") or self.current.get("caption", "")
 
     def buttons(self) -> dict[str, str]:
+        """Each button's label and its callback data, or its URL for a link."""
         rows = self.current.get("reply_markup", {}).get("inline_keyboard", [])
-        return {button["text"]: button["callback_data"] for row in rows for button in row}
+        return {
+            button["text"]: button.get("callback_data", button.get("url"))
+            for row in rows
+            for button in row
+        }
 
     async def tap(self, label: str, *, sender: dict[str, Any] | None = None) -> None:
         data = self.buttons()[label]

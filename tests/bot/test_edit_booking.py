@@ -2,6 +2,7 @@ from datetime import date, timedelta
 
 from sqlalchemy import select
 
+from badminton.bot.membership import OPEN_CHAT
 from badminton.db.models import AuditLog, Booking, Member, Session
 from badminton.domain.timeutil import fmt_date, fmt_session, utc_now
 from badminton.services.repo import load_ledger
@@ -219,7 +220,7 @@ async def test_a_corrected_booking_updates_its_record(bot: BotHarness) -> None:
         "💵 $20.00, paid by @bob_t\n"
         "✏️ Corrected by the admin."
     )
-    assert set(record.buttons()) == {"🗑 Cancel booking"}
+    assert set(record.buttons()) == {OPEN_CHAT, "🗑 Cancel booking"}
 
 
 async def test_cancelling_the_session_updates_its_records(bot: BotHarness) -> None:

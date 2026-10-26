@@ -4,6 +4,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 
 from badminton.bot.handlers.booking_cancel import STARTED
+from badminton.bot.membership import OPEN_CHAT
 from badminton.db.models import AuditLog, Booking, Session
 from badminton.domain.timeutil import at_sgt, fmt_date, utc_now
 from tests.bot.booking_helpers import ALICE, BOB, CAROL, Card, book, future_day
@@ -63,7 +64,7 @@ async def test_keep_it_restores_the_button(bot: BotHarness) -> None:
     await record.tap("🗑 Cancel booking")
     await record.tap("Keep it")
 
-    assert set(record.buttons()) == {"🗑 Cancel booking"}
+    assert set(record.buttons()) == {OPEN_CHAT, "🗑 Cancel booking"}
     assert (await only_session(bot)).status == "scheduled"
 
 
