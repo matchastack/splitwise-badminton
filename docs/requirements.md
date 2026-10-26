@@ -244,7 +244,7 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
 - **FR-LED-7:**
   - Costs and shares are derived from stored facts (bookings, attendance, batches, transfers, and the opening balances carried over from the spreadsheet, FR-MIG-2). They are never stored.
   - Any correction therefore flows through to every figure automatically.
-- **FR-LED-8:** `/balance` shows the caller's balance, their pending hours in the open batch, the waiting batch (if any), and any unpaid settle-up lines involving them.
+- **FR-LED-8:** `/balance` shows the caller's balance, their pending hours in the open batch, the waiting batch (if any), and any unpaid settle-up lines involving them, marking those pending confirmation (FR-INV-4).
 - **FR-LED-9:** `/upcoming` lists scheduled sessions with their date, time, hours and payer(s).
 
 Worked examples:
@@ -264,10 +264,16 @@ Worked examples:
   - Example: balances alice +$45, frank +$10, bob −$30, carol −$20, dave −$5 give 4 transfers: bob → alice $30, carol → alice $15, carol → frank $5, dave → frank $5.
 - **FR-INV-3:** The group card must show:
   - the month's totals: sessions, court spend, and shuttle batches closed;
-  - one line per transfer, `@payer → @payee $X.XX`, each with a **[✅ Paid]** button.
+  - one line per transfer, `@payer → @payee $X.XX`, each with a **[✅ Paid]** button;
+  - a line waiting for its payee as `⏳ @payer → @payee $X.XX (pending confirmation)`, with **[☑️ Received]** and **[↩️ Undo]** buttons.
 - **FR-INV-4:**
   - **[✅ Paid]** can be tapped by that line's payer, its payee, or the admin. Anyone else gets an alert.
-  - A tap records a transfer and marks the line paid. Tapping again undoes it.
+  - A tap by the payer marks the line pending, and the bot DMs the payee: "@payer says they've paid you $X.XX for <month>. Have you received it?", with **[✅ Received]** and **[❌ Not received]**.
+  - A pending line is paid once the payee or the admin confirms it, from that DM or with **[☑️ Received]** on the card. A payee who can't be DMed confirms on the card. The payer can't confirm their own payment.
+  - **[❌ Not received]**, or **[↩️ Undo]** on a pending line, makes the line unpaid again. If the payee did it, the bot DMs the payer.
+  - A tap by the payee or the admin on **[✅ Paid]** marks the line paid straight away.
+  - A paid line records a transfer, shown struck through. **[↩️ Undo]** on it removes the transfer.
+  - A pending line isn't paid: it carries into the next invoice like any other unpaid line (FR-INV-6).
 - **FR-INV-5:**
   - Members with DM enabled must receive a personal statement covering:
     - opening balance;
@@ -489,6 +495,7 @@ Acceptance criteria are brief; the referenced FRs hold the detail.
 - **US-7.2:** As a member, I want to mark a transfer as paid, so that balances clear. *(FR-INV-4)*
   - The payer, payee or admin can toggle it.
   - Anyone else is refused.
+- **US-7.6:** As a member being paid, I want to confirm a payment reached me before it counts, so that the group can trust the settle-up. *(FR-INV-4)*
 - **US-7.3:** As a member, I want a private statement explaining my amount. *(FR-INV-5)*
 - **US-7.4:** As the admin, I want to generate an invoice on demand, and have old unpaid lines carried into the new one. *(FR-INV-1, FR-INV-6)*
 - **US-7.5:** As a member, I want corrections to past months shown as adjustments, so that the numbers still add up. *(FR-INV-7)*

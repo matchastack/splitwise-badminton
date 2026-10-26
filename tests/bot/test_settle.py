@@ -183,3 +183,33 @@ async def test_matching_invoice_line_is_marked_paid(bot: BotHarness) -> None:
         if c.params["message_id"] == invoice_card_id
     ][-1]
     assert "✅ <s>carol → @alice_handle $12.50</s>" in invoice_edit.params["text"]
+
+
+async def test_pending_invoice_line_is_marked_paid(bot: BotHarness) -> None:
+    await seed(bot)
+    await invoice_for(bot, "2026-10", NOV_1)
+    invoice_card = bot.telegram.last("sendMessage").message
+    paid = invoice_card["reply_markup"]["inline_keyboard"][0][0]
+    assert paid["text"] == "✅ bob → alice $12.50 paid"
+    await bot.send(
+        callback_update(paid["callback_data"], sender=user(222, "bob"), on_message=invoice_card)
+    )
+    card = await SettleCard(bot).open()
+
+    await card.tap("bob")
+    await card.tap("alice")
+    await card.answer("12.50")
+    await card.tap("✅ Record")
+
+    async with bot.sessionmaker() as db:
+        transfer = await db.scalar(select(Transfer))
+    assert transfer.invoice_line_id is not None
+    invoice_edit = [
+        c
+        for c in bot.telegram.calls_to("editMessageText")
+        if c.params["message_id"] == invoice_card["message_id"]
+    ][-1]
+    assert (
+        '✅ <s><a href="tg://user?id=222">bob</a> → @alice_handle $12.50</s>'
+        in (invoice_edit.params["text"])
+    )

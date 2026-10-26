@@ -87,6 +87,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T48 | Let the group chat freely | `feat/t48-group-chat` | E9 | T47 | ✅ | [#79](https://github.com/matchastack/splitwise-badminton/pull/79) |
 | T49 | Screenshots in a private chat needn't be replies | `fix/t49-private-screenshots` | E3 | T48 | ✅ | [#80](https://github.com/matchastack/splitwise-badminton/pull/80) |
 | T50 | Renaming from a member list left in the group | `fix/t50-group-member-list-rename` | E9 | T47, T49 | ✅ | [#81](https://github.com/matchastack/splitwise-badminton/pull/81) |
+| T51 | Payee confirms invoice payments | `feat/t51-confirm-payments` | E7 | T31, T36 | ⬜ | — |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
@@ -417,6 +418,15 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
   - A tick step that, on or after the 1st (SGT), generates last month's invoice if it doesn't exist yet.
   - `/invoice` (admin) generates it on demand.
 - **Done when:** tests cover the 1st, a missed 1st caught up on the 2nd, the command, and refusal for non-admins.
+
+### T51 · Payee confirms invoice payments
+`feat/t51-confirm-payments` · Stories US-7.2, US-7.6 · FR-INV-3, FR-INV-4, FR-LED-8 · Depends on T31, T36
+- **Scope:** at the owner's request, so payments are seen to arrive.
+  - The payer's [✅ paid] tap leaves the line pending (`invoice_lines.claimed_at`, migration 0006) instead of recording a transfer. The card shows `⏳ … (pending confirmation)` with [☑️ received] and [↩️ Undo].
+  - The payee gets a DM with [✅ Received] and [❌ Not received]. Received records the transfer and strikes the line through; not received makes it unpaid again and DMs the payer.
+  - A tap by the payee or the admin still marks a line paid at once. A pending line carries over like any unpaid line.
+  - `/balance` marks pending lines; `/settle` settles a matching pending line.
+- **Done when:** tests cover confirming and refusing from the DM, the payer withdrawing but not confirming, a second paid tap, a payee without DMs confirming on the card, stale DM buttons, a pending line carried over, `/balance` and `/settle`.
 
 ## E8 — Admin corrections and transparency
 
