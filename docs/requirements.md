@@ -160,6 +160,7 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
   - **✏️ Edit** changes the date, time or hours (as in FR-BK-3 to FR-BK-5), or the venue, courts or price (reply prompts).
   - On confirm, the bot posts the screenshot in the group, captioned with the booking: its permanent record, which also shows when the attendance card will be posted.
   - The bot pins the record without notifying anyone (FR-ATT-4). In the private chat, the wizard becomes a one-line confirmation, and the member's screenshot stays.
+  - The record has two buttons, **[💬 Open my chat] [🗑 Cancel booking]** (FR-BK-10). Telegram shows a pinned message's button in the pin bar when it's the only one, and the pin is only for finding the record: tapping it goes there.
 - **FR-BK-9:**
   - Wizard state is stored in the database.
   - A wizard that isn't finished within 24 hours expires, and its message is deleted. The member's booking screenshot stays in their private chat.
@@ -495,10 +496,10 @@ Acceptance criteria are brief; the referenced FRs hold the detail.
 - **US-7.2:** As a member, I want to mark a transfer as paid, so that balances clear. *(FR-INV-4)*
   - The payer, payee or admin can toggle it.
   - Anyone else is refused.
-- **US-7.6:** As a member being paid, I want to confirm a payment reached me before it counts, so that the group can trust the settle-up. *(FR-INV-4)*
 - **US-7.3:** As a member, I want a private statement explaining my amount. *(FR-INV-5)*
 - **US-7.4:** As the admin, I want to generate an invoice on demand, and have old unpaid lines carried into the new one. *(FR-INV-1, FR-INV-6)*
 - **US-7.5:** As a member, I want corrections to past months shown as adjustments, so that the numbers still add up. *(FR-INV-7)*
+- **US-7.6:** As a member being paid, I want to confirm a payment reached me before it counts, so that the group can trust the settle-up. *(FR-INV-4)*
 
 ### E8 — Admin corrections and transparency
 - **US-8.1:** As the admin, I want to correct a session's attendance, with the change announced to the group. *(FR-ADM-2, FR-ADM-3)*

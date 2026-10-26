@@ -87,7 +87,8 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T48 | Let the group chat freely | `feat/t48-group-chat` | E9 | T47 | ✅ | [#79](https://github.com/matchastack/splitwise-badminton/pull/79) |
 | T49 | Screenshots in a private chat needn't be replies | `fix/t49-private-screenshots` | E3 | T48 | ✅ | [#80](https://github.com/matchastack/splitwise-badminton/pull/80) |
 | T50 | Renaming from a member list left in the group | `fix/t50-group-member-list-rename` | E9 | T47, T49 | ✅ | [#81](https://github.com/matchastack/splitwise-badminton/pull/81) |
-| T51 | Payee confirms invoice payments | `feat/t51-confirm-payments` | E7 | T31, T36 | ⬜ | — |
+| T51 | Keep 🗑 Cancel booking out of the pin bar | `claude/pinned-message-cancel-booking-vtnx46` | E3 | T43, T46 | ✅ | [#83](https://github.com/matchastack/splitwise-badminton/pull/83) |
+| T52 | Payee confirms invoice payments | `feat/t51-confirm-payments` | E7 | T31, T36 | ✅ | [#84](https://github.com/matchastack/splitwise-badminton/pull/84) |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
@@ -340,6 +341,14 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
   - Requirements: FR-BK-1.
 - **Done when:** tests cover a photo sent without replying after `/court`, an image file sent without replying while a form waits, and a photo with no form waiting and no caption (no reply, no form, not downloaded).
 
+### T51 · Keep 🗑 Cancel booking out of the pin bar
+`claude/pinned-message-cancel-booking-vtnx46` · Stories US-3.5, US-3.7 · FR-BK-8, FR-BK-10 · Depends on T43, T46
+- **Scope:** from the beta group. Telegram shows a pinned message's button in the pin bar when it's the message's only button, so the group's pin bar offered 🗑 Cancel booking. The pin is enough: tapping it goes to the record, which keeps the button.
+  - The record gets 💬 Open my chat (the button the group's command replies have) beside 🗑 Cancel booking, so the pin bar shows neither. *Keep it* and the admin's edits put both back.
+  - Records already posted keep their one button until they're next edited.
+  - Requirements: FR-BK-8.
+- **Done when:** tests cover the record's two buttons, and both being back after *Keep it* and after the admin's edit.
+
 ## E4 — Attendance and locking
 
 ### T25 · Attendance card
@@ -419,7 +428,7 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
   - `/invoice` (admin) generates it on demand.
 - **Done when:** tests cover the 1st, a missed 1st caught up on the 2nd, the command, and refusal for non-admins.
 
-### T51 · Payee confirms invoice payments
+### T52 · Payee confirms invoice payments
 `feat/t51-confirm-payments` · Stories US-7.2, US-7.6 · FR-INV-3, FR-INV-4, FR-LED-8 · Depends on T31, T36
 - **Scope:** at the owner's request, so payments are seen to arrive.
   - The payer's [✅ paid] tap leaves the line pending (`invoice_lines.claimed_at`, migration 0006) instead of recording a transfer. The card shows `⏳ … (pending confirmation)` with [☑️ received] and [↩️ Undo].

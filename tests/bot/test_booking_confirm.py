@@ -7,9 +7,18 @@ from sqlalchemy.exc import SAWarning
 
 from badminton.bot.context import SETTINGS_KEY
 from badminton.bot.handlers.booking import EXPIRED, NO_GROUP, UNREAD
+from badminton.bot.membership import OPEN_CHAT
 from badminton.db.models import Booking, Draft, Member, Session
 from badminton.domain.timeutil import at_sgt, fmt_date
-from tests.bot.booking_helpers import ALICE, BOB, Wizard, activesg_text, book, future_day
+from tests.bot.booking_helpers import (
+    ALICE,
+    BOB,
+    Wizard,
+    activesg_text,
+    book,
+    future_day,
+    record_buttons,
+)
 from tests.conftest import BotHarness
 from tests.fake_telegram import GROUP_ID, callback_update, message, message_update
 
@@ -54,7 +63,13 @@ async def test_confirm_posts_the_screenshot_in_the_group_and_pins_it(bot: BotHar
         "💵 $14.80, paid by @bob_t\n"
         f"🗳 Attendance card goes up on {due}."
     )
-    assert record.buttons() == {"🗑 Cancel booking": f"bkc:{booking.id}"}
+    # Telegram shows a pinned message's button in the pin bar when it's the only one.
+    assert record.current["reply_markup"]["inline_keyboard"] == [
+        [
+            {"text": OPEN_CHAT, "url": "https://t.me/badminton_bot"},
+            {"text": "🗑 Cancel booking", "callback_data": f"bkc:{booking.id}"},
+        ]
+    ]
 
     pinned = bot.telegram.last("pinChatMessage").params
     assert pinned == {
@@ -108,7 +123,7 @@ async def test_a_second_confirm_tap_keeps_the_record(bot: BotHarness) -> None:
     _, (booking,) = await stored(bot)
     assert wizard.last_alert() == EXPIRED
     assert [call.method for call in bot.telegram.calls[calls:]] == ["answerCallbackQuery"]
-    assert wizard.record().buttons() == {"🗑 Cancel booking": f"bkc:{booking.id}"}
+    assert wizard.record().buttons() == record_buttons(booking.id)
 
 
 async def test_a_double_tap_on_confirm_books_once(
@@ -125,7 +140,7 @@ async def test_a_double_tap_on_confirm_books_once(
     assert sorted(answers[-2:], key=str) == [None, EXPIRED]  # one went through
     assert len(bot.telegram.calls_to("sendPhoto")) == 1  # one record, pinned once
     assert len(bot.telegram.calls_to("pinChatMessage")) == 1
-    assert wizard.record().buttons() == {"🗑 Cancel booking": f"bkc:{booking.id}"}
+    assert wizard.record().buttons() == record_buttons(booking.id)
     assert not [w for w in recwarn if issubclass(w.category, SAWarning)]
 
 
