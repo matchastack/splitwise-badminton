@@ -6,6 +6,7 @@ import itertools
 from datetime import date, timedelta
 from typing import Any
 
+from badminton.bot.membership import OPEN_CHAT
 from badminton.domain.timeutil import sgt_date, utc_now
 from tests.conftest import BotHarness
 from tests.fake_telegram import (
@@ -26,6 +27,11 @@ _screenshots = itertools.count(1)
 
 def future_day(days: int = 14) -> date:
     return sgt_date(utc_now()) + timedelta(days=days)
+
+
+def record_buttons(booking_id: int) -> dict[str, str]:
+    """A booking record's buttons, as ``Card.buttons()`` gives them, until it's cancelled."""
+    return {OPEN_CHAT: "https://t.me/badminton_bot", "🗑 Cancel booking": f"bkc:{booking_id}"}
 
 
 def activesg_text(
@@ -84,8 +90,13 @@ class Card:
         return self.current.get("text") or self.current.get("caption", "")
 
     def buttons(self) -> dict[str, str]:
+        """Each button's label and its callback data, or its URL for a link."""
         rows = self.current.get("reply_markup", {}).get("inline_keyboard", [])
-        return {button["text"]: button["callback_data"] for row in rows for button in row}
+        return {
+            button["text"]: button.get("callback_data", button.get("url"))
+            for row in rows
+            for button in row
+        }
 
     async def tap(self, label: str, *, sender: dict[str, Any] | None = None) -> None:
         data = self.buttons()[label]

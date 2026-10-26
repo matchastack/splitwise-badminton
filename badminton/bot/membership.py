@@ -96,8 +96,10 @@ async def send_privately(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
 
 
-def open_chat_markup(bot_username: str) -> InlineKeyboardMarkup:
+def open_chat_button(bot_username: str) -> InlineKeyboardButton:
     """A button that opens the private chat with the bot."""
-    return InlineKeyboardMarkup(
-        [[InlineKeyboardButton(OPEN_CHAT, url=f"https://t.me/{bot_username}")]]
-    )
+    return InlineKeyboardButton(OPEN_CHAT, url=f"https://t.me/{bot_username}")
+
+
+def open_chat_markup(bot_username: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[open_chat_button(bot_username)]])

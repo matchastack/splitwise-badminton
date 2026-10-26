@@ -57,7 +57,13 @@ from badminton.bot.keyboards import (
     parse_day,
     parse_month,
 )
-from badminton.bot.membership import members_only, open_chat_markup, private_only, send_privately
+from badminton.bot.membership import (
+    members_only,
+    open_chat_button,
+    open_chat_markup,
+    private_only,
+    send_privately,
+)
 from badminton.db.models import Booking, Draft, Member, Session
 from badminton.domain.money import fmt_sgd, parse_amount
 from badminton.domain.screenshot import fmt_courts, parse_courts, parse_venue, read_booking
@@ -292,7 +298,7 @@ async def refresh_record(bot: Bot, db: AsyncSession, booking: Booking, note: str
     payer = await db.get(Member, booking.payer_member_id)
     record = render_record(payer, booking)
     if booking.cancelled_at is None:
-        text, markup = f"{record}\n{note}", cancel_markup(booking.id)
+        text, markup = f"{record}\n{note}", record_markup(booking.id, bot.username)
     else:
         text, markup = f"🗑 <s>{record}</s>\n{note}", None
     where = {"chat_id": booking.record_chat_id, "message_id": booking.record_message_id}
@@ -709,7 +715,7 @@ async def _confirm(
         group_chat_id,
         data["photo_file_id"],
         caption="\n".join(lines),
-        reply_markup=cancel_markup(booking.id),
+        reply_markup=record_markup(booking.id, context.bot.username),
     )
     booking.record_message_id = record.message_id
     await delete_draft(context.bot, db, draft)
@@ -727,10 +733,17 @@ async def _confirm(
     return None
 
 
-def cancel_markup(booking_id: int) -> InlineKeyboardMarkup:
-    """The button on a booking record that lets its submitter or the admin cancel it."""
+def record_markup(booking_id: int, bot_username: str) -> InlineKeyboardMarkup:
+    """The buttons on a booking record: one opens the private chat, the other lets its
+    submitter or the admin cancel it. Telegram shows a pinned message's button in the pin
+    bar when it is the only one, so the record always has two."""
     return InlineKeyboardMarkup(
-        [[InlineKeyboardButton("🗑 Cancel booking", callback_data=f"bkc:{booking_id}")]]
+        [
+            [
+                open_chat_button(bot_username),
+                InlineKeyboardButton("🗑 Cancel booking", callback_data=f"bkc:{booking_id}"),
+            ]
+        ]
     )
 
 

@@ -160,6 +160,7 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
   - **✏️ Edit** changes the date, time or hours (as in FR-BK-3 to FR-BK-5), or the venue, courts or price (reply prompts).
   - On confirm, the bot posts the screenshot in the group, captioned with the booking: its permanent record, which also shows when the attendance card will be posted.
   - The bot pins the record without notifying anyone (FR-ATT-4). In the private chat, the wizard becomes a one-line confirmation, and the member's screenshot stays.
+  - The record has two buttons, **[💬 Open my chat] [🗑 Cancel booking]** (FR-BK-10). Telegram shows a pinned message's button in the pin bar when it's the only one, and the pin is only for finding the record: tapping it goes there.
 - **FR-BK-9:**
   - Wizard state is stored in the database.
   - A wizard that isn't finished within 24 hours expires, and its message is deleted. The member's booking screenshot stays in their private chat.
