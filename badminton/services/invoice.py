@@ -4,6 +4,9 @@ An invoice is generated once per period. Its settle-up lines come from all-time
 balances by fewest transfers; each member's closing balance is stored so the next
 statement can show corrections as adjustments. When a new invoice is generated, the
 previous one's unpaid lines are marked as carried into it.
+
+A line is paid once the payee or the admin confirms it. The payer saying they've paid
+leaves it pending, and the payee is asked by DM to confirm (FR-INV-4).
 """
 
 from __future__ import annotations
@@ -27,12 +30,18 @@ from badminton.domain.settle import simplify_debts
 from badminton.domain.statement import group_totals
 from badminton.domain.timeutil import fmt_hours, fmt_period
 from badminton.services.members import mention_html
-from badminton.services.notify import announce
+from badminton.services.notify import announce, dm
 from badminton.services.repo import load_ledger
 
 OPEN = "open"
+PENDING = "pending"
 PAID = "paid"
 CARRIED = "carried"
+
+# Button actions after ``inv:<line id>``. With none, the button is ✅ paid on an unpaid
+# line, or ↩️ undo on a paid one.
+RECEIVED = "ok"
+NOT_RECEIVED = "no"
 
 
 async def previous_invoice(db: AsyncSession, before: Invoice | None = None) -> Invoice | None:
@@ -146,18 +155,30 @@ async def line_views(db: AsyncSession, invoice: Invoice) -> list[LineView]:
     lines = await db.scalars(
         select(InvoiceLine).where(InvoiceLine.invoice_id == invoice.id).order_by(InvoiceLine.id)
     )
-    views = []
-    for line in lines:
-        if line.id in paid_ids:
-            state = PAID
-        elif line.carried_at is not None:
-            state = CARRIED
-        else:
-            state = OPEN
-        views.append(
-            LineView(line, members[line.from_member_id], members[line.to_member_id], state)
+    return [
+        LineView(
+            line,
+            members[line.from_member_id],
+            members[line.to_member_id],
+            _state(line, paid=line.id in paid_ids),
         )
-    return views
+        for line in lines
+    ]
+
+
+async def line_state(db: AsyncSession, line: InvoiceLine) -> str:
+    paid = await db.scalar(select(Transfer.id).where(Transfer.invoice_line_id == line.id))
+    return _state(line, paid=paid is not None)
+
+
+def _state(line: InvoiceLine, *, paid: bool) -> str:
+    if paid:
+        return PAID
+    if line.carried_at is not None:
+        return CARRIED
+    if line.claimed_at is not None:
+        return PENDING
+    return OPEN
 
 
 def render_invoice(
@@ -170,7 +191,8 @@ def render_invoice(
     """The group card: the frozen summary plus each settle-up line's current state.
 
     On the latest invoice each line not carried over has a button to mark it paid,
-    or to undo that (FR-INV-4). Replaced invoices have no buttons.
+    to confirm it was received if pending, or to undo that (FR-INV-4). Replaced invoices
+    have no buttons.
     """
     lines = [invoice.summary, ""]
     if not views:
@@ -181,13 +203,14 @@ def render_invoice(
     if interactive:
         for view in views:
             names = f"{view.payer.display_name} → {view.payee.display_name}"
+            amount = fmt_sgd(view.line.amount_cents)
             if view.state == OPEN:
-                label = f"✅ {names} {fmt_sgd(view.line.amount_cents)} paid"
+                buttons.append([_line_button(f"✅ {names} {amount} paid", view.line)])
+            elif view.state == PENDING:
+                buttons.append([_line_button(f"☑️ {names} {amount} received", view.line, RECEIVED)])
+                buttons.append([_line_button(f"↩️ Undo {names}", view.line, NOT_RECEIVED)])
             elif view.state == PAID:
-                label = f"↩️ Undo {names}"
-            else:
-                continue
-            buttons.append([InlineKeyboardButton(label, callback_data=f"inv:{view.line.id}")])
+                buttons.append([_line_button(f"↩️ Undo {names}", view.line)])
     for view in views:
         transfer = (
             f"{mention_html(view.payer)} → {mention_html(view.payee)} "
@@ -198,11 +221,20 @@ def render_invoice(
         elif view.state == CARRIED:
             where = f" into {html.escape(carried_into)}" if carried_into else ""
             lines.append(f"↪️ {transfer} (carried{where})")
+        elif view.state == PENDING:
+            lines.append(f"⏳ {transfer} (pending confirmation)")
         else:
             lines.append(f"• {transfer}")
     if buttons:
         lines += ["", "Tap ✅ once you've paid."]
+        if any(view.state == PENDING for view in views):
+            lines.append("Tap ☑️ once you've received it.")
     return "\n".join(lines), InlineKeyboardMarkup(buttons) if buttons else None
+
+
+def _line_button(text: str, line: InvoiceLine, action: str | None = None) -> InlineKeyboardButton:
+    data = f"inv:{line.id}" if action is None else f"inv:{line.id}:{action}"
+    return InlineKeyboardButton(text, callback_data=data)
 
 
 async def publish_invoice(bot: Bot, db: AsyncSession, settings: Settings, invoice: Invoice) -> None:
@@ -233,14 +265,9 @@ async def refresh_invoice_card(
         )
 
 
-async def toggle_paid(db: AsyncSession, line: InvoiceLine, recorded_by_member_id: int) -> bool:
-    """Record the line's transfer, or remove it if already recorded. Returns True if
-    the line is now paid."""
-    existing = await db.scalar(select(Transfer).where(Transfer.invoice_line_id == line.id))
-    if existing is not None:
-        await db.delete(existing)
-        await db.flush()
-        return False
+async def confirm_paid(db: AsyncSession, line: InvoiceLine, recorded_by_member_id: int) -> None:
+    """Record the line's transfer: it's paid."""
+    line.claimed_at = None
     db.add(
         Transfer(
             from_member_id=line.from_member_id,
@@ -251,16 +278,46 @@ async def toggle_paid(db: AsyncSession, line: InvoiceLine, recorded_by_member_id
         )
     )
     await db.flush()
-    return True
+
+
+async def mark_unpaid(db: AsyncSession, line: InvoiceLine) -> None:
+    """Remove the line's transfer, if recorded, and the payer's claim, if any."""
+    line.claimed_at = None
+    await db.execute(delete(Transfer).where(Transfer.invoice_line_id == line.id))
+    await db.flush()
+
+
+def confirm_request(invoice: Invoice, line: InvoiceLine, payer: Member) -> str:
+    """What the payee is asked when the payer says they've paid."""
+    return (
+        f"💸 {mention_html(payer)} says they've paid you {fmt_sgd(line.amount_cents)} "
+        f"for {fmt_period(invoice.period)}. Have you received it?"
+    )
+
+
+async def ask_payee(
+    bot: Bot, invoice: Invoice, line: InvoiceLine, payer: Member, payee: Member
+) -> bool:
+    """DM the payee to confirm the payer's claim. False if they can't be DMed; they can
+    still confirm on the group card. The caller commits (blocked users get DMs turned off)."""
+    markup = InlineKeyboardMarkup(
+        [
+            [
+                _line_button("✅ Received", line, RECEIVED),
+                _line_button("❌ Not received", line, NOT_RECEIVED),
+            ]
+        ]
+    )
+    return await dm(bot, payee, confirm_request(invoice, line, payer), reply_markup=markup)
 
 
 async def open_lines_for(db: AsyncSession, member_id: int) -> list[LineView]:
-    """Unpaid lines on the latest invoice that involve ``member_id``."""
+    """Unpaid lines on the latest invoice that involve ``member_id``, pending ones included."""
     latest = await previous_invoice(db)
     if latest is None:
         return []
     return [
         view
         for view in await line_views(db, latest)
-        if view.state == OPEN and member_id in (view.payer.id, view.payee.id)
+        if view.state in (OPEN, PENDING) and member_id in (view.payer.id, view.payee.id)
     ]

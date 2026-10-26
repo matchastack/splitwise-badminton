@@ -19,7 +19,7 @@ from badminton.db.models import Member, Session
 from badminton.domain.ledger import Ledger
 from badminton.domain.money import fmt_sgd
 from badminton.domain.timeutil import fmt_hours, fmt_session, utc_now
-from badminton.services.invoice import LineView, open_lines_for
+from badminton.services.invoice import PENDING, LineView, open_lines_for
 from badminton.services.members import mention_html, upsert_from_telegram
 from badminton.services.repo import load_ledger
 from badminton.services.shuttle import describe, member_names, waiting_batch
@@ -60,9 +60,10 @@ def unpaid_lines(member: Member, views: list[LineView]) -> list[str]:
     for view in views:
         amount = fmt_sgd(view.line.amount_cents)
         if view.payer.id == member.id:
-            lines.append(f"🧾 To settle: pay {mention_html(view.payee)} {amount}")
+            line = f"🧾 To settle: pay {mention_html(view.payee)} {amount}"
         else:
-            lines.append(f"🧾 To settle: {mention_html(view.payer)} owes you {amount}")
+            line = f"🧾 To settle: {mention_html(view.payer)} owes you {amount}"
+        lines.append(f"{line} (pending confirmation)" if view.state == PENDING else line)
     return lines
 
 

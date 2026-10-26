@@ -201,7 +201,8 @@ class Invoice(Base):
 
 
 class InvoiceLine(Base):
-    """One settle-up transfer. It is paid when a transfer points at it."""
+    """One settle-up transfer. It is paid when a transfer points at it. Until then, the
+    payer saying they've paid makes it wait for the payee to confirm (FR-INV-4)."""
 
     __tablename__ = "invoice_lines"
     __table_args__ = (CheckConstraint("amount_cents > 0", name="amount_positive"),)
@@ -211,6 +212,7 @@ class InvoiceLine(Base):
     from_member_id: Mapped[int] = _member_fk()
     to_member_id: Mapped[int] = _member_fk()
     amount_cents: Mapped[int]
+    claimed_at: Mapped[datetime | None]  # the payer said they've paid
     carried_at: Mapped[datetime | None]
 
     invoice: Mapped[Invoice] = relationship(back_populates="lines")

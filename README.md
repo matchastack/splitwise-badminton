@@ -12,7 +12,7 @@ A Telegram bot that tracks court bookings, attendance and shuttlecock batches fo
 - **Attendance:** 2 days before each session the bot posts a card with **[✅ I'm in] [❌ I'm out]**. People can change their answer until the session ends; no answer counts as out.
 - **Locking:** when the session ends, attendance locks and the bot posts the split. Everyone who played shares the court cost and gets hours added to the current shuttle batch (1 hour = 1 share).
 - **Shuttles:** whoever buys a tube records it by sending `/shuttle <price>` to the bot, and is recorded as the payer. The bot announces it in the group. It waits until the batch in use runs out; only one purchase can wait. When the admin runs `/shuttle_finished`, that batch closes and is split by hours played, and the waiting one takes over. Until it's in use, the buyer or the admin can cancel a purchase from its announcement, and the admin can correct any batch with `/shuttle_edit`.
-- **Monthly settle-up:** on the 1st of each month the bot posts who pays whom, using the fewest transfers, with a **✅ paid** button on each line. Everyone who has opened a chat with the bot also gets a private statement.
+- **Monthly settle-up:** on the 1st of each month the bot posts who pays whom, using the fewest transfers, with a **✅ paid** button on each line. When the payer taps it, the person being paid is asked to confirm they've received it; until then the line shows as pending. Everyone who has opened a chat with the bot also gets a private statement.
 - **Admin corrections:** the admin makes them in a private chat with the bot, and every change is announced in the group.
 - **A normal group chat:** the group chats freely. The bot only posts its results there, and never deletes anyone's messages.
 
