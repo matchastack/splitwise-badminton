@@ -5,17 +5,18 @@ import pytest
 from badminton.domain.timeutil import (
     SGT,
     at_sgt,
-    card_due_date,
     fmt_date,
+    fmt_days_until,
     fmt_hours,
     fmt_period,
     fmt_session,
     fmt_time,
-    is_card_due,
+    is_reminder_due,
     month_bounds,
     parse_hours,
     period_of,
     previous_period,
+    reminder_date,
     sgt_date,
     to_sgt,
 )
@@ -67,12 +68,24 @@ def test_fmt_period() -> None:
     assert fmt_period("2026-10") == "October 2026"
 
 
-def test_card_is_due_from_the_sgt_date_two_days_before() -> None:
-    assert card_due_date(SESSION_START, 2) == date(2026, 10, 2)
+def test_reminder_is_due_from_the_sgt_date_two_days_before() -> None:
+    assert reminder_date(SESSION_START, 2) == date(2026, 10, 2)
     # 23:59 SGT on Thu 1 Oct: not yet. 00:00 SGT on Fri 2 Oct onwards: due, including catch-up.
-    assert not is_card_due(SESSION_START, at_sgt(date(2026, 10, 1), 23, 59), 2)
-    assert is_card_due(SESSION_START, at_sgt(date(2026, 10, 2), 0), 2)
-    assert is_card_due(SESSION_START, at_sgt(date(2026, 10, 3), 10), 2)
+    assert not is_reminder_due(SESSION_START, at_sgt(date(2026, 10, 1), 23, 59), 2)
+    assert is_reminder_due(SESSION_START, at_sgt(date(2026, 10, 2), 0), 2)
+    assert is_reminder_due(SESSION_START, at_sgt(date(2026, 10, 3), 10), 2)
+
+
+@pytest.mark.parametrize(
+    ("day", "text"),
+    [
+        (date(2026, 10, 4), "today"),
+        (date(2026, 10, 5), "tomorrow"),
+        (date(2026, 10, 6), "in 2 days"),
+    ],
+)
+def test_days_until(day: date, text: str) -> None:
+    assert fmt_days_until(day, date(2026, 10, 4)) == text
 
 
 def test_formatting() -> None:

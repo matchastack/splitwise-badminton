@@ -9,7 +9,7 @@ A Telegram bot that tracks court bookings, attendance and shuttlecock batches fo
 
 - **Private commands, results in the group:** members send commands to the bot in a private chat with it, and only members of the group can. The bot posts what they record (bookings, purchases) in the group.
 - **Bookings:** a member sends `/court` to the bot, then their ActiveSG booking screenshot. The bot reads the date, time, venue and court off it with OCR (Tesseract, no LLM), and shows the booking with a suggested price to confirm or edit. Once confirmed, it posts the screenshot with the booking in the group and pins it until the session is played. The sender is recorded as the payer.
-- **Attendance:** 2 days before each session the bot posts a card with **[✅ I'm in] [❌ I'm out]**. People can change their answer until the session ends; no answer counts as out.
+- **Attendance:** as soon as a session is booked, the bot posts a card for it with **[✅ I'm in] [❌ I'm out]**. 2 days before the session it posts a reminder, as a reply to the card. People can change their answer until the session ends; no answer counts as out.
 - **Locking:** when the session ends, attendance locks and the bot posts the split. Everyone who played shares the court cost and gets hours added to the current shuttle batch (1 hour = 1 share).
 - **Shuttles:** whoever buys a tube records it by sending `/shuttle <price>` to the bot, and is recorded as the payer. The bot announces it in the group. It waits until the batch in use runs out; only one purchase can wait. When the admin runs `/shuttle_finished`, that batch closes and is split by hours played, and the waiting one takes over. Until it's in use, the buyer or the admin can cancel a purchase from its announcement, and the admin can correct any batch with `/shuttle_edit`.
 - **Monthly settle-up:** on the 1st of each month the bot posts who pays whom, using the fewest transfers, with a **✅ paid** button on each line. Everyone who has opened a chat with the bot also gets a private statement.
@@ -134,7 +134,7 @@ It prints the webhook URL when done. Run it again whenever a change adds or rena
 ### 8. Optional: run the scheduler more often (cron-job.org)
 
 On Vercel's free plan the cron runs **once a day**, at some point between 10:00 and 10:59 Singapore time. That's enough for the basics:
-- attendance cards go up 2 days ahead;
+- attendance reminders go out 2 days ahead;
 - the invoice is posted on the 1st;
 - taps after a session ends are refused at the exact end time either way.
 
@@ -149,7 +149,7 @@ The only effect of a daily cron is that the "🔒 locked" summary can arrive up 
 ### 9. Check that it works
 
 1. In a private chat with the bot, send `/help`. The bot should reply. As the admin you also see admin commands. In the group, `/help` gets a reply saying to send it privately.
-2. In the private chat, send `/court`, reply to the bot's prompt with a booking screenshot, and confirm. The bot posts the screenshot with the booking in the group and pins it. If the session is within 2 days, the attendance card appears straight away.
+2. In the private chat, send `/court`, reply to the bot's prompt with a booking screenshot, and confirm. The bot posts the screenshot with the booking in the group and pins it, and the attendance card appears straight after it.
 3. Tap **✅ I'm in** and check the card updates.
 4. Send a normal text message in the group. The bot should leave it alone.
 5. Trigger the scheduler by hand:
@@ -217,7 +217,7 @@ If both records are marked in for a session that has already ended, the bot won'
 | `DATABASE_URL` | yes | Neon → Connect → pooled string (step 3) | Postgres connection. `postgresql://` and `postgres://` are accepted |
 | `ADMIN_TELEGRAM_IDS` | yes | @userinfobot or `/chatid` in a DM (step 4) | Comma-separated user IDs allowed to run admin commands |
 | `GROUP_CHAT_ID` | after step 7 | `/chatid` in the group | The one group the bot works in. In private chats it only answers this group's members. Until it's set, only `/chatid` and the admin's private chat work |
-| `REMINDER_DAYS_BEFORE` | no (default `2`) | — | How many days before a session the attendance card goes up |
+| `REMINDER_DAYS_BEFORE` | no (default `2`) | — | How many days before a session the attendance reminder goes out. The card itself goes up when the session is booked |
 | `DEFAULT_COURT_RATE_CENTS` | no (default `740`) | — | Hourly court rate: a booking's suggested price is this × its court hours ($7.40/h). Members change the price of a booking that cost something else |
 | `TEST_DATABASE_URL` | tests only | Local Postgres or a Neon branch | Throwaway database for `pytest` (its schema is dropped) |
 
@@ -261,13 +261,13 @@ The bot works in one group, the one in `GROUP_CHAT_ID`. Everything it knows (mem
 Everyone must join the new group to keep using the bot privately: in a private chat, the bot only answers members of the group in `GROUP_CHAT_ID`.
 
 From then on, cards, booking records, announcements and invoices go to the new group. The bot ignores the old group, including taps on its buttons, and doesn't repost anything from it:
-- **Attendance cards already up:** set attendance with `/edit`.
+- **Attendance cards already up:** set attendance with `/edit`. Their reminders go to the new group, without the card to reply to.
 - **The latest invoice's ✅ Paid buttons:** record payments with `/settle`. Unpaid lines carry into the next invoice, in the new group.
 - **🗑 Cancel booking:** cancel the whole session with `/edit`. One booking of several can't be cancelled once its record is left behind.
 - **🗑 Cancel purchase:** remove a waiting purchase with `/shuttle_edit`.
 - **Pins:** the new group only gets pins for bookings made after the move.
 
-**Pick a quiet moment:** after a session and before the next attendance card goes up (`REMINDER_DAYS_BEFORE` days ahead), ideally once the month's invoice is paid. Then nothing live is left behind.
+**Pick a quiet moment:** when few sessions are booked ahead, since each has its card up already, ideally once the month's invoice is paid. Then little that's live is left behind.
 
 **Keep the bot in the old group for a while,** until the sessions whose cards are there have ended and the next month's invoice is out: the bot still updates its cards there. If it leaves sooner, those sessions' "🔒 locked" summaries never post (the scheduler logs an error on every run), and the first invoice after the move goes out without its private statements. Balances are right either way.
 

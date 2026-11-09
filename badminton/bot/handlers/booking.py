@@ -69,16 +69,16 @@ from badminton.domain.money import fmt_sgd, parse_amount
 from badminton.domain.screenshot import fmt_courts, parse_courts, parse_venue, read_booking
 from badminton.domain.timeutil import (
     at_sgt,
-    card_due_date,
     fmt_date,
     fmt_hours,
     fmt_session,
     parse_hours,
+    reminder_date,
     sgt_date,
     to_sgt,
     utc_now,
 )
-from badminton.services.attendance import post_card_if_due, refresh_card
+from badminton.services.attendance import post_card_once, refresh_card
 from badminton.services.drafts import (
     create_draft,
     delete_draft,
@@ -312,11 +312,10 @@ async def refresh_record(bot: Bot, db: AsyncSession, booking: Booking, note: str
         await unpin(bot, booking.record_chat_id, booking.record_message_id)
 
 
-def card_note(starts_at: datetime, days_before: int, today: date) -> str:
-    due = card_due_date(starts_at, days_before)
-    if due <= today:
-        return "🗳 The attendance card is going up now."
-    return f"🗳 Attendance card goes up on {fmt_date(due)}."
+def reminder_note(starts_at: datetime, days_before: int, today: date) -> str | None:
+    """When the attendance reminder goes out (FR-ATT-8), if that day is still to come."""
+    day = reminder_date(starts_at, days_before)
+    return f"⏰ Attendance reminder on {fmt_date(day)}." if day > today else None
 
 
 def _times(session: Session) -> str:
@@ -707,9 +706,9 @@ async def _confirm(
     lines = [render_record(payer, booking)]
     if merge_into is not None:
         lines.append(f"➕ Added to the {fmt_session(session.starts_at, session.ends_at)} session")
-    lines.append(
-        card_note(session.starts_at, settings_of(context).reminder_days_before, sgt_date(now))
-    )
+    days_before = settings_of(context).reminder_days_before
+    if note := reminder_note(session.starts_at, days_before, sgt_date(now)):
+        lines.append(note)
     # The record, in the group: the screenshot, captioned with the booking (FR-BK-8).
     record = await context.bot.send_photo(
         group_chat_id,
@@ -721,10 +720,11 @@ async def _confirm(
     await delete_draft(context.bot, db, draft)
     await db.commit()
 
-    # The attendance card first; pinning and confirming privately are only tidying up.
+    # The attendance card first (FR-BK-11); pinning and confirming privately are only
+    # tidying up. A session joined already has its card, which shows this booking now.
     if merge_into is not None:
         await refresh_card(context.bot, db, session.id)
-    await post_card_if_due(context.bot, db, session, settings_of(context), now)
+    await post_card_once(context.bot, db, session, settings_of(context), now)
     await pin(context.bot, record.chat_id, record.message_id)
     await update.callback_query.edit_message_text(
         f"✅ Booked {fmt_session(starts_at, ends_at)} ({fmt_hours(booking.minutes)}), "

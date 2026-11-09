@@ -1,7 +1,8 @@
-"""Attendance and the attendance card (FR-ATT-2, FR-ATT-3, FR-ATT-5).
+"""Attendance, the attendance card and its reminder (FR-ATT-1 to FR-ATT-5, FR-ATT-8).
 
-The card names people by display name only: no @mentions, so nobody is pinged
-(FR-ATT-4). Members who never answer count as out.
+The card goes up when a session is booked, and a reminder follows
+``REMINDER_DAYS_BEFORE`` days before it. Both name people by display name only: no
+@mentions, so nobody is pinged (FR-ATT-4). Members who never answer count as out.
 """
 
 from __future__ import annotations
@@ -15,13 +16,19 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Message, ReplyParameters
 from telegram.error import BadRequest
 
 from badminton.config import Settings
 from badminton.db.models import Attendance, Member, Session
 from badminton.domain.money import allocate, fmt_sgd
-from badminton.domain.timeutil import fmt_hours, fmt_session, is_card_due
+from badminton.domain.timeutil import (
+    fmt_days_until,
+    fmt_hours,
+    fmt_session,
+    is_reminder_due,
+    sgt_date,
+)
 from badminton.services.tick import TickContext, for_each
 
 IN = "in"
@@ -159,18 +166,16 @@ async def close_cancelled_card(bot: Bot, session: Session) -> None:
         )
 
 
-async def post_card_if_due(
+async def post_card_once(
     bot: Bot, db: AsyncSession, session: Session, settings: Settings, now: datetime
 ) -> bool:
-    """Post the session's card if it is due and not yet posted (FR-ATT-1, FR-BK-11).
+    """Post the session's card unless it is up already (FR-ATT-1).
 
-    The card is claimed with an atomic update first, so two ticks running at once
-    can't both post it. If sending fails the claim is released for the next run.
+    The card is claimed with an atomic update first, so a booking and a tick running at
+    once can't both post it. If sending fails the claim is released for the next run.
     Commits the session.
     """
     if settings.group_chat_id is None or session.status != "scheduled" or session.ends_at <= now:
-        return False
-    if not is_card_due(session.starts_at, now, settings.reminder_days_before):
         return False
     session_id = session.id
     claimed = await db.scalar(
@@ -193,8 +198,8 @@ async def post_card_if_due(
     return True
 
 
-async def post_due_cards(context: TickContext) -> None:
-    """Tick step: post every card that is due, catching up on missed days."""
+async def post_missing_cards(context: TickContext) -> None:
+    """Tick step: post every card that isn't up yet, e.g. one whose send failed."""
     async with context.sessionmaker() as db:
         candidates = await db.scalars(
             select(Session.id)
@@ -208,6 +213,91 @@ async def post_due_cards(context: TickContext) -> None:
 
         async def post(session_id: int) -> None:
             session = await db.get(Session, session_id)
-            await post_card_if_due(context.bot, db, session, context.settings, context.now)
+            await post_card_once(context.bot, db, session, context.settings, context.now)
 
         await for_each(db, candidates.all(), post, "Posting the attendance card")
+
+
+# The reminder (FR-ATT-8) ------------------------------------------------------
+
+
+def needs_reminder(session: Session, now: datetime, days_before: int) -> bool:
+    """Whether the session's reminder is due: its card went up before the reminder's day,
+    which has now come, and the session hasn't started. A session booked inside the
+    window gets none, as its card has only just gone up."""
+    return (
+        session.card_sent_at is not None
+        and not is_reminder_due(session.starts_at, session.card_sent_at, days_before)
+        and is_reminder_due(session.starts_at, now, days_before)
+        and now < session.starts_at
+    )
+
+
+def render_reminder(view: CardView, now: datetime) -> str:
+    session = view.session
+    when = fmt_days_until(sgt_date(session.starts_at), sgt_date(now))
+    slot = fmt_session(session.starts_at, session.ends_at)
+    return (
+        f"⏰ <b>Reminder:</b> badminton {when}, {slot}.\n"
+        f"✅ In so far: {len(view.ins)}. Answer on the card if you haven't: "
+        "no answer = not playing."
+    )
+
+
+async def send_reminder_once(
+    bot: Bot, db: AsyncSession, session: Session, settings: Settings, now: datetime
+) -> bool:
+    """Send the session's reminder in the group if it is due and not yet sent, as a reply
+    to its card when the card is in the group. Claimed like the card. Commits."""
+    if settings.group_chat_id is None or session.status != "scheduled":
+        return False
+    if not needs_reminder(session, now, settings.reminder_days_before):
+        return False
+    session_id = session.id
+    claimed = await db.scalar(
+        update(Session)
+        .where(Session.id == session_id, Session.reminder_sent_at.is_(None))
+        .values(reminder_sent_at=now)
+        .returning(Session.id)
+    )
+    await db.commit()
+    if claimed is None:
+        return False
+    try:
+        view = await load_card_view(db, session_id)
+        card = view.session
+        reply_to = None
+        if card.card_message_id is not None and card.card_chat_id == settings.group_chat_id:
+            reply_to = ReplyParameters(card.card_message_id, allow_sending_without_reply=True)
+        await bot.send_message(
+            settings.group_chat_id, render_reminder(view, now), reply_parameters=reply_to
+        )
+    except Exception:
+        await db.rollback()
+        await db.execute(
+            update(Session).where(Session.id == session_id).values(reminder_sent_at=None)
+        )
+        await db.commit()
+        raise
+    return True
+
+
+async def send_due_reminders(context: TickContext) -> None:
+    """Tick step: send every reminder that is due, catching up on missed days."""
+    async with context.sessionmaker() as db:
+        candidates = await db.scalars(
+            select(Session.id)
+            .where(
+                Session.status == "scheduled",
+                Session.card_message_id.is_not(None),
+                Session.reminder_sent_at.is_(None),
+                Session.starts_at > context.now,
+            )
+            .order_by(Session.starts_at, Session.id)
+        )
+
+        async def remind(session_id: int) -> None:
+            session = await db.get(Session, session_id)
+            await send_reminder_once(context.bot, db, session, context.settings, context.now)
+
+        await for_each(db, candidates.all(), remind, "Sending the attendance reminder")

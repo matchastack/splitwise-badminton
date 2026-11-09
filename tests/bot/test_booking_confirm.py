@@ -56,12 +56,12 @@ async def test_confirm_posts_the_screenshot_in_the_group_and_pins_it(bot: BotHar
     assert (posted["chat_id"], posted["photo"]) == (GROUP_ID, photo_id)
     record = wizard.record()
     assert booking.record_message_id == record.card["message_id"]
-    due = fmt_date(day - timedelta(days=2))
+    reminder = fmt_date(day - timedelta(days=2))
     assert record.text == (
         f"📅 {fmt_date(day)}, 11:00–13:00 (2h)\n"
         "📍 Hougang Sport Hall · Court 11\n"
         "💵 $14.80, paid by @bob_t\n"
-        f"🗳 Attendance card goes up on {due}."
+        f"⏰ Attendance reminder on {reminder}."
     )
     # Telegram shows a pinned message's button in the pin bar when it's the only one.
     assert record.current["reply_markup"]["inline_keyboard"] == [
@@ -200,11 +200,11 @@ async def test_a_slot_earlier_today_cannot_be_confirmed(bot: BotHarness) -> None
     assert await stored(bot) == ([], [])
 
 
-async def test_booking_inside_the_reminder_window_says_card_is_going_up(bot: BotHarness) -> None:
+async def test_booking_inside_the_reminder_window_gets_no_reminder(bot: BotHarness) -> None:
     wizard = await book(bot, BOB, future_day(1), hour="20:00")
     await wizard.tap("✅ Confirm")
 
-    assert wizard.record().text.endswith("🗳 The attendance card is going up now.")
+    assert wizard.record().text.endswith("💵 $14.80, paid by @bob_t")
 
 
 async def test_cancel_stores_nothing(bot: BotHarness) -> None:

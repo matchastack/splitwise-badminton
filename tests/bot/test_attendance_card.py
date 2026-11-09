@@ -120,20 +120,17 @@ async def test_cancelled_session(bot: BotHarness) -> None:
 
 
 async def test_card_lists_each_payer_when_several_booked(bot: BotHarness) -> None:
-    day = future_day(1)
+    day = future_day(10)
     first = await book(bot, ALICE, day, hour="20:00", hours="1h")
-    await first.tap("✅ Confirm")  # the session's card goes up in T26; post it by hand here
+    await first.tap("✅ Confirm")  # its card goes up at once
     async with bot.sessionmaker() as db:
-        session_id = await db.scalar(select(Session.id))
-    card = await post(bot, session_id)
+        card_id = await db.scalar(select(Session.card_message_id))
     second = await book(bot, BOB, day, hour="21:00", hours="1h")
     await second.tap("➕ Add to 20:00–21:00")
     await second.tap("✅ Confirm")
 
     refreshed = [
-        c
-        for c in bot.telegram.calls_to("editMessageText")
-        if c.params["message_id"] == card["message_id"]
+        c for c in bot.telegram.calls_to("editMessageText") if c.params["message_id"] == card_id
     ]
     assert refreshed[-1].params["text"].splitlines()[:2] == [
         f"🏸 <b>{fmt_session(at_sgt(day, 20), at_sgt(day, 22))}</b> (2h)",

@@ -87,16 +87,16 @@ def _parse_period(period: str) -> tuple[int, int]:
     return int(match.group(1)), int(match.group(2))
 
 
-# Attendance card timing (FR-ATT-1) ------------------------------------------
+# Attendance reminder timing (FR-ATT-8) --------------------------------------
 
 
-def card_due_date(session_start: datetime, days_before: int) -> date:
+def reminder_date(session_start: datetime, days_before: int) -> date:
     return sgt_date(session_start) - timedelta(days=days_before)
 
 
-def is_card_due(session_start: datetime, now: datetime, days_before: int) -> bool:
+def is_reminder_due(session_start: datetime, now: datetime, days_before: int) -> bool:
     """Due from the SGT calendar date ``days_before`` the session, so a missed run catches up."""
-    return sgt_date(now) >= card_due_date(session_start, days_before)
+    return sgt_date(now) >= reminder_date(session_start, days_before)
 
 
 # Formatting -----------------------------------------------------------------
@@ -105,6 +105,16 @@ def is_card_due(session_start: datetime, now: datetime, days_before: int) -> boo
 def fmt_date(day: date) -> str:
     """``Sun 4 Oct``."""
     return f"{_WEEKDAYS[day.weekday()]} {day.day} {_MONTHS[day.month - 1]}"
+
+
+def fmt_days_until(day: date, today: date) -> str:
+    """``today``, ``tomorrow`` or ``in 2 days``."""
+    days = (day - today).days
+    if days == 0:
+        return "today"
+    if days == 1:
+        return "tomorrow"
+    return f"in {days} days"
 
 
 def fmt_time(moment: datetime) -> str:

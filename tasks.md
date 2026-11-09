@@ -88,6 +88,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T49 | Screenshots in a private chat needn't be replies | `fix/t49-private-screenshots` | E3 | T48 | ✅ | [#80](https://github.com/matchastack/splitwise-badminton/pull/80) |
 | T50 | Renaming from a member list left in the group | `fix/t50-group-member-list-rename` | E9 | T47, T49 | ✅ | [#81](https://github.com/matchastack/splitwise-badminton/pull/81) |
 | T51 | Keep 🗑 Cancel booking out of the pin bar | `claude/pinned-message-cancel-booking-vtnx46` | E3 | T43, T46 | ✅ | [#83](https://github.com/matchastack/splitwise-badminton/pull/83) |
+| T52 | Attendance card at booking; reminder 2 days before | `claude/affectionate-brahmagupta-ovqvj6` | E4 | T26, T43 | ✅ | — |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
@@ -372,6 +373,16 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
   - It posts the summary: number of players, court cost each, and shuttle hours each with the batch number.
   - If no one attended, the admin gets a DM.
 - **Done when:** tests show it happens once per session, the summary figures match the ledger, and the no-attendee DM is sent.
+
+### T52 · Attendance card at booking; reminder 2 days before
+`claude/affectionate-brahmagupta-ovqvj6` · Stories US-3.6, US-4.1, US-4.3 · FR-ATT-1, FR-ATT-4, FR-ATT-8, FR-BK-8, FR-BK-11, FR-OPS-2 · Depends on T26, T43
+- **Scope:** from the owner. A card that waited until 2 days before gave people little notice, so the card goes up when the session is booked, and the bot reminds the group 2 days before.
+  - Confirming a booking posts its session's card at once, however far ahead. The tick's card step now posts any card that isn't up, e.g. one whose send failed, or a session booked before this change.
+  - A new tick step, after the cards, sends a reminder `REMINDER_DAYS_BEFORE` days before a session (by SGT date, catching up until the session starts), claimed with a new `sessions.reminder_sent_at` (migration 0006). It replies to the card when the card is in the group, and has no buttons and no @mentions.
+  - A session whose card went up on or after the reminder's day gets no reminder: a booking at short notice, or a card the old schedule posted.
+  - The booking record says when the reminder goes out, in place of when the card goes up, and says nothing about it once that day has come.
+  - Requirements: FR-ATT-1, FR-ATT-4, a new FR-ATT-8, FR-BK-8, FR-BK-11, FR-OPS-2, NFR-3, §6.4, US-3.6, US-4.1, US-4.3. README: *What it does*, step 8, step 9, `REMINDER_DAYS_BEFORE`, and *Moving the bot to another group*.
+- **Done when:** tests cover a card posted on booking far ahead, a joined session's card updated rather than reposted, the tick posting a missing card once, the reminder sent once on its day as a reply to the card, catching up, its count of who's in, no reminder for a short-notice booking, a started or cancelled session, a failed send retried, and a card left in another chat.
 
 ## E5 — Shuttlecock batches
 
