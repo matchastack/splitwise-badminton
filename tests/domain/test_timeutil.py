@@ -12,6 +12,7 @@ from badminton.domain.timeutil import (
     fmt_session,
     fmt_time,
     is_card_due,
+    is_daily_post_time,
     month_bounds,
     parse_hours,
     period_of,
@@ -73,6 +74,16 @@ def test_card_is_due_from_the_sgt_date_two_days_before() -> None:
     assert not is_card_due(SESSION_START, at_sgt(date(2026, 10, 1), 23, 59), 2)
     assert is_card_due(SESSION_START, at_sgt(date(2026, 10, 2), 0), 2)
     assert is_card_due(SESSION_START, at_sgt(date(2026, 10, 3), 10), 2)
+
+
+def test_daily_posts_wait_for_ten_sgt() -> None:
+    day = date(2026, 10, 2)
+    assert not is_daily_post_time(at_sgt(day, 0))
+    assert not is_daily_post_time(at_sgt(day, 9, 59))
+    assert is_daily_post_time(at_sgt(day, 10))
+    assert is_daily_post_time(at_sgt(day, 23, 59))
+    # The Vercel cron's 02:00 UTC is 10:00 SGT.
+    assert is_daily_post_time(datetime(2026, 10, 2, 2, tzinfo=UTC))
 
 
 def test_formatting() -> None:

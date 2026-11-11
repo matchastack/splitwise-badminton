@@ -11,7 +11,13 @@ from telegram import Bot
 
 from badminton.config import Settings
 from badminton.db.models import Invoice
-from badminton.domain.timeutil import fmt_period, period_of, previous_period, sgt_date
+from badminton.domain.timeutil import (
+    fmt_period,
+    is_daily_post_time,
+    period_of,
+    previous_period,
+    sgt_date,
+)
 from badminton.services.invoice import (
     discard_invoice,
     generate_invoice,
@@ -74,9 +80,10 @@ async def manual_period(db: AsyncSession, now: datetime) -> str:
 
 
 async def monthly_invoice(context: TickContext) -> None:
-    """Tick step: invoice the scheduled period unless it already has an invoice (FR-INV-1)."""
+    """Tick step: invoice the scheduled period unless it already has an invoice (FR-INV-1).
+    It waits for 10:00 SGT, so the invoice and statements don't go out at midnight."""
     period = scheduled_period(context.now)
-    if period is None:
+    if period is None or not is_daily_post_time(context.now):
         return
     async with context.sessionmaker() as db:
         await run_invoice(context.bot, db, context.settings, period=period, now=context.now)

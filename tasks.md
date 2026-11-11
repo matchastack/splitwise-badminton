@@ -88,6 +88,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T49 | Screenshots in a private chat needn't be replies | `fix/t49-private-screenshots` | E3 | T48 | ✅ | [#80](https://github.com/matchastack/splitwise-badminton/pull/80) |
 | T50 | Renaming from a member list left in the group | `fix/t50-group-member-list-rename` | E9 | T47, T49 | ✅ | [#81](https://github.com/matchastack/splitwise-badminton/pull/81) |
 | T51 | Keep 🗑 Cancel booking out of the pin bar | `claude/pinned-message-cancel-booking-vtnx46` | E3 | T43, T46 | ✅ | [#83](https://github.com/matchastack/splitwise-badminton/pull/83) |
+| T52 | Scheduled posts wait for 10:00 SGT | `claude/youthful-rubin-n773jt` | E1 | T26, T33 | ⬜ | — |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
@@ -160,6 +161,14 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
     - `setMyCommands` for members (default scope) and for the admin (chat scope).
   - `scripts/dev_polling.py`: deletes the webhook, then runs long polling plus the tick every minute.
 - **Done when:** both scripts run against a test bot. `--help` documents their arguments.
+
+### T52 · Scheduled posts wait for 10:00 SGT
+`claude/youthful-rubin-n773jt` · Stories US-1.4, US-4.1, US-7.1 · FR-ATT-1, FR-INV-1, FR-OPS-2 · Depends on T26, T33
+- **Scope:** from the owner. Attendance cards and the monthly invoice are due by SGT date, so with the optional cron-job.org job (every 15 min) they went out on the first run after midnight instead of with the 10:00 Vercel cron.
+  - The tick's card and invoice steps post nothing before 10:00 SGT (`DAILY_POST_HOUR`). Finalising sessions and clearing expired wizards still run on every tick.
+  - Confirming a booking inside the window still posts its card at once, and `/invoice` still posts at any hour: both are a member's own action.
+  - Requirements: FR-ATT-1, FR-INV-1, FR-OPS-2. README: the overview and the cron-job.org step.
+- **Done when:** tests show a card and the invoice waiting through runs at 00:00 and 09:45 SGT and posting at 10:00.
 
 ## E6 — Cost engine
 

@@ -21,7 +21,7 @@ from telegram.error import BadRequest
 from badminton.config import Settings
 from badminton.db.models import Attendance, Member, Session
 from badminton.domain.money import allocate, fmt_sgd
-from badminton.domain.timeutil import fmt_hours, fmt_session, is_card_due
+from badminton.domain.timeutil import fmt_hours, fmt_session, is_card_due, is_daily_post_time
 from badminton.services.tick import TickContext, for_each
 
 IN = "in"
@@ -194,7 +194,10 @@ async def post_card_if_due(
 
 
 async def post_due_cards(context: TickContext) -> None:
-    """Tick step: post every card that is due, catching up on missed days."""
+    """Tick step: post every card that is due, catching up on missed days. Cards wait for
+    10:00 SGT, so one due today doesn't go up at midnight."""
+    if not is_daily_post_time(context.now):
+        return
     async with context.sessionmaker() as db:
         candidates = await db.scalars(
             select(Session.id)

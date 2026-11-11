@@ -22,8 +22,9 @@ async def periods(bot: BotHarness) -> list[str]:
         return list(await db.scalars(select(Invoice.period).order_by(Invoice.period)))
 
 
-async def tick(bot: BotHarness, day: date, hour: int = 10) -> None:
-    context = TickContext(bot.application.bot, TEST_SETTINGS, bot.sessionmaker, at_sgt(day, hour))
+async def tick(bot: BotHarness, day: date, hour: int = 10, minute: int = 0) -> None:
+    when = at_sgt(day, hour, minute)
+    context = TickContext(bot.application.bot, TEST_SETTINGS, bot.sessionmaker, when)
     await monthly_invoice(context)
 
 
@@ -36,6 +37,18 @@ async def test_first_of_the_month_invoices_the_previous_month_once(bot: BotHarne
     assert await periods(bot) == ["2026-10"]
     cards = [t for t in bot.telegram.sent_texts(GROUP_ID) if t.startswith("🧾")]
     assert len(cards) == 1
+
+
+async def test_monthly_invoice_waits_for_ten_sgt(bot: BotHarness) -> None:
+    await seed(bot)
+
+    await tick(bot, date(2026, 11, 1), hour=0)
+    await tick(bot, date(2026, 11, 1), hour=9, minute=45)
+    assert await periods(bot) == []
+    assert bot.telegram.calls_to("sendMessage") == []
+
+    await tick(bot, date(2026, 11, 1))
+    assert await periods(bot) == ["2026-10"]
 
 
 @pytest.mark.parametrize("day", [2, 7])

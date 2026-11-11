@@ -54,6 +54,18 @@ async def test_posts_two_days_before_and_only_once(bot: BotHarness) -> None:
     ]
 
 
+async def test_cards_wait_for_ten_sgt(bot: BotHarness) -> None:
+    await make_session(bot, starts_at=SESSION_START)
+    friday = SUNDAY - timedelta(days=2)
+
+    await post_due_cards(tick_at(bot, at_sgt(friday, 0)))
+    await post_due_cards(tick_at(bot, at_sgt(friday, 9, 45)))
+    assert cards_sent(bot) == []
+
+    await post_due_cards(tick_at(bot, at_sgt(friday, 10)))
+    assert len(cards_sent(bot)) == 1
+
+
 async def test_missed_day_is_caught_up(bot: BotHarness) -> None:
     await make_session(bot, starts_at=SESSION_START)
 
@@ -69,7 +81,7 @@ async def test_cancelled_sessions_get_no_card(bot: BotHarness, status: str) -> N
         await db.execute(update(Session).values(status=status))
         await db.commit()
 
-    await post_due_cards(tick_at(bot, at_sgt(SUNDAY, 9)))
+    await post_due_cards(tick_at(bot, at_sgt(SUNDAY, 10)))
 
     assert cards_sent(bot) == []
 
@@ -86,7 +98,7 @@ async def test_nothing_is_posted_before_setup(bot: BotHarness) -> None:
     await make_session(bot, starts_at=SESSION_START)
     unconfigured = dataclasses.replace(TEST_SETTINGS, group_chat_id=None)
 
-    await post_due_cards(tick_at(bot, at_sgt(SUNDAY, 9), unconfigured))
+    await post_due_cards(tick_at(bot, at_sgt(SUNDAY, 10), unconfigured))
 
     assert cards_sent(bot) == []
 
