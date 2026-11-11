@@ -66,6 +66,19 @@ def previous_period(moment: datetime) -> str:
     return period_of(at_sgt(first - timedelta(days=1), 12))
 
 
+# Scheduled posts ------------------------------------------------------------
+
+# The tick's posts (attendance cards, the monthly invoice) wait until this hour each day,
+# so a scheduler that runs more often than daily doesn't send them just after midnight.
+# The Vercel cron in vercel.json (0 2 * * * UTC) runs in the same hour.
+DAILY_POST_HOUR = 10
+
+
+def is_daily_post_time(moment: datetime) -> bool:
+    """Whether the tick may post at ``moment``: from 10:00 SGT each day."""
+    return to_sgt(moment).hour >= DAILY_POST_HOUR
+
+
 def month_bounds(period: str) -> tuple[datetime, datetime]:
     """Start (inclusive) and end (exclusive) of an SGT month, e.g. ``"2026-10"``."""
     year, month = _parse_period(period)

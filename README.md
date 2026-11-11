@@ -9,10 +9,10 @@ A Telegram bot that tracks court bookings, attendance and shuttlecock batches fo
 
 - **Private commands, results in the group:** members send commands to the bot in a private chat with it, and only members of the group can. The bot posts what they record (bookings, purchases) in the group.
 - **Bookings:** a member sends `/court` to the bot, then their ActiveSG booking screenshot. The bot reads the date, time, venue and court off it with OCR (Tesseract, no LLM), and shows the booking with a suggested price to confirm or edit. Once confirmed, it posts the screenshot with the booking in the group and pins it until the session is played. The sender is recorded as the payer.
-- **Attendance:** 2 days before each session the bot posts a card with **[✅ I'm in] [❌ I'm out]**. People can change their answer until the session ends; no answer counts as out.
+- **Attendance:** 2 days before each session, at 10:00 Singapore time, the bot posts a card with **[✅ I'm in] [❌ I'm out]**. People can change their answer until the session ends; no answer counts as out.
 - **Locking:** when the session ends, attendance locks and the bot posts the split. Everyone who played shares the court cost and gets hours added to the current shuttle batch (1 hour = 1 share).
 - **Shuttles:** whoever buys a tube records it by sending `/shuttle <price>` to the bot, and is recorded as the payer. The bot announces it in the group. It waits until the batch in use runs out; only one purchase can wait. When the admin runs `/shuttle_finished`, that batch closes and is split by hours played, and the waiting one takes over. Until it's in use, the buyer or the admin can cancel a purchase from its announcement, and the admin can correct any batch with `/shuttle_edit`.
-- **Monthly settle-up:** on the 1st of each month the bot posts who pays whom, using the fewest transfers, with a **✅ paid** button on each line. Everyone who has opened a chat with the bot also gets a private statement.
+- **Monthly settle-up:** on the 1st of each month, at 10:00 Singapore time, the bot posts who pays whom, using the fewest transfers, with a **✅ paid** button on each line. Everyone who has opened a chat with the bot also gets a private statement.
 - **Admin corrections:** the admin makes them in a private chat with the bot, and every change is announced in the group.
 - **A normal group chat:** the group chats freely. The bot only posts its results there, and never deletes anyone's messages.
 
@@ -145,6 +145,8 @@ The only effect of a daily cron is that the "🔒 locked" summary can arrive up 
    - **Schedule:** every 15 minutes
    - **Advanced → Headers:** `Authorization` = `Bearer <your CRON_SECRET>`
 2. Save. Every step of the scheduler is safe to run any number of times, so the Vercel cron and cron-job.org can both run.
+
+Attendance cards and the monthly invoice still wait until 10:00 Singapore time, so the extra runs don't post them just after midnight. To change that hour, edit `DAILY_POST_HOUR` in `badminton/domain/timeutil.py` and the Vercel cron in `vercel.json` (its schedule is in UTC, 8 hours behind Singapore).
 
 ### 9. Check that it works
 

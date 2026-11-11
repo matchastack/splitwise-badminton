@@ -178,7 +178,7 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
 ### 4.3 Attendance and locking (ATT)
 - **FR-ATT-1:**
   - The bot must post an attendance card in the group `REMINDER_DAYS_BEFORE` days before a session (default 2).
-  - The timing is by SGT calendar date, on the first scheduled run of that day.
+  - The timing is by SGT calendar date, on the first scheduled run from 10:00 SGT that day (FR-OPS-2).
 - **FR-ATT-2:** The card must show the following, and must not @mention anyone:
   - the session's date, start–end time and hours;
   - each booking's price and payer;
@@ -257,7 +257,7 @@ Worked examples:
 
 ### 4.6 Invoicing and settlement (INV)
 - **FR-INV-1:**
-  - On the 1st of each month (SGT), the bot must generate an invoice for the previous month, once only.
+  - On the 1st of each month (SGT), on the first scheduled run from 10:00, the bot must generate an invoice for the previous month, once only.
   - The admin can also generate one with `/invoice`.
 - **FR-INV-2:**
   - The settle-up is computed from all-time balances by **fewest transfers**: greedily match the biggest debtor with the biggest creditor.
@@ -324,6 +324,7 @@ Worked examples:
   2. finalise ended sessions;
   3. generate the monthly invoice (on the 1st);
   4. clean up expired wizards.
+  - Steps 1 and 3 post nothing before 10:00 SGT, so an external cron that runs more often than daily doesn't send cards or invoices just after midnight. The Vercel cron runs in that hour (02:00 UTC).
 - **FR-OPS-3:** A setup script must:
   - register the webhook, with its secret and the allowed update types;
   - publish the command menus to Telegram: member commands in private chats, and admin commands in the admin's private chat;
