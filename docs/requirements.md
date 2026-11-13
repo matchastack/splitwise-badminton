@@ -179,6 +179,7 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
 - **FR-ATT-1:**
   - The bot must post an attendance card in the group `REMINDER_DAYS_BEFORE` days before a session (default 2).
   - The timing is by SGT calendar date, on the first scheduled run from 10:00 SGT that day (FR-OPS-2).
+  - The card is sent in reply to the session's first booking record still in the group (FR-BK-8), so it sits under the pinned screenshot. The record is the bot's own message, so the reply pings no one (FR-ATT-4). If the record was deleted, or the session has none, the card is posted on its own.
 - **FR-ATT-2:** The card must show the following, and must not @mention anyone:
   - the session's date, start–end time and hours;
   - each booking's price and payer;

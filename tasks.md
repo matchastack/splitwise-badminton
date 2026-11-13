@@ -89,6 +89,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T50 | Renaming from a member list left in the group | `fix/t50-group-member-list-rename` | E9 | T47, T49 | ✅ | [#81](https://github.com/matchastack/splitwise-badminton/pull/81) |
 | T51 | Keep 🗑 Cancel booking out of the pin bar | `claude/pinned-message-cancel-booking-vtnx46` | E3 | T43, T46 | ✅ | [#83](https://github.com/matchastack/splitwise-badminton/pull/83) |
 | T52 | Scheduled posts wait for 10:00 SGT | `claude/youthful-rubin-n773jt` | E1 | T26, T33 | ⬜ | — |
+| T53 | Attendance card replies to the booking record | `ccr-d92cc230-8uutsq` | E4 | T26, T43 | ⬜ | — |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
@@ -381,6 +382,15 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
   - It posts the summary: number of players, court cost each, and shuttle hours each with the batch number.
   - If no one attended, the admin gets a DM.
 - **Done when:** tests show it happens once per session, the summary figures match the ledger, and the no-attendee DM is sent.
+
+### T53 · Attendance card replies to the booking record
+`ccr-d92cc230-8uutsq` · Stories US-4.1, US-3.7 · FR-ATT-1, FR-ATT-4, FR-BK-8 · Depends on T26, T43
+- **Scope:** from the owner. The attendance card went up as a message of its own, apart from the pinned booking it is about.
+  - The card is sent in reply to the session's first booking record that isn't cancelled and is in the group, so the card quotes the pinned screenshot. The record is the bot's own message, so the reply pings no one (FR-ATT-4).
+  - If that record was deleted, the card still goes up on its own (`allow_sending_without_reply`). A session with no record in the group, e.g. one imported from the spreadsheet or recorded in a group the bot has left, gets a card that isn't a reply.
+  - Cards already posted are unchanged.
+  - Requirements: FR-ATT-1. README: the overview.
+- **Done when:** tests show the card replying to the record when the tick posts it and when confirming a booking posts it, to the first record of a merged session, to the next one when the first booking is cancelled, and to none when the session has no record in the group.
 
 ## E5 — Shuttlecock batches
 
