@@ -41,7 +41,7 @@ async def dm(bot: Bot, member: Member, text: str, **kwargs: Any) -> bool:
 
 
 async def pin(bot: Bot, chat_id: int, message_id: int) -> None:
-    """Pin a message without notifying anyone (FR-ATT-4: no pings). The bot needs the
+    """Pin a message without notifying anyone (FR-ATT-4: only reminders ping). The bot needs the
     "Pin messages" admin right. Pins are a convenience: if one fails, even on a network
     error, the message stays unpinned and the caller carries on."""
     try:

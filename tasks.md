@@ -89,7 +89,8 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T50 | Renaming from a member list left in the group | `fix/t50-group-member-list-rename` | E9 | T47, T49 | ✅ | [#81](https://github.com/matchastack/splitwise-badminton/pull/81) |
 | T51 | Keep 🗑 Cancel booking out of the pin bar | `claude/pinned-message-cancel-booking-vtnx46` | E3 | T43, T46 | ✅ | [#83](https://github.com/matchastack/splitwise-badminton/pull/83) |
 | T52 | Scheduled posts wait for 10:00 SGT | `claude/youthful-rubin-n773jt` | E1 | T26, T33 | ⬜ | — |
-| T53 | Attendance card replies to the booking record | `ccr-d92cc230-8uutsq` | E4 | T26, T43 | ⬜ | — |
+| T53 | Attendance card replies to the booking record | `ccr-d92cc230-8uutsq` | E4 | T26, T43 | ✅ | [#86](https://github.com/matchastack/splitwise-badminton/pull/86) |
+| T54 | Attendance card with the booking; reminder before the session | `ccr-d92cc230-8uutsq` | E4 | T52, T53 | ✅ | [#87](https://github.com/matchastack/splitwise-badminton/pull/87) |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
@@ -391,6 +392,17 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
   - Cards already posted are unchanged.
   - Requirements: FR-ATT-1. README: the overview.
 - **Done when:** tests show the card replying to the record when the tick posts it and when confirming a booking posts it, to the first record of a merged session, to the next one when the first booking is cancelled, and to none when the session has no record in the group.
+
+### T54 · Attendance card with the booking; reminder before the session
+`ccr-d92cc230-8uutsq` · Stories US-3.6, US-4.1, US-4.3 · FR-ATT-1, FR-ATT-2, FR-ATT-4, FR-BK-8, FR-BK-11, FR-OPS-2 · Depends on T52, T53
+- **Scope:** from the owner. The attendance card went up 2 days before a session (as a reply to the record since T53), and no one was reminded to answer.
+  - Confirming a booking posts its session's card straight away, in reply to the record, whenever the session is. A joining booking updates the card, as before. The record's caption drops "🗳 Attendance card goes up on …".
+  - If Telegram fails to post the card, the booking still goes through (pinned and confirmed privately). The tick's card step now only posts cards that are missing, from 10:00 SGT: these, and sessions booked before this change.
+  - A new tick step, after it, sends the reminder: `REMINDER_DAYS_BEFORE` days before (by SGT date, from 10:00, catching up until the session starts), a reply to the card tagging active members with a Telegram account who haven't answered, with `mention_html`. Claimed once per session with `sessions.reminder_sent_at` (migration 0006); nothing is sent if everyone has answered.
+  - No reminder for a session whose card went up on or after its reminder day, or whose card is in another group.
+  - The card drops its `💵 Court …` line (price and payers): the record it replies to has both, and attendance doesn't depend on the price. The lock summary still shows each player's share.
+  - Requirements: FR-ATT-1, FR-ATT-2, FR-ATT-4, FR-BK-8, FR-BK-11, FR-OPS-2, §6.4, US-3.6, US-4.1, US-4.3. README: the overview, the cron-job.org step, the checklist, `REMINDER_DAYS_BEFORE` and *Moving the bot to another group*.
+- **Done when:** tests cover the card going up on confirming (near and far sessions) in reply to the record, a join updating it, a card Telegram refused being posted by the tick, the reply target when posted later, the card without a price, and the reminder's text, tags, reply, timing, catch-up, once-only, and each case that gets none.
 
 ## E5 — Shuttlecock batches
 

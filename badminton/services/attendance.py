@@ -1,7 +1,7 @@
-"""Attendance and the attendance card (FR-ATT-2, FR-ATT-3, FR-ATT-5).
+"""Attendance and the attendance card (FR-ATT-1 to FR-ATT-3, FR-ATT-5).
 
 The card names people by display name only: no @mentions, so nobody is pinged
-(FR-ATT-4). Members who never answer count as out.
+(FR-ATT-2). Members who never answer count as out.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from telegram.error import BadRequest
 from badminton.config import Settings
 from badminton.db.models import Attendance, Booking, Member, Session
 from badminton.domain.money import allocate, fmt_sgd
-from badminton.domain.timeutil import fmt_hours, fmt_session, is_card_due, is_daily_post_time
+from badminton.domain.timeutil import fmt_hours, fmt_session, is_daily_post_time
 from badminton.services.tick import TickContext, for_each
 
 IN = "in"
@@ -31,13 +31,9 @@ OUT = "out"
 @dataclass(frozen=True)
 class CardView:
     session: Session
-    payments: list[tuple[str, int]]  # (payer name, cents) per active booking
+    court_cents: int  # the session's active bookings, together: for the split, not the card
     ins: list[str]
     outs: list[str]
-
-    @property
-    def court_cents(self) -> int:
-        return sum(cents for _, cents in self.payments)
 
     def court_each(self) -> str:
         """Each player's court share, e.g. "$7.40", or "$4.93–$4.94" when the cents don't
@@ -54,36 +50,25 @@ async def load_card_view(db: AsyncSession, session_id: int) -> CardView:
         .options(selectinload(Session.bookings), selectinload(Session.attendance))
         .execution_options(populate_existing=True)
     )
-    member_ids = {b.payer_member_id for b in session.bookings} | {
-        a.member_id for a in session.attendance
-    }
+    member_ids = {a.member_id for a in session.attendance}
     names = {
         m.id: m.display_name
         for m in await db.scalars(select(Member).where(Member.id.in_(member_ids)))
     }
-    payments = [
-        (names[b.payer_member_id], b.amount_cents)
-        for b in sorted(session.bookings, key=lambda b: b.id)
-        if b.cancelled_at is None
-    ]
+    court_cents = sum(b.amount_cents for b in session.bookings if b.cancelled_at is None)
 
     def answered(status: str) -> list[str]:
         chosen = [names[a.member_id] for a in session.attendance if a.status == status]
         return sorted(chosen, key=str.casefold)
 
-    return CardView(session, payments, answered(IN), answered(OUT))
+    return CardView(session, court_cents, answered(IN), answered(OUT))
 
 
 def render_card(view: CardView, *, locked: bool = False) -> tuple[str, InlineKeyboardMarkup | None]:
     session = view.session
-    if len(view.payments) == 1:
-        paid = f"paid by {html.escape(view.payments[0][0])}"
-    else:
-        paid = ", ".join(f"{html.escape(name)} {fmt_sgd(cents)}" for name, cents in view.payments)
     lines = [
         f"🏸 <b>{fmt_session(session.starts_at, session.ends_at)}</b> "
         f"({fmt_hours(session.minutes)})",
-        f"💵 Court {fmt_sgd(view.court_cents)} — {paid}",
         f"✅ In ({len(view.ins)}): {_names(view.ins)}",
         f"❌ Out ({len(view.outs)}): {_names(view.outs)}",
     ]
@@ -181,18 +166,16 @@ async def close_cancelled_card(bot: Bot, session: Session) -> None:
         )
 
 
-async def post_card_if_due(
+async def post_card_if_missing(
     bot: Bot, db: AsyncSession, session: Session, settings: Settings, now: datetime
 ) -> bool:
-    """Post the session's card if it is due and not yet posted (FR-ATT-1, FR-BK-11).
+    """Post the session's card if it isn't up yet (FR-ATT-1, FR-BK-11).
 
-    The card is claimed with an atomic update first, so two ticks running at once
-    can't both post it. If sending fails the claim is released for the next run.
+    The card is claimed with an atomic update first, so two attempts running at once
+    can't both post it. If sending fails the claim is released for the tick to retry.
     Commits the session.
     """
     if settings.group_chat_id is None or session.status != "scheduled" or session.ends_at <= now:
-        return False
-    if not is_card_due(session.starts_at, now, settings.reminder_days_before):
         return False
     session_id = session.id
     claimed = await db.scalar(
@@ -215,9 +198,9 @@ async def post_card_if_due(
     return True
 
 
-async def post_due_cards(context: TickContext) -> None:
-    """Tick step: post every card that is due, catching up on missed days. Cards wait for
-    10:00 SGT, so one due today doesn't go up at midnight."""
+async def post_missing_cards(context: TickContext) -> None:
+    """Tick step: post the cards that didn't go up when their booking was confirmed, e.g.
+    because Telegram failed then. Like the tick's other posts, they wait for 10:00 SGT."""
     if not is_daily_post_time(context.now):
         return
     async with context.sessionmaker() as db:
@@ -233,6 +216,6 @@ async def post_due_cards(context: TickContext) -> None:
 
         async def post(session_id: int) -> None:
             session = await db.get(Session, session_id)
-            await post_card_if_due(context.bot, db, session, context.settings, context.now)
+            await post_card_if_missing(context.bot, db, session, context.settings, context.now)
 
         await for_each(db, candidates.all(), post, "Posting the attendance card")

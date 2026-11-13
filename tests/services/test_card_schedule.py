@@ -6,8 +6,8 @@ from sqlalchemy import select, update
 from telegram.error import BadRequest
 
 from badminton.db.models import Booking, Session
-from badminton.domain.timeutil import at_sgt, card_due_date
-from badminton.services.attendance import post_due_cards
+from badminton.domain.timeutil import at_sgt
+from badminton.services.attendance import post_missing_cards
 from badminton.services.tick import TickContext
 from tests.bot.attendance_helpers import make_session
 from tests.bot.booking_helpers import ALICE, BOB, book, confirmed, future_day
@@ -16,6 +16,7 @@ from tests.fake_telegram import GROUP_ID, ApiCall
 
 SUNDAY = date(2026, 11, 8)
 SESSION_START = at_sgt(SUNDAY, 11)
+FRIDAY_TEN = at_sgt(SUNDAY - timedelta(days=2), 10)
 
 
 def tick_at(bot: BotHarness, when, settings=TEST_SETTINGS) -> TickContext:
@@ -38,97 +39,137 @@ def card_calls(bot: BotHarness) -> list[ApiCall]:
     ]
 
 
-def cards_sent(bot: BotHarness) -> list[str]:
-    return [call.params["text"] for call in card_calls(bot)]
-
-
 def replies_to(call: ApiCall) -> dict | None:
     """The reply a sent message asked for, as Telegram receives it."""
     return call.params.get("reply_parameters")
 
 
-async def tick_on_card_day(bot: BotHarness, day: date) -> None:
-    """Run the tick at 10:00 SGT on the day the card for a session on ``day`` is due."""
-    due = card_due_date(at_sgt(day, 11), TEST_SETTINGS.reminder_days_before)
-    await post_due_cards(tick_at(bot, at_sgt(due, 10)))
+async def forget_card(bot: BotHarness) -> None:
+    """Leave every session without a card, as if posting it had failed or it was booked
+    before cards went up on confirming."""
+    async with bot.sessionmaker() as db:
+        await db.execute(update(Session).values(card_sent_at=None, card_message_id=None))
+        await db.commit()
+    bot.telegram.clear()
 
 
-async def test_posts_two_days_before_and_only_once(bot: BotHarness) -> None:
+# Confirming a booking posts the card -----------------------------------------------
+
+
+@pytest.mark.parametrize("days_ahead", [1, 14])
+async def test_confirming_a_booking_posts_its_card_in_reply_to_the_record(
+    bot: BotHarness, days_ahead: int
+) -> None:
+    record = await confirmed(bot, BOB, future_day(days_ahead), "20:00")
+
+    (card,) = card_calls(bot)
+    assert bot.telegram.calls.index(card) > bot.telegram.calls.index(bot.telegram.last("sendPhoto"))
+    assert replies_to(card)["message_id"] == record.card["message_id"]
+    assert replies_to(card)["allow_sending_without_reply"]  # still posted if it was deleted
+    assert list((await card_ids(bot)).values()) == [card.message["message_id"]]
+
+
+async def test_joining_a_session_updates_its_card_instead_of_posting_another(
+    bot: BotHarness,
+) -> None:
+    day = future_day(14)
+    first = await confirmed(bot, ALICE, day, "11:00")
+    (card,) = card_calls(bot)
+
+    joiner = await book(bot, BOB, day, "13:00", "1h")
+    await joiner.tap("➕ Add to 11:00–13:00")
+    await joiner.tap("✅ Confirm")
+
+    assert card_calls(bot) == [card]
+    assert replies_to(card)["message_id"] == first.card["message_id"]
+    edits = bot.telegram.calls_to("editMessageText")
+    (edited,) = [e for e in edits if e.params["message_id"] == card.message["message_id"]]
+    assert "11:00–14:00</b> (3h)" in edited.params["text"]
+
+
+async def test_a_card_telegram_refuses_on_confirming_is_posted_by_the_tick(
+    bot: BotHarness,
+) -> None:
+    day = future_day(14)
+    wizard = await book(bot, BOB, day)
+    bot.telegram.fail("sendMessage", 502, "Bad Gateway", chat_id=GROUP_ID)
+
+    await wizard.tap("✅ Confirm")  # the booking still goes through
+
+    assert wizard.text.startswith("✅ Booked ")
+    assert len(bot.telegram.calls_to("pinChatMessage")) == 1
+    assert card_calls(bot) == []
+    assert list((await card_ids(bot)).values()) == [None]
+
+    await post_missing_cards(tick_at(bot, at_sgt(future_day(1), 10)))
+
+    (card,) = card_calls(bot)
+    assert replies_to(card)["message_id"] == wizard.record().card["message_id"]
+
+
+# The tick catches up on missing cards ----------------------------------------------
+
+
+async def test_a_missing_card_is_posted_once(bot: BotHarness) -> None:
     session_id = await make_session(bot, starts_at=SESSION_START)
 
-    await post_due_cards(tick_at(bot, at_sgt(SUNDAY - timedelta(days=3), 10)))
-    assert cards_sent(bot) == []
+    await post_missing_cards(tick_at(bot, FRIDAY_TEN - timedelta(days=5)))
+    await post_missing_cards(tick_at(bot, FRIDAY_TEN))
 
-    friday_morning = at_sgt(SUNDAY - timedelta(days=2), 10)
-    await post_due_cards(tick_at(bot, friday_morning))
-    await post_due_cards(tick_at(bot, friday_morning + timedelta(minutes=15)))
-
-    assert len(cards_sent(bot)) == 1
-    assert (await card_ids(bot))[session_id] == bot.telegram.last("sendMessage").message[
-        "message_id"
-    ]
+    (card,) = card_calls(bot)
+    assert (await card_ids(bot))[session_id] == card.message["message_id"]
 
 
-async def test_cards_wait_for_ten_sgt(bot: BotHarness) -> None:
+async def test_missing_cards_wait_for_ten_sgt(bot: BotHarness) -> None:
     await make_session(bot, starts_at=SESSION_START)
     friday = SUNDAY - timedelta(days=2)
 
-    await post_due_cards(tick_at(bot, at_sgt(friday, 0)))
-    await post_due_cards(tick_at(bot, at_sgt(friday, 9, 45)))
-    assert cards_sent(bot) == []
+    await post_missing_cards(tick_at(bot, at_sgt(friday, 0)))
+    await post_missing_cards(tick_at(bot, at_sgt(friday, 9, 45)))
+    assert card_calls(bot) == []
 
-    await post_due_cards(tick_at(bot, at_sgt(friday, 10)))
-    assert len(cards_sent(bot)) == 1
-
-
-async def test_missed_day_is_caught_up(bot: BotHarness) -> None:
-    await make_session(bot, starts_at=SESSION_START)
-
-    await post_due_cards(tick_at(bot, at_sgt(SUNDAY - timedelta(days=1), 10)))
-
-    assert len(cards_sent(bot)) == 1
+    await post_missing_cards(tick_at(bot, at_sgt(friday, 10)))
+    assert len(card_calls(bot)) == 1
 
 
-@pytest.mark.parametrize("status", ["cancelled"])
-async def test_cancelled_sessions_get_no_card(bot: BotHarness, status: str) -> None:
+async def test_cancelled_sessions_get_no_card(bot: BotHarness) -> None:
     await make_session(bot, starts_at=SESSION_START)
     async with bot.sessionmaker() as db:
-        await db.execute(update(Session).values(status=status))
+        await db.execute(update(Session).values(status="cancelled"))
         await db.commit()
 
-    await post_due_cards(tick_at(bot, at_sgt(SUNDAY, 10)))
+    await post_missing_cards(tick_at(bot, FRIDAY_TEN))
 
-    assert cards_sent(bot) == []
+    assert card_calls(bot) == []
 
 
 async def test_ended_sessions_get_no_card(bot: BotHarness) -> None:
     await make_session(bot, starts_at=SESSION_START)
 
-    await post_due_cards(tick_at(bot, SESSION_START + timedelta(hours=2)))
+    await post_missing_cards(tick_at(bot, SESSION_START + timedelta(hours=2)))
 
-    assert cards_sent(bot) == []
+    assert card_calls(bot) == []
 
 
 async def test_nothing_is_posted_before_setup(bot: BotHarness) -> None:
     await make_session(bot, starts_at=SESSION_START)
     unconfigured = dataclasses.replace(TEST_SETTINGS, group_chat_id=None)
 
-    await post_due_cards(tick_at(bot, at_sgt(SUNDAY, 10), unconfigured))
+    await post_missing_cards(tick_at(bot, FRIDAY_TEN, unconfigured))
 
-    assert cards_sent(bot) == []
+    assert card_calls(bot) == []
 
 
 async def test_failed_send_is_retried_next_tick(bot: BotHarness) -> None:
     session_id = await make_session(bot, starts_at=SESSION_START)
     bot.telegram.fail("sendMessage", 500, "Internal Server Error")
-    friday = at_sgt(SUNDAY - timedelta(days=2), 10)
 
     with pytest.raises(Exception, match="Internal Server Error"):
-        await post_due_cards(tick_at(bot, friday))
+        await post_missing_cards(tick_at(bot, FRIDAY_TEN))
     assert (await card_ids(bot))[session_id] is None
 
-    await post_due_cards(tick_at(bot, friday + timedelta(minutes=15)))
-    assert len(cards_sent(bot)) == 1
+    await post_missing_cards(tick_at(bot, FRIDAY_TEN + timedelta(minutes=15)))
+    assert len(card_calls(bot)) == 1
 
 
 async def test_one_failing_card_does_not_hold_up_the_rest(bot: BotHarness) -> None:
@@ -137,74 +178,35 @@ async def test_one_failing_card_does_not_hold_up_the_rest(bot: BotHarness) -> No
     bot.telegram.fail("sendMessage", 400, "Bad Request: message is too long")
 
     with pytest.raises(BadRequest):
-        await post_due_cards(tick_at(bot, at_sgt(SUNDAY - timedelta(days=2), 10)))
+        await post_missing_cards(tick_at(bot, FRIDAY_TEN))
 
     ids = await card_ids(bot)
     assert ids[first] is None
     assert ids[second] is not None
 
 
-async def test_booking_inside_the_window_posts_its_card_at_once(bot: BotHarness) -> None:
-    wizard = await book(bot, BOB, future_day(1), hour="20:00")
-    await wizard.tap("✅ Confirm")
-
-    assert len(cards_sent(bot)) == 1
-    record = bot.telegram.last("sendPhoto")
-    card = bot.telegram.last("sendMessage")
-    assert bot.telegram.calls.index(record) < bot.telegram.calls.index(card)
+# Which record a card replies to -----------------------------------------------------
 
 
-async def test_booking_outside_the_window_waits(bot: BotHarness) -> None:
-    wizard = await book(bot, BOB, future_day(10))
-    await wizard.tap("✅ Confirm")
-
-    assert cards_sent(bot) == []  # the tick posts it two days before
-
-
-async def test_the_card_replies_to_the_pinned_booking_record(bot: BotHarness) -> None:
-    day = future_day(10)
-    record = await confirmed(bot, BOB, day)
-    assert cards_sent(bot) == []
-
-    await tick_on_card_day(bot, day)
-
-    (card,) = card_calls(bot)
-    assert replies_to(card)["message_id"] == record.card["message_id"]
-    assert replies_to(card)["allow_sending_without_reply"]  # still posted if it was deleted
-
-
-async def test_a_card_posted_on_confirming_replies_to_the_new_record(bot: BotHarness) -> None:
-    record = await confirmed(bot, BOB, future_day(1), hour="20:00")
-
-    (card,) = card_calls(bot)
-    assert replies_to(card)["message_id"] == record.card["message_id"]
-
-
-async def test_a_merged_session_replies_to_its_first_record(bot: BotHarness) -> None:
-    day = future_day(10)
-    first = await confirmed(bot, ALICE, day, "11:00")
-    joiner = await book(bot, BOB, day, "13:00", "1h")
-    await joiner.tap("➕ Add to 11:00–13:00")
-    await joiner.tap("✅ Confirm")
-
-    await tick_on_card_day(bot, day)
-
-    (card,) = card_calls(bot)
-    assert replies_to(card)["message_id"] == first.card["message_id"]
-
-
-async def test_a_cancelled_booking_record_is_skipped(bot: BotHarness) -> None:
-    day = future_day(10)
+async def test_a_card_posted_later_replies_to_the_first_record_still_standing(
+    bot: BotHarness,
+) -> None:
+    day = future_day(14)
     first = await confirmed(bot, ALICE, day, "11:00")
     joiner = await book(bot, BOB, day, "13:00", "1h")
     await joiner.tap("➕ Add to 11:00–13:00")
     await joiner.tap("✅ Confirm")
     second = joiner.record()
+
+    await forget_card(bot)
+    await post_missing_cards(tick_at(bot, at_sgt(future_day(1), 10)))
+    (card,) = card_calls(bot)
+    assert replies_to(card)["message_id"] == first.card["message_id"]
+
+    await forget_card(bot)
     await first.tap("🗑 Cancel booking")
     await first.tap("Yes, cancel it")
-
-    await tick_on_card_day(bot, day)
-
+    await post_missing_cards(tick_at(bot, at_sgt(future_day(1), 10)))
     (card,) = card_calls(bot)
     assert replies_to(card)["message_id"] == second.card["message_id"]
 
@@ -222,7 +224,7 @@ async def test_a_session_without_a_record_in_the_group_posts_on_its_own(
         )
         await db.commit()
 
-    await post_due_cards(tick_at(bot, at_sgt(SUNDAY - timedelta(days=2), 10)))
+    await post_missing_cards(tick_at(bot, FRIDAY_TEN))
 
     assert set(await card_ids(bot)) == {imported, moved}
     assert [replies_to(card) for card in card_calls(bot)] == [None, None]
