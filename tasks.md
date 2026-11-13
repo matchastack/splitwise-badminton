@@ -391,7 +391,7 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
   - If Telegram fails to post the card, the booking still goes through (pinned and confirmed privately). The tick's card step now only posts cards that are missing, from 10:00 SGT: these, and sessions booked before this change.
   - A new tick step, after it, sends the reminder: `REMINDER_DAYS_BEFORE` days before (by SGT date, from 10:00, catching up until the session starts), a reply to the card tagging active members with a Telegram account who haven't answered, with `mention_html`. Claimed once per session with `sessions.reminder_sent_at` (migration 0006); nothing is sent if everyone has answered.
   - No reminder for a session whose card went up on or after its reminder day, or whose card is in another group.
-  - The card's court line shows only the total (`💵 Court $14.80`), without "paid by …" or each payer's share: the record it replies to shows who paid.
+  - The card drops its `💵 Court …` line (price and payers): the record it replies to has both, and attendance doesn't depend on the price. The lock summary still shows each player's share.
   - Requirements: FR-ATT-1, FR-ATT-2, FR-ATT-4, FR-BK-8, FR-BK-11, FR-OPS-2, §6.4, US-3.6, US-4.1, US-4.3. README: the overview, the cron-job.org step, the checklist, `REMINDER_DAYS_BEFORE` and *Moving the bot to another group*.
 - **Done when:** tests cover the card going up on confirming (near and far sessions) in reply to the record, a join updating it, a card Telegram refused being posted by the tick, the reply target when posted later, and the reminder's text, tags, reply, timing, catch-up, once-only, and each case that gets none.
 

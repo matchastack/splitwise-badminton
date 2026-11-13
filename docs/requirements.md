@@ -180,9 +180,8 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
   - The bot must post a session's attendance card in the group when the session's first booking is confirmed (FR-BK-11). A joining booking updates the card instead.
   - A card that didn't go up then (Telegram failed, or the session was booked before cards were posted this way) is posted by the next scheduled run from 10:00 SGT (FR-OPS-2).
   - The card is sent in reply to the session's first booking record still in the group (FR-BK-8), so it sits under the pinned screenshot. The record is the bot's own message, so the reply pings no one. If the record was deleted, or the session has none, the card is posted on its own.
-- **FR-ATT-2:** The card must show the following, and must not @mention anyone:
+- **FR-ATT-2:** The card must show the following, and must not @mention anyone. It shows no price: the booking record it replies to has the price and payer (FR-BK-8).
   - the session's date, start–end time and hours;
-  - the court's total price. Who paid is on each booking's record (FR-BK-8), so the card doesn't repeat it;
   - **✅ In (n)** and **❌ Out (n)** with names;
   - the note "no answer = not playing".
 - **FR-ATT-3:**

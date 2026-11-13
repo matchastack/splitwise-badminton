@@ -31,7 +31,7 @@ OUT = "out"
 @dataclass(frozen=True)
 class CardView:
     session: Session
-    court_cents: int  # the session's active bookings, together
+    court_cents: int  # the session's active bookings, together: for the split, not the card
     ins: list[str]
     outs: list[str]
 
@@ -69,7 +69,6 @@ def render_card(view: CardView, *, locked: bool = False) -> tuple[str, InlineKey
     lines = [
         f"🏸 <b>{fmt_session(session.starts_at, session.ends_at)}</b> "
         f"({fmt_hours(session.minutes)})",
-        f"💵 Court {fmt_sgd(view.court_cents)}",
         f"✅ In ({len(view.ins)}): {_names(view.ins)}",
         f"❌ Out ({len(view.outs)}): {_names(view.outs)}",
     ]
