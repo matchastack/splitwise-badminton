@@ -15,11 +15,11 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Message, ReplyParameters
 from telegram.error import BadRequest
 
 from badminton.config import Settings
-from badminton.db.models import Attendance, Member, Session
+from badminton.db.models import Attendance, Booking, Member, Session
 from badminton.domain.money import allocate, fmt_sgd
 from badminton.domain.timeutil import fmt_hours, fmt_session, is_card_due, is_daily_post_time
 from badminton.services.tick import TickContext, for_each
@@ -119,14 +119,36 @@ async def set_attendance(db: AsyncSession, session_id: int, member_id: int, stat
 async def post_card(
     bot: Bot, db: AsyncSession, session: Session, chat_id: int, now: datetime
 ) -> Message:
-    """Send the session's attendance card and remember where it is."""
-    text, markup = render_card(await load_card_view(db, session.id))
-    message = await bot.send_message(chat_id, text, reply_markup=markup)
+    """Send the session's attendance card, in reply to its pinned booking record (FR-ATT-1),
+    and remember where it is."""
+    view = await load_card_view(db, session.id)
+    text, markup = render_card(view)
+    message = await bot.send_message(
+        chat_id,
+        text,
+        reply_markup=markup,
+        reply_parameters=_reply_to_record(view.session.bookings, chat_id),
+    )
     session.card_chat_id = chat_id
     session.card_message_id = message.message_id
     session.card_sent_at = now
     await db.flush()
     return message
+
+
+def _reply_to_record(bookings: list[Booking], chat_id: int) -> ReplyParameters | None:
+    """Reply to the session's first booking record still standing in ``chat_id``. The
+    record is the bot's own message, so the reply pings no one (FR-ATT-4). If the record
+    was deleted, the card goes up on its own; with no record (e.g. an imported session)
+    it isn't a reply."""
+    for booking in sorted(bookings, key=lambda b: b.id):
+        if (
+            booking.cancelled_at is None
+            and booking.record_chat_id == chat_id
+            and booking.record_message_id is not None
+        ):
+            return ReplyParameters(booking.record_message_id, allow_sending_without_reply=True)
+    return None
 
 
 async def refresh_card(
