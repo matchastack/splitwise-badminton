@@ -716,13 +716,15 @@ async def _confirm(
     )
 
     # The attendance card, in reply to the record (FR-ATT-1): a new session gets one, a
-    # joined one's is updated. If Telegram fails, the tick posts the card later.
-    if merge_into is not None:
-        await refresh_card(context.bot, db, session_id)
+    # joined one's is updated. The booking is recorded either way, so a Telegram error
+    # mustn't stop the confirmation: the tick posts a missing card, and the next tap
+    # updates a stale one.
     try:
+        if merge_into is not None:
+            await refresh_card(context.bot, db, session_id)
         await post_card_if_missing(context.bot, db, session, settings_of(context), now)
     except TelegramError as error:
-        logger.warning("Could not post session %s's card; the tick will: %s", session_id, error)
+        logger.warning("Could not post or update session %s's card: %s", session_id, error)
     await pin(context.bot, record.chat_id, record.message_id)
     await update.callback_query.edit_message_text(confirmation)
     return None

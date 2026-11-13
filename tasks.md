@@ -88,9 +88,10 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T49 | Screenshots in a private chat needn't be replies | `fix/t49-private-screenshots` | E3 | T48 | ✅ | [#80](https://github.com/matchastack/splitwise-badminton/pull/80) |
 | T50 | Renaming from a member list left in the group | `fix/t50-group-member-list-rename` | E9 | T47, T49 | ✅ | [#81](https://github.com/matchastack/splitwise-badminton/pull/81) |
 | T51 | Keep 🗑 Cancel booking out of the pin bar | `claude/pinned-message-cancel-booking-vtnx46` | E3 | T43, T46 | ✅ | [#83](https://github.com/matchastack/splitwise-badminton/pull/83) |
-| T52 | Scheduled posts wait for 10:00 SGT | `claude/youthful-rubin-n773jt` | E1 | T26, T33 | ⬜ | — |
+| T52 | Scheduled posts wait for 10:00 SGT | `claude/youthful-rubin-n773jt` | E1 | T26, T33 | ✅ | [#85](https://github.com/matchastack/splitwise-badminton/pull/85) |
 | T53 | Attendance card replies to the booking record | `ccr-d92cc230-8uutsq` | E4 | T26, T43 | ✅ | [#86](https://github.com/matchastack/splitwise-badminton/pull/86) |
 | T54 | Attendance card with the booking; reminder before the session | `ccr-d92cc230-8uutsq` | E4 | T52, T53 | ✅ | [#87](https://github.com/matchastack/splitwise-badminton/pull/87) |
+| T55 | Joining a session survives a card Telegram can't update | `fix/t55-join-card-refresh` | E4 | T54 | ⬜ | — |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
@@ -403,6 +404,13 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
   - The card drops its `💵 Court …` line (price and payers): the record it replies to has both, and attendance doesn't depend on the price. The lock summary still shows each player's share.
   - Requirements: FR-ATT-1, FR-ATT-2, FR-ATT-4, FR-BK-8, FR-BK-11, FR-OPS-2, §6.4, US-3.6, US-4.1, US-4.3. README: the overview, the cron-job.org step, the checklist, `REMINDER_DAYS_BEFORE` and *Moving the bot to another group*.
 - **Done when:** tests cover the card going up on confirming (near and far sessions) in reply to the record, a join updating it, a card Telegram refused being posted by the tick, the reply target when posted later, the card without a price, and the reminder's text, tags, reply, timing, catch-up, once-only, and each case that gets none.
+
+### T55 · Joining a session survives a card Telegram can't update
+`fix/t55-join-card-refresh` · Stories US-3.3, US-3.6 · FR-BK-11 · Depends on T54
+- **Scope:** from review of #87. Confirming a booking that joins a session updates the session's card. That update only ignored `BadRequest`, so a network error (a 502, a timeout) escaped after the booking was recorded and its record posted: the record wasn't pinned, the wizard kept its buttons, and tapping ✅ Confirm again said the form had expired, inviting the member to book twice.
+  - The update goes in the same guard as posting a new card: a Telegram error is logged and the confirmation carries on. The next tap on the card updates it.
+  - Requirements: none change; FR-BK-11 already says the booking goes through if Telegram fails.
+- **Done when:** a test joins a session while Telegram fails to update the card, and the booking is confirmed privately, its record pinned, and no second card posted.
 
 ## E5 — Shuttlecock batches
 
