@@ -237,6 +237,24 @@ async def test_a_network_error_pinning_still_finishes_the_booking(bot: BotHarnes
     assert any("No answer = not playing." in text for text in bot.telegram.sent_texts(GROUP_ID))
 
 
+async def test_a_network_error_updating_the_card_still_finishes_a_join(bot: BotHarness) -> None:
+    day = future_day(14)
+    first = await book(bot, ALICE, day)
+    await first.tap("✅ Confirm")
+    joiner = await book(bot, BOB, day, hour="13:00", hours="1h")
+    await joiner.tap("➕ Add to 11:00–13:00")
+    bot.telegram.fail("editMessageText", 502, "Bad Gateway", chat_id=GROUP_ID)
+
+    await joiner.tap("✅ Confirm")
+
+    assert len((await stored(bot))[1]) == 2
+    assert joiner.text.startswith("✅ Booked ")
+    pinned = bot.telegram.last("pinChatMessage").params["message_id"]
+    assert pinned == joiner.record().card["message_id"]
+    cards = [t for t in bot.telegram.sent_texts(GROUP_ID) if "No answer = not playing." in t]
+    assert len(cards) == 1  # the session's card is still the first one
+
+
 async def test_a_booking_needs_the_group_to_be_set(bot: BotHarness) -> None:
     """Before setup, only the admin can use the bot privately (FR-MEM-9)."""
     wizard = await book(bot, ALICE, future_day(14))
