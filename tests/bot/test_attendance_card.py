@@ -35,7 +35,7 @@ async def statuses(bot: BotHarness) -> dict[int, str]:
         return {members[a.member_id]: a.status for a in rows}
 
 
-async def test_card_shows_session_payer_and_answers_without_mentions(bot: BotHarness) -> None:
+async def test_card_shows_session_price_and_answers_without_mentions(bot: BotHarness) -> None:
     start = utc_now().replace(microsecond=0) + timedelta(days=2)
     session_id = await make_session(bot, starts_at=start)
 
@@ -43,7 +43,7 @@ async def test_card_shows_session_payer_and_answers_without_mentions(bot: BotHar
 
     assert card["text"] == (
         f"🏸 <b>{fmt_session(start, start + timedelta(hours=2))}</b> (2h)\n"
-        "💵 Court $14.80 — paid by alice\n"
+        "💵 Court $14.80\n"  # no payer: the booking record shows who paid
         "✅ In (0): —\n"
         "❌ Out (0): —\n"
         "No answer = not playing."
@@ -119,7 +119,7 @@ async def test_cancelled_session(bot: BotHarness) -> None:
     assert bot.telegram.last("answerCallbackQuery").params["text"] == "This session was cancelled."
 
 
-async def test_card_lists_each_payer_when_several_booked(bot: BotHarness) -> None:
+async def test_card_totals_the_court_when_several_booked(bot: BotHarness) -> None:
     day = future_day(1)
     first = await book(bot, ALICE, day, hour="20:00", hours="1h")
     await first.tap("✅ Confirm")  # the session's card goes up with it
@@ -136,5 +136,5 @@ async def test_card_lists_each_payer_when_several_booked(bot: BotHarness) -> Non
     ]
     assert refreshed[-1].params["text"].splitlines()[:2] == [
         f"🏸 <b>{fmt_session(at_sgt(day, 20), at_sgt(day, 22))}</b> (2h)",
-        "💵 Court $14.80 — alice $7.40, bob $7.40",
+        "💵 Court $14.80",
     ]

@@ -84,7 +84,7 @@ async def test_joining_a_session_updates_its_card_instead_of_posting_another(
     assert replies_to(card)["message_id"] == first.card["message_id"]
     edits = bot.telegram.calls_to("editMessageText")
     (edited,) = [e for e in edits if e.params["message_id"] == card.message["message_id"]]
-    assert "💵 Court $22.20 — " in edited.params["text"]
+    assert "\n💵 Court $22.20\n" in edited.params["text"]
 
 
 async def test_a_card_telegram_refuses_on_confirming_is_posted_by_the_tick(

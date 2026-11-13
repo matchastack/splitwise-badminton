@@ -31,13 +31,9 @@ OUT = "out"
 @dataclass(frozen=True)
 class CardView:
     session: Session
-    payments: list[tuple[str, int]]  # (payer name, cents) per active booking
+    court_cents: int  # the session's active bookings, together
     ins: list[str]
     outs: list[str]
-
-    @property
-    def court_cents(self) -> int:
-        return sum(cents for _, cents in self.payments)
 
     def court_each(self) -> str:
         """Each player's court share, e.g. "$7.40", or "$4.93–$4.94" when the cents don't
@@ -54,36 +50,26 @@ async def load_card_view(db: AsyncSession, session_id: int) -> CardView:
         .options(selectinload(Session.bookings), selectinload(Session.attendance))
         .execution_options(populate_existing=True)
     )
-    member_ids = {b.payer_member_id for b in session.bookings} | {
-        a.member_id for a in session.attendance
-    }
+    member_ids = {a.member_id for a in session.attendance}
     names = {
         m.id: m.display_name
         for m in await db.scalars(select(Member).where(Member.id.in_(member_ids)))
     }
-    payments = [
-        (names[b.payer_member_id], b.amount_cents)
-        for b in sorted(session.bookings, key=lambda b: b.id)
-        if b.cancelled_at is None
-    ]
+    court_cents = sum(b.amount_cents for b in session.bookings if b.cancelled_at is None)
 
     def answered(status: str) -> list[str]:
         chosen = [names[a.member_id] for a in session.attendance if a.status == status]
         return sorted(chosen, key=str.casefold)
 
-    return CardView(session, payments, answered(IN), answered(OUT))
+    return CardView(session, court_cents, answered(IN), answered(OUT))
 
 
 def render_card(view: CardView, *, locked: bool = False) -> tuple[str, InlineKeyboardMarkup | None]:
     session = view.session
-    if len(view.payments) == 1:
-        paid = f"paid by {html.escape(view.payments[0][0])}"
-    else:
-        paid = ", ".join(f"{html.escape(name)} {fmt_sgd(cents)}" for name, cents in view.payments)
     lines = [
         f"🏸 <b>{fmt_session(session.starts_at, session.ends_at)}</b> "
         f"({fmt_hours(session.minutes)})",
-        f"💵 Court {fmt_sgd(view.court_cents)} — {paid}",
+        f"💵 Court {fmt_sgd(view.court_cents)}",
         f"✅ In ({len(view.ins)}): {_names(view.ins)}",
         f"❌ Out ({len(view.outs)}): {_names(view.outs)}",
     ]
