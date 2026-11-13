@@ -158,7 +158,7 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
 - **FR-BK-8:**
   - **Confirm**: the booking (date, start–end, hours, venue and courts, price and payer) with **[✅ Confirm] [✏️ Edit] [✖ Cancel]**.
   - **✏️ Edit** changes the date, time or hours (as in FR-BK-3 to FR-BK-5), or the venue, courts or price (reply prompts).
-  - On confirm, the bot posts the screenshot in the group, captioned with the booking: its permanent record, which also shows when the attendance card will be posted.
+  - On confirm, the bot posts the screenshot in the group, captioned with the booking: its permanent record.
   - The bot pins the record without notifying anyone (FR-ATT-4). In the private chat, the wizard becomes a one-line confirmation, and the member's screenshot stays.
   - The record has two buttons, **[💬 Open my chat] [🗑 Cancel booking]** (FR-BK-10). Telegram shows a pinned message's button in the pin bar when it's the only one, and the pin is only for finding the record: tapping it goes there.
 - **FR-BK-9:**
@@ -168,7 +168,7 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
   - Its record is unpinned.
   - A session left with no bookings is cancelled.
   - The cancellation is announced in the group.
-- **FR-BK-11:** If a session starts within the reminder window (FR-ATT-1), confirming a booking for it posts the attendance card straight away.
+- **FR-BK-11:** Confirming a booking posts its session's attendance card straight away, unless the session already has one (FR-ATT-1). If Telegram fails, the booking still goes through, and the tick posts the card.
 - **FR-BK-12:** The bot reads the screenshot with OCR: Tesseract, run by the bot itself. No LLM or external service is involved.
   - It reads the venue (*Where*) and each one-hour slot of the *When* list: date, start time, and the court on the same or the next line. Other dates on the page are ignored, and so is the name: the sender is the payer (FR-BK-1).
   - The screenshot shows no year. The date is its next occurrence within the six months bookings are made for, and must fall on the weekday shown. Otherwise the day or weekday was misread, or the booking has passed, and the bot asks for the date.
@@ -177,9 +177,9 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
 
 ### 4.3 Attendance and locking (ATT)
 - **FR-ATT-1:**
-  - The bot must post an attendance card in the group `REMINDER_DAYS_BEFORE` days before a session (default 2).
-  - The timing is by SGT calendar date, on the first scheduled run from 10:00 SGT that day (FR-OPS-2).
-  - The card is sent in reply to the session's first booking record still in the group (FR-BK-8), so it sits under the pinned screenshot. The record is the bot's own message, so the reply pings no one (FR-ATT-4). If the record was deleted, or the session has none, the card is posted on its own.
+  - The bot must post a session's attendance card in the group when the session's first booking is confirmed (FR-BK-11). A joining booking updates the card instead.
+  - A card that didn't go up then (Telegram failed, or the session was booked before cards were posted this way) is posted by the next scheduled run from 10:00 SGT (FR-OPS-2).
+  - The card is sent in reply to the session's first booking record still in the group (FR-BK-8), so it sits under the pinned screenshot. The record is the bot's own message, so the reply pings no one. If the record was deleted, or the session has none, the card is posted on its own.
 - **FR-ATT-2:** The card must show the following, and must not @mention anyone:
   - the session's date, start–end time and hours;
   - each booking's price and payer;
@@ -188,7 +188,12 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
 - **FR-ATT-3:**
   - **[✅ I'm in] [❌ I'm out]** record or change the tapper's answer, and the card is updated in place.
   - Answers can be changed any number of times before the session ends.
-- **FR-ATT-4:** No reminder messages or pings are sent beyond the card itself.
+- **FR-ATT-4:** `REMINDER_DAYS_BEFORE` days before a session (default 2), the bot replies to its card with a reminder that tags the members who haven't answered.
+  - It tags active members with a Telegram account who haven't tapped either button, as in FR-MEM-6: @username, or a tappable name. Guests have no account to tag.
+  - The timing is by SGT calendar date, on the first scheduled run from 10:00 SGT that day (FR-OPS-2). A missed day is caught up until the session starts.
+  - It is sent once per session. If everyone has answered, nothing is sent.
+  - A session whose card went up on or after its reminder day gets no reminder: the card is fresh. Neither does one whose card is in a group the bot has moved from.
+  - Nothing else about attendance pings anyone: the card @mentions no one (FR-ATT-2), and pins are silent (FR-BK-8).
 - **FR-ATT-5:** Attendance locks at the session's end time.
   - Any tap at or after that time is refused with an alert. That tap also triggers finalisation (FR-ATT-6) if it hasn't happened yet.
   - Members who never answered count as *out*.
@@ -321,11 +326,12 @@ Worked examples:
   - It rejects requests without the correct `X-Telegram-Bot-Api-Secret-Token` header (401).
   - It returns 200 for every authenticated update, even if a handler fails. Errors are logged, so Telegram doesn't keep retrying.
 - **FR-OPS-2:** `GET /api/cron` runs the scheduled *tick*, and requires `Authorization: Bearer <CRON_SECRET>`. Each step of the tick must be safe to run any number of times:
-  1. post due attendance cards;
-  2. finalise ended sessions;
-  3. generate the monthly invoice (on the 1st);
-  4. clean up expired wizards.
-  - Steps 1 and 3 post nothing before 10:00 SGT, so an external cron that runs more often than daily doesn't send cards or invoices just after midnight. The Vercel cron runs in that hour (02:00 UTC).
+  1. post attendance cards that didn't go up on confirming (FR-ATT-1);
+  2. send due attendance reminders (FR-ATT-4);
+  3. finalise ended sessions;
+  4. generate the monthly invoice (on the 1st);
+  5. clean up expired wizards.
+  - Steps 1, 2 and 4 post nothing before 10:00 SGT, so an external cron that runs more often than daily doesn't send cards, reminders or invoices just after midnight. The Vercel cron runs in that hour (02:00 UTC).
 - **FR-OPS-3:** A setup script must:
   - register the webhook, with its secret and the allowed update types;
   - publish the command menus to Telegram: member commands in private chats, and admin commands in the admin's private chat;
@@ -412,7 +418,7 @@ A member is someone in the group (FR-MEM-9). A member or admin command sent in t
 | Entity | Key fields |
 |---|---|
 | Member | telegram_user_id (nullable for guests), display_name, username, dm_enabled, active |
-| Session | starts_at, ends_at, status (scheduled / cancelled), card message ref, card_sent_at, locked_at |
+| Session | starts_at, ends_at, status (scheduled / cancelled), card message ref, card_sent_at, reminder_sent_at, locked_at |
 | Booking | session, payer, starts_at, minutes, amount_cents, photo_file_id, venue, courts, record message ref, submitted_by |
 | Attendance | session, member, status (in / out) |
 | ShuttleBatch | payer, amount_cents, starts_at and opened_at (both empty while waiting; at most one waits) |
@@ -460,13 +466,13 @@ Acceptance criteria are brief; the referenced FRs hold the detail.
 - **US-3.3:** As a member, I want consecutive or overlapping bookings on the same day to count as one session, so that we don't get two polls for one game. *(FR-BK-7)*
 - **US-3.4:** As a member, I want unfinished wizards to clean themselves up, so that the group stays tidy. *(FR-BK-9)*
 - **US-3.5:** As the submitter or the admin, I want to cancel a booking before it happens, so that refunded courts aren't charged. *(FR-BK-10)*
-- **US-3.6:** As a member, I want a session booked at short notice to get its attendance card straight away. *(FR-BK-11)*
+- **US-3.6:** As a member, I want a session's attendance card to go up with its booking, so that I can answer as soon as I know. *(FR-BK-11, FR-ATT-1)*
 - **US-3.7:** As a member, I want upcoming bookings pinned in the group, with their screenshot, so that I can see when and where we play. *(FR-BK-8, FR-BK-10, FR-ATT-6)*
 
 ### E4 — Attendance and locking
-- **US-4.1:** As a member, I want an attendance card 2 days before each session, so that I can say whether I'm playing with one tap. *(FR-ATT-1, FR-ATT-2)*
+- **US-4.1:** As a member, I want an attendance card for each session, under its booking, so that I can say whether I'm playing with one tap. *(FR-ATT-1, FR-ATT-2)*
 - **US-4.2:** As a member, I want to change my answer until the session ends, so that late changes of plan are handled. *(FR-ATT-3)*
-- **US-4.3:** As a member, I don't want reminder pings; not answering means I'm not playing. *(FR-ATT-4, FR-ATT-5)*
+- **US-4.3:** As a member, I want one reminder 2 days before a session if I haven't answered, and no other pings; not answering means I'm not playing. *(FR-ATT-4, FR-ATT-5)*
 - **US-4.4:** As the group, we want attendance locked when the session ends, with a summary of the split. *(FR-ATT-5, FR-ATT-6)*
   - Taps after the end time are refused.
   - The summary is posted once.

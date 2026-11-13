@@ -89,7 +89,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T50 | Renaming from a member list left in the group | `fix/t50-group-member-list-rename` | E9 | T47, T49 | ✅ | [#81](https://github.com/matchastack/splitwise-badminton/pull/81) |
 | T51 | Keep 🗑 Cancel booking out of the pin bar | `claude/pinned-message-cancel-booking-vtnx46` | E3 | T43, T46 | ✅ | [#83](https://github.com/matchastack/splitwise-badminton/pull/83) |
 | T52 | Scheduled posts wait for 10:00 SGT | `claude/youthful-rubin-n773jt` | E1 | T26, T33 | ⬜ | — |
-| T53 | Attendance card replies to the booking record | `ccr-d92cc230-8uutsq` | E4 | T26, T43 | ⬜ | — |
+| T53 | Attendance card with the booking; reminder before the session | `ccr-d92cc230-8uutsq` | E4 | T26, T43, T52 | ⬜ | — |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
@@ -383,14 +383,16 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
   - If no one attended, the admin gets a DM.
 - **Done when:** tests show it happens once per session, the summary figures match the ledger, and the no-attendee DM is sent.
 
-### T53 · Attendance card replies to the booking record
-`ccr-d92cc230-8uutsq` · Stories US-4.1, US-3.7 · FR-ATT-1, FR-ATT-4, FR-BK-8 · Depends on T26, T43
-- **Scope:** from the owner. The attendance card went up as a message of its own, apart from the pinned booking it is about.
-  - The card is sent in reply to the session's first booking record that isn't cancelled and is in the group, so the card quotes the pinned screenshot. The record is the bot's own message, so the reply pings no one (FR-ATT-4).
-  - If that record was deleted, the card still goes up on its own (`allow_sending_without_reply`). A session with no record in the group, e.g. one imported from the spreadsheet or recorded in a group the bot has left, gets a card that isn't a reply.
-  - Cards already posted are unchanged.
-  - Requirements: FR-ATT-1. README: the overview.
-- **Done when:** tests show the card replying to the record when the tick posts it and when confirming a booking posts it, to the first record of a merged session, to the next one when the first booking is cancelled, and to none when the session has no record in the group.
+### T53 · Attendance card with the booking; reminder before the session
+`ccr-d92cc230-8uutsq` · Stories US-3.6, US-4.1, US-4.3 · FR-ATT-1, FR-ATT-4, FR-BK-8, FR-BK-11, FR-OPS-2 · Depends on T26, T43, T52
+- **Scope:** from the owner. The attendance card went up 2 days before a session, as a message of its own, and no one was reminded to answer.
+  - Confirming a booking posts its session's card straight away, in reply to the record, whenever the session is. A joining booking updates the card, as before. The record's caption drops "🗳 Attendance card goes up on …".
+  - The card replies to the session's first booking record that isn't cancelled and is in the group. If that record was deleted, the card still goes up (`allow_sending_without_reply`); a session with no record in the group gets a card that isn't a reply.
+  - If Telegram fails to post the card, the booking still goes through (pinned and confirmed privately). The tick's card step now only posts cards that are missing, from 10:00 SGT: these, and sessions booked before this change.
+  - A new tick step, after it, sends the reminder: `REMINDER_DAYS_BEFORE` days before (by SGT date, from 10:00, catching up until the session starts), a reply to the card tagging active members with a Telegram account who haven't answered, with `mention_html`. Claimed once per session with `sessions.reminder_sent_at` (migration 0006); nothing is sent if everyone has answered.
+  - No reminder for a session whose card went up on or after its reminder day, or whose card is in another group.
+  - Requirements: FR-ATT-1, FR-ATT-4, FR-BK-8, FR-BK-11, FR-OPS-2, §6.4, US-3.6, US-4.1, US-4.3. README: the overview, the cron-job.org step, the checklist, `REMINDER_DAYS_BEFORE` and *Moving the bot to another group*.
+- **Done when:** tests cover the card going up on confirming (near and far sessions) in reply to the record, a join updating it, a card Telegram refused being posted by the tick, the reply target when posted later, and the reminder's text, tags, reply, timing, catch-up, once-only, and each case that gets none.
 
 ## E5 — Shuttlecock batches
 

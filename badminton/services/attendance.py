@@ -1,7 +1,7 @@
-"""Attendance and the attendance card (FR-ATT-2, FR-ATT-3, FR-ATT-5).
+"""Attendance and the attendance card (FR-ATT-1 to FR-ATT-3, FR-ATT-5).
 
 The card names people by display name only: no @mentions, so nobody is pinged
-(FR-ATT-4). Members who never answer count as out.
+(FR-ATT-2). Members who never answer count as out.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from telegram.error import BadRequest
 from badminton.config import Settings
 from badminton.db.models import Attendance, Booking, Member, Session
 from badminton.domain.money import allocate, fmt_sgd
-from badminton.domain.timeutil import fmt_hours, fmt_session, is_card_due, is_daily_post_time
+from badminton.domain.timeutil import fmt_hours, fmt_session, is_daily_post_time
 from badminton.services.tick import TickContext, for_each
 
 IN = "in"
@@ -181,18 +181,16 @@ async def close_cancelled_card(bot: Bot, session: Session) -> None:
         )
 
 
-async def post_card_if_due(
+async def post_card_if_missing(
     bot: Bot, db: AsyncSession, session: Session, settings: Settings, now: datetime
 ) -> bool:
-    """Post the session's card if it is due and not yet posted (FR-ATT-1, FR-BK-11).
+    """Post the session's card if it isn't up yet (FR-ATT-1, FR-BK-11).
 
-    The card is claimed with an atomic update first, so two ticks running at once
-    can't both post it. If sending fails the claim is released for the next run.
+    The card is claimed with an atomic update first, so two attempts running at once
+    can't both post it. If sending fails the claim is released for the tick to retry.
     Commits the session.
     """
     if settings.group_chat_id is None or session.status != "scheduled" or session.ends_at <= now:
-        return False
-    if not is_card_due(session.starts_at, now, settings.reminder_days_before):
         return False
     session_id = session.id
     claimed = await db.scalar(
@@ -215,9 +213,9 @@ async def post_card_if_due(
     return True
 
 
-async def post_due_cards(context: TickContext) -> None:
-    """Tick step: post every card that is due, catching up on missed days. Cards wait for
-    10:00 SGT, so one due today doesn't go up at midnight."""
+async def post_missing_cards(context: TickContext) -> None:
+    """Tick step: post the cards that didn't go up when their booking was confirmed, e.g.
+    because Telegram failed then. Like the tick's other posts, they wait for 10:00 SGT."""
     if not is_daily_post_time(context.now):
         return
     async with context.sessionmaker() as db:
@@ -233,6 +231,6 @@ async def post_due_cards(context: TickContext) -> None:
 
         async def post(session_id: int) -> None:
             session = await db.get(Session, session_id)
-            await post_card_if_due(context.bot, db, session, context.settings, context.now)
+            await post_card_if_missing(context.bot, db, session, context.settings, context.now)
 
         await for_each(db, candidates.all(), post, "Posting the attendance card")

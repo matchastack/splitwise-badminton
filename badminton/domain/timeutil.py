@@ -68,7 +68,7 @@ def previous_period(moment: datetime) -> str:
 
 # Scheduled posts ------------------------------------------------------------
 
-# The tick's posts (attendance cards, the monthly invoice) wait until this hour each day,
+# The tick's posts (attendance reminders, the monthly invoice) wait until this hour each day,
 # so a scheduler that runs more often than daily doesn't send them just after midnight.
 # The Vercel cron in vercel.json (0 2 * * * UTC) runs in the same hour.
 DAILY_POST_HOUR = 10
@@ -100,16 +100,16 @@ def _parse_period(period: str) -> tuple[int, int]:
     return int(match.group(1)), int(match.group(2))
 
 
-# Attendance card timing (FR-ATT-1) ------------------------------------------
+# Attendance reminder timing (FR-ATT-4) --------------------------------------
 
 
-def card_due_date(session_start: datetime, days_before: int) -> date:
+def reminder_date(session_start: datetime, days_before: int) -> date:
     return sgt_date(session_start) - timedelta(days=days_before)
 
 
-def is_card_due(session_start: datetime, now: datetime, days_before: int) -> bool:
+def is_reminder_due(session_start: datetime, now: datetime, days_before: int) -> bool:
     """Due from the SGT calendar date ``days_before`` the session, so a missed run catches up."""
-    return sgt_date(now) >= card_due_date(session_start, days_before)
+    return sgt_date(now) >= reminder_date(session_start, days_before)
 
 
 # Formatting -----------------------------------------------------------------

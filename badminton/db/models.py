@@ -81,6 +81,7 @@ class Session(Base):
     card_chat_id: Mapped[int | None] = mapped_column(BigInteger)
     card_message_id: Mapped[int | None]
     card_sent_at: Mapped[datetime | None]
+    reminder_sent_at: Mapped[datetime | None]  # claimed, even if no one was left to tag
     locked_at: Mapped[datetime | None]
     created_at: Mapped[datetime] = _created_at()
 
