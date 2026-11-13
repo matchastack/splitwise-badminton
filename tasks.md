@@ -91,7 +91,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T52 | Scheduled posts wait for 10:00 SGT | `claude/youthful-rubin-n773jt` | E1 | T26, T33 | ✅ | [#85](https://github.com/matchastack/splitwise-badminton/pull/85) |
 | T53 | Attendance card replies to the booking record | `ccr-d92cc230-8uutsq` | E4 | T26, T43 | ✅ | [#86](https://github.com/matchastack/splitwise-badminton/pull/86) |
 | T54 | Attendance card with the booking; reminder before the session | `ccr-d92cc230-8uutsq` | E4 | T52, T53 | ✅ | [#87](https://github.com/matchastack/splitwise-badminton/pull/87) |
-| T55 | Joining a session survives a card Telegram can't update | `fix/t55-join-card-refresh` | E4 | T54 | ⬜ | — |
+| T55 | Joining a session survives a card Telegram can't update | `fix/t55-join-card-refresh` | E4 | T54 | ✅ | [#88](https://github.com/matchastack/splitwise-badminton/pull/88) |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
