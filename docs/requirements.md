@@ -291,6 +291,9 @@ Worked examples:
 - **FR-INV-7:**
   - The invoice stores each member's closing balance.
   - If later corrections change a figure already invoiced, the next statement shows the difference as an **Adjustments** line.
+- **FR-INV-8:**
+  - `/invoice_preview` (admin) shows privately what `/invoice` would do at that moment, for the same month: the group card it would post, how many of the previous invoice's unpaid lines it would carry over, and who would get a statement.
+  - Nothing is saved, posted, carried over or sent. If that month already has an invoice, it says `/invoice` would post nothing.
 
 ### 4.7 Admin corrections and transparency (ADM)
 - **FR-ADM-1:** Only Telegram user IDs in `ADMIN_TELEGRAM_IDS` can use admin commands. Anyone else is refused and nothing changes.
@@ -401,6 +404,7 @@ Worked examples:
 | `/addmember <name>` | admin | DM | Add a guest member |
 | `/members` | admin | DM | List, rename or deactivate members; link a guest to a Telegram account |
 | `/invoice` | admin | DM | Generate the invoice now |
+| `/invoice_preview` | admin | DM | See what `/invoice` would post, without posting or saving anything |
 
 A member is someone in the group (FR-MEM-9). A member or admin command sent in the group gets a short reply saying to send it to the bot privately, with a button that opens that chat; the results (booking records, announcements, cards) are posted in the group.
 
@@ -500,6 +504,7 @@ Acceptance criteria are brief; the referenced FRs hold the detail.
 - **US-7.3:** As a member, I want a private statement explaining my amount. *(FR-INV-5)*
 - **US-7.4:** As the admin, I want to generate an invoice on demand, and have old unpaid lines carried into the new one. *(FR-INV-1, FR-INV-6)*
 - **US-7.5:** As a member, I want corrections to past months shown as adjustments, so that the numbers still add up. *(FR-INV-7)*
+- **US-7.6:** As the admin, I want to see what `/invoice` would post before it posts, so that I can fix mistakes first. *(FR-INV-8)*
 
 ### E8 — Admin corrections and transparency
 - **US-8.1:** As the admin, I want to correct a session's attendance, with the change announced to the group. *(FR-ADM-2, FR-ADM-3)*

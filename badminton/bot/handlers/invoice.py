@@ -1,4 +1,5 @@
-"""[✅ … paid] buttons on the invoice card (FR-INV-4)."""
+"""/invoice and /invoice_preview, and the [✅ … paid] buttons on the invoice card
+(FR-INV-1, FR-INV-4, FR-INV-8)."""
 
 from __future__ import annotations
 
@@ -13,9 +14,10 @@ from badminton.domain.timeutil import fmt_period, utc_now
 from badminton.services import audit
 from badminton.services.invoice import previous_invoice, refresh_invoice_card, toggle_paid
 from badminton.services.members import upsert_from_telegram
-from badminton.services.monthly import manual_period, run_invoice
+from badminton.services.monthly import manual_period, preview_invoice, run_invoice
 
 REPLACED = "This invoice has been replaced by a newer one."
+ALREADY_INVOICED = "{period} already has an invoice. New activity goes on next month's invoice."
 
 
 async def on_paid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -63,14 +65,30 @@ async def invoice_now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         invoice = await run_invoice(context.bot, db, settings_of(context), period=period, now=now)
     message = update.effective_message
     if invoice is None:
-        await message.reply_text(
-            f"{fmt_period(period)} already has an invoice. "
-            "New activity goes on next month's invoice."
-        )
+        await message.reply_text(ALREADY_INVOICED.format(period=fmt_period(period)))
     else:
         await message.reply_text(f"🧾 Posted the {fmt_period(period)} invoice in the group.")
 
 
+@private_only
+@admin_only
+async def invoice_preview(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/invoice_preview: what /invoice would post now, with nothing saved or sent
+    (FR-INV-8). It picks the period the same way."""
+    now = utc_now()
+    async with db_session(context) as db:
+        period = await manual_period(db, now)
+        preview = await preview_invoice(db, period=period, now=now)
+    message = update.effective_message
+    if preview is None:
+        await message.reply_text(
+            f"/invoice would post nothing: {ALREADY_INVOICED.format(period=fmt_period(period))}"
+        )
+    else:
+        await message.reply_text(preview)
+
+
 def register(application: Application) -> None:
     application.add_handler(CommandHandler("invoice", invoice_now))
+    application.add_handler(CommandHandler("invoice_preview", invoice_preview))
     application.add_handler(CallbackQueryHandler(on_paid, pattern=r"^inv:\d+$"))

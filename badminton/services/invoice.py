@@ -1,9 +1,12 @@
-"""Monthly invoices (FR-INV-1 to FR-INV-3, FR-INV-6, FR-INV-7).
+"""Monthly invoices (FR-INV-1 to FR-INV-3, FR-INV-6 to FR-INV-8).
 
 An invoice is generated once per period. Its settle-up lines come from all-time
 balances by fewest transfers; each member's closing balance is stored so the next
 statement can show corrections as adjustments. When a new invoice is generated, the
 previous one's unpaid lines are marked as carried into it.
+
+``plan_invoice`` works out what generating would save without writing anything, so
+``/invoice_preview`` shows exactly what ``/invoice`` would post.
 """
 
 from __future__ import annotations
@@ -23,7 +26,7 @@ from badminton.config import Settings
 from badminton.db.models import Invoice, InvoiceBalance, InvoiceLine, Member, Transfer
 from badminton.domain.ledger import Ledger
 from badminton.domain.money import fmt_sgd
-from badminton.domain.settle import simplify_debts
+from badminton.domain.settle import Payment, simplify_debts
 from badminton.domain.statement import group_totals
 from badminton.domain.timeutil import fmt_hours, fmt_period
 from badminton.services.members import mention_html
@@ -42,14 +45,58 @@ async def previous_invoice(db: AsyncSession, before: Invoice | None = None) -> I
     return await db.scalar(query.limit(1))
 
 
+@dataclass(frozen=True)
+class InvoicePlan:
+    """What generating the invoice for ``period`` would save, worked out without saving
+    anything."""
+
+    period: str
+    previous: Invoice | None  # the invoice whose unpaid lines this one would carry
+    ledger: Ledger
+    members: dict[int, Member]
+    summary: str  # the card header
+    payments: tuple[Payment, ...]  # the settle-up lines
+
+    def line_views(self) -> list[LineView]:
+        """The settle-up lines as the new card would show them: all open. The lines are
+        never added to the database session."""
+        return [
+            LineView(
+                InvoiceLine(
+                    from_member_id=payment.from_id,
+                    to_member_id=payment.to_id,
+                    amount_cents=payment.amount_cents,
+                ),
+                self.members[payment.from_id],
+                self.members[payment.to_id],
+                OPEN,
+            )
+            for payment in self.payments
+        ]
+
+
+async def plan_invoice(db: AsyncSession, *, period: str, now: datetime) -> InvoicePlan:
+    """The invoice for ``period`` as ``generate_invoice`` would create it at ``now``."""
+    previous = await previous_invoice(db)
+    ledger = await load_ledger(db, now)
+    members = {m.id: m for m in await db.scalars(select(Member))}
+    return InvoicePlan(
+        period=period,
+        previous=previous,
+        ledger=ledger,
+        members=members,
+        summary=_summary(period, ledger, previous, members),
+        payments=tuple(simplify_debts(ledger.balances)),
+    )
+
+
 async def generate_invoice(db: AsyncSession, *, period: str, now: datetime) -> Invoice | None:
     """Create the invoice for ``period``, or return None if it already exists.
 
     The period is claimed with INSERT … ON CONFLICT DO NOTHING, so concurrent runs
     can't both create it.
     """
-    previous = await previous_invoice(db)
-    ledger = await load_ledger(db, now)
+    plan = await plan_invoice(db, period=period, now=now)
     invoice_id = await db.scalar(
         insert(Invoice)
         .values(period=period, created_at=now)
@@ -59,10 +106,9 @@ async def generate_invoice(db: AsyncSession, *, period: str, now: datetime) -> I
     if invoice_id is None:
         return None
     invoice = await db.get(Invoice, invoice_id)
-    names = {m.id: m for m in await db.scalars(select(Member))}
-    invoice.summary = _summary(period, ledger, previous, names)
+    invoice.summary = plan.summary
 
-    for payment in simplify_debts(ledger.balances):
+    for payment in plan.payments:
         db.add(
             InvoiceLine(
                 invoice_id=invoice.id,
@@ -71,11 +117,11 @@ async def generate_invoice(db: AsyncSession, *, period: str, now: datetime) -> I
                 amount_cents=payment.amount_cents,
             )
         )
-    for member_id, cents in ledger.balances.items():
+    for member_id, cents in plan.ledger.balances.items():
         db.add(InvoiceBalance(invoice_id=invoice.id, member_id=member_id, balance_cents=cents))
 
-    if previous is not None:
-        for line in await unpaid_lines(db, previous):
+    if plan.previous is not None:
+        for line in await unpaid_lines(db, plan.previous):
             line.carried_at = now
     await db.flush()
     return invoice
@@ -172,11 +218,6 @@ def render_invoice(
     On the latest invoice each line not carried over has a button to mark it paid,
     or to undo that (FR-INV-4). Replaced invoices have no buttons.
     """
-    lines = [invoice.summary, ""]
-    if not views:
-        lines.append("Everyone is square 🎉")
-        return "\n".join(lines), None
-    lines.append("<b>Settle up</b>")
     buttons = []
     if interactive:
         for view in views:
@@ -188,6 +229,19 @@ def render_invoice(
             else:
                 continue
             buttons.append([InlineKeyboardButton(label, callback_data=f"inv:{view.line.id}")])
+    text = card_text(invoice.summary, views, carried_into, has_buttons=bool(buttons))
+    return text, InlineKeyboardMarkup(buttons) if buttons else None
+
+
+def card_text(
+    summary: str, views: list[LineView], carried_into: str | None = None, *, has_buttons: bool
+) -> str:
+    """The card's text. ``has_buttons`` adds the hint to tap them."""
+    lines = [summary, ""]
+    if not views:
+        lines.append("Everyone is square 🎉")
+        return "\n".join(lines)
+    lines.append("<b>Settle up</b>")
     for view in views:
         transfer = (
             f"{mention_html(view.payer)} → {mention_html(view.payee)} "
@@ -200,9 +254,9 @@ def render_invoice(
             lines.append(f"↪️ {transfer} (carried{where})")
         else:
             lines.append(f"• {transfer}")
-    if buttons:
+    if has_buttons:
         lines += ["", "Tap ✅ once you've paid."]
-    return "\n".join(lines), InlineKeyboardMarkup(buttons) if buttons else None
+    return "\n".join(lines)
 
 
 async def publish_invoice(bot: Bot, db: AsyncSession, settings: Settings, invoice: Invoice) -> None:
