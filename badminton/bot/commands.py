@@ -27,6 +27,7 @@ ADMIN_COMMANDS: tuple[BotCommand, ...] = (
     BotCommand("addmember", "Add a member who isn't on Telegram"),
     BotCommand("members", "List, rename or deactivate members"),
     BotCommand("invoice", "Generate the monthly invoice now"),
+    BotCommand("invoice_preview", "See what /invoice would post, without posting it"),
 )
 
 ALLOWED_UPDATES: tuple[str, ...] = ("message", "callback_query")

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import Bot
 
 from badminton.db.models import Invoice, InvoiceBalance, Member
-from badminton.domain.ledger import Entry, EntryKind
+from badminton.domain.ledger import Entry, EntryKind, Ledger
 from badminton.domain.money import fmt_sgd, fmt_signed
 from badminton.domain.statement import Statement, build_statement
 from badminton.domain.timeutil import fmt_date, fmt_hours, fmt_period, sgt_date
@@ -76,18 +76,38 @@ def _entry_line(entry: Entry, members: dict[int, Member]) -> str:
 async def send_statements(bot: Bot, db: AsyncSession, invoice: Invoice) -> int:
     """DM each member who has /start-ed the bot and has something to report.
     Returns how many were sent. The caller commits (blocked users get DMs turned off)."""
-    previous = await previous_invoice(db, before=invoice)
+    sent = 0
+    for member, text in await statements(
+        db,
+        invoice.period,
+        await load_ledger(db, invoice.created_at),
+        await previous_invoice(db, before=invoice),
+        await line_views(db, invoice),
+    ):
+        if await dm(bot, member, text):
+            sent += 1
+    return sent
+
+
+async def statements(
+    db: AsyncSession,
+    period: str,
+    ledger: Ledger,
+    previous: Invoice | None,
+    lines: list[LineView],
+) -> list[tuple[Member, str]]:
+    """The statement for each member who has /start-ed the bot and has something to
+    report, for the invoice for ``period`` with these settle-up ``lines``. ``previous``
+    is the invoice before it."""
     previous_balances: dict[int, int] = {}
     if previous is not None:
         rows = await db.scalars(
             select(InvoiceBalance).where(InvoiceBalance.invoice_id == previous.id)
         )
         previous_balances = {row.member_id: row.balance_cents for row in rows}
-    ledger = await load_ledger(db, invoice.created_at)
     members = {m.id: m for m in await db.scalars(select(Member).order_by(Member.id))}
-    lines = await line_views(db, invoice)
 
-    sent = 0
+    out = []
     for member in members.values():
         if not member.dm_enabled or member.telegram_user_id is None:
             continue
@@ -99,7 +119,5 @@ async def send_statements(bot: Bot, db: AsyncSession, invoice: Invoice) -> int:
         )
         if not statement.has_activity and statement.closing_cents == 0:
             continue
-        text = render_statement(invoice.period, statement, members, lines)
-        if await dm(bot, member, text):
-            sent += 1
-    return sent
+        out.append((member, render_statement(period, statement, members, lines)))
+    return out

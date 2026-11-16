@@ -165,6 +165,7 @@ Attendance reminders and the monthly invoice still wait until 10:00 Singapore ti
    - The scheduled run on the 1st skips a month that already has an invoice.
    - In the first week of a month, before the scheduled run has posted the previous month's invoice, `/invoice` posts that one instead.
    - Anything that happens after a manual invoice is included in the next one, because balances carry over.
+   - To check it first, send `/invoice_preview`. It shows you the card `/invoice` would post and who would get a statement, without posting or saving anything.
 
 ### 10. Optional: carry over balances from Badminton.xlsx
 
@@ -293,6 +294,7 @@ From then on, cards, booking records, announcements and invoices go to the new g
 | `/addmember <name>` | admin | private chat | Add a guest who isn't on Telegram |
 | `/members` | admin | private chat | Rename or deactivate members; link a guest to their Telegram account |
 | `/invoice` | admin | private chat | Post this month's settle-up now |
+| `/invoice_preview` | admin | private chat | See what `/invoice` would post, without posting or saving anything |
 
 A member is someone in the group: in a private chat, the bot only answers them and the admin, and tells anyone else it's for the group's members. Any of these commands sent in the group, the admin's too, gets a reply saying to send it privately, with a button that opens the chat. Announcements still go to the group.
 

@@ -92,6 +92,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T53 | Attendance card replies to the booking record | `ccr-d92cc230-8uutsq` | E4 | T26, T43 | ✅ | [#86](https://github.com/matchastack/splitwise-badminton/pull/86) |
 | T54 | Attendance card with the booking; reminder before the session | `ccr-d92cc230-8uutsq` | E4 | T52, T53 | ✅ | [#87](https://github.com/matchastack/splitwise-badminton/pull/87) |
 | T55 | Joining a session survives a card Telegram can't update | `fix/t55-join-card-refresh` | E4 | T54 | ✅ | [#88](https://github.com/matchastack/splitwise-badminton/pull/88) |
+| T56 | `/invoice_preview` | `claude/awesome-bohr-g30owz` | E7 | T33, T52 | ⬜ | — |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
@@ -465,6 +466,15 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
   - A tick step that, on or after the 1st (SGT), generates last month's invoice if it doesn't exist yet.
   - `/invoice` (admin) generates it on demand.
 - **Done when:** tests cover the 1st, a missed 1st caught up on the 2nd, the command, and refusal for non-admins.
+
+### T56 · `/invoice_preview`
+`claude/awesome-bohr-g30owz` · Stories US-7.6 · FR-INV-8 · Depends on T33, T52
+- **Scope:** from the owner. The admin had no way to check an invoice before `/invoice` posted it in the group and DMed the statements.
+  - `/invoice_preview` (admin, private chat) picks the month as `/invoice` does and replies with the card `/invoice` would post, quoted, then how many of the previous invoice's unpaid lines it would carry over and who would get a statement. If that month already has an invoice, it says `/invoice` would post nothing.
+  - Nothing is saved, posted, carried over or sent.
+  - `generate_invoice` now builds on `plan_invoice`, which works out the summary and settle-up lines without writing, and `send_statements` on `statements`, so the preview and the real run can't drift apart.
+  - Requirements: FR-INV-8, §6.1, US-7.6. README: the checklist and *Commands*.
+- **Done when:** tests show the preview's card matching what `/invoice` then posts, nothing saved or sent (including carry-over), the month picked early in a month, everyone square, a month already invoiced, the statement recipients, and refusal for non-admins and in the group.
 
 ## E8 — Admin corrections and transparency
 

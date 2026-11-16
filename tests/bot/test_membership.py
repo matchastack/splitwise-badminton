@@ -121,6 +121,7 @@ async def test_member_commands_in_the_group_point_to_the_private_chat(
         "/addmember grace",
         "/members",
         "/invoice",
+        "/invoice_preview",
     ],
 )
 @pytest.mark.parametrize("sender", [ALICE, BOB])
