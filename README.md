@@ -281,7 +281,7 @@ From then on, cards, booking records, announcements and invoices go to the new g
 | `/court` | member | private chat | Record a court booking: send it, then your booking screenshot (or send the screenshot with the caption `/court`). It's posted in the group |
 | `/shuttle <price>` | member | private chat | Record a shuttlecock purchase you paid for; it's announced in the group and waits until the current batch is finished |
 | `/balance` | member | private chat | Your balance, shuttle hours so far, a waiting shuttle batch and unpaid settle-ups |
-| `/upcoming` | member | private chat | Booked sessions |
+| `/upcoming` | member | private chat | Booked sessions, each with a link to its attendance card |
 | `/name <name>` | member | private chat | Change the name the bot shows for you |
 | `/start` | member | private chat | Turn on monthly statements |
 | `/help` | member | private chat | What the bot can do |
