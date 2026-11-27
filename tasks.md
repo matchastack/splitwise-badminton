@@ -93,6 +93,7 @@ Task: T<NN> · Stories: US-x.y · Depends on: #<PR>
 | T54 | Attendance card with the booking; reminder before the session | `ccr-d92cc230-8uutsq` | E4 | T52, T53 | ✅ | [#87](https://github.com/matchastack/splitwise-badminton/pull/87) |
 | T55 | Joining a session survives a card Telegram can't update | `fix/t55-join-card-refresh` | E4 | T54 | ✅ | [#88](https://github.com/matchastack/splitwise-badminton/pull/88) |
 | T56 | `/invoice_preview` | `claude/awesome-bohr-g30owz` | E7 | T33, T52 | ✅ | [#89](https://github.com/matchastack/splitwise-badminton/pull/89) |
+| T57 | `/upcoming` links to each attendance card | `claude/bold-hamilton-owyni1` | E2 | T29, T54 | ✅ | [#90](https://github.com/matchastack/splitwise-badminton/pull/90) |
 
 The domain tasks (T08–T13) are pure code with no I/O, so they can be built in parallel with T02–T07.
 
@@ -267,6 +268,14 @@ The domain tasks (T08–T13) are pure code with no I/O, so they can be built in 
   - `/balance` shows the caller's balance and pending shuttle hours. T31 adds unpaid lines.
   - `/upcoming` lists scheduled sessions.
 - **Done when:** tests cover a member with credit, one with debt, and one with no history.
+
+### T57 · `/upcoming` links to each attendance card
+`claude/bold-hamilton-owyni1` · Stories US-2.5, US-4.1 · FR-LED-9 · Depends on T29, T54
+- **Scope:** from the owner. `/upcoming` listed sessions, but a member had to scroll the group to find a session's card to answer it.
+  - Each session whose card is up ends with a `🗳 Attendance` link to the card (`https://t.me/c/<chat>/<message>`), which opens it for members of the group. The reply turns off link previews.
+  - Only supergroups have message links: a card in a basic group, or a session whose card isn't up yet, gets no link.
+  - Requirements: FR-LED-9. README: *Commands*.
+- **Done when:** tests show the link for a card in the group, none for a card in a basic group or a session without a card, and link previews off.
 
 ## E3 — Court booking
 

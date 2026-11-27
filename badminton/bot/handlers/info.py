@@ -9,7 +9,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from telegram import Update
+from telegram import LinkPreviewOptions, Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 from badminton.bot.commands import BOOKING_COMMAND
@@ -19,6 +19,7 @@ from badminton.db.models import Member, Session
 from badminton.domain.ledger import Ledger
 from badminton.domain.money import fmt_sgd
 from badminton.domain.timeutil import fmt_hours, fmt_session, utc_now
+from badminton.services.attendance import card_link
 from badminton.services.invoice import LineView, open_lines_for
 from badminton.services.members import mention_html, upsert_from_telegram
 from badminton.services.repo import load_ledger
@@ -84,10 +85,13 @@ async def upcoming_lines(db: AsyncSession, now: datetime) -> list[str]:
             {names[b.payer_member_id] for b in session.bookings if b.cancelled_at is None},
             key=str.casefold,
         )
-        lines.append(
+        line = (
             f"• {fmt_session(session.starts_at, session.ends_at)} ({fmt_hours(session.minutes)}) — "
             f"booked by {html.escape(', '.join(payers))}"
         )
+        if (link := card_link(session)) is not None:
+            line += f' · <a href="{link}">🗳 Attendance</a>'
+        lines.append(line)
     return lines
 
 
@@ -96,7 +100,9 @@ async def upcoming_lines(db: AsyncSession, now: datetime) -> list[str]:
 async def show_upcoming(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     async with db_session(context) as db:
         lines = await upcoming_lines(db, utc_now())
-    await update.effective_message.reply_text("\n".join(lines))
+    await update.effective_message.reply_text(
+        "\n".join(lines), link_preview_options=LinkPreviewOptions(is_disabled=True)
+    )
 
 
 def register(application: Application) -> None:

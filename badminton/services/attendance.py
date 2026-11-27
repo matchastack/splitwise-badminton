@@ -87,6 +87,16 @@ def render_card(view: CardView, *, locked: bool = False) -> tuple[str, InlineKey
     return "\n".join(lines), markup
 
 
+def card_link(session: Session) -> str | None:
+    """A link to the session's attendance card, which opens it for members of the group.
+    Only supergroups (chat IDs starting -100) have message links: none for a card in a
+    basic group, or before the card is up."""
+    chat_id, message_id = session.card_chat_id, session.card_message_id
+    if chat_id is None or message_id is None or not str(chat_id).startswith("-100"):
+        return None
+    return f"https://t.me/c/{str(chat_id).removeprefix('-100')}/{message_id}"
+
+
 def _names(names: list[str]) -> str:
     return ", ".join(html.escape(name) for name in names) if names else "—"
 

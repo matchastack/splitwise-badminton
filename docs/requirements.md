@@ -251,7 +251,7 @@ Each requirement has an ID that the user stories (§7) and tasks (`tasks.md`) re
   - Costs and shares are derived from stored facts (bookings, attendance, batches, transfers, and the opening balances carried over from the spreadsheet, FR-MIG-2). They are never stored.
   - Any correction therefore flows through to every figure automatically.
 - **FR-LED-8:** `/balance` shows the caller's balance, their pending hours in the open batch, the waiting batch (if any), and any unpaid settle-up lines involving them.
-- **FR-LED-9:** `/upcoming` lists scheduled sessions with their date, time, hours and payer(s).
+- **FR-LED-9:** `/upcoming` lists scheduled sessions with their date, time, hours and payer(s), and a link to each session's attendance card once it is up (FR-ATT-1).
 
 Worked examples:
 

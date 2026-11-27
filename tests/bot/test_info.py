@@ -1,11 +1,11 @@
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
-from badminton.db.models import Member, ShuttleBatch, Transfer
+from badminton.db.models import Member, Session, ShuttleBatch, Transfer
 from badminton.domain.timeutil import fmt_session, utc_now
 from badminton.services.attendance import set_attendance
-from tests.bot.attendance_helpers import make_session
+from tests.bot.attendance_helpers import make_session, post
 from tests.conftest import BotHarness
 from tests.fake_telegram import ADMIN_ID, text_update, user
 
@@ -121,3 +121,25 @@ async def test_upcoming_lists_scheduled_sessions(bot: BotHarness) -> None:
         "📅 <b>Upcoming sessions</b>\n"
         f"• {fmt_session(start, start + timedelta(hours=2))} (2h) — booked by alice"
     )
+
+
+async def test_upcoming_links_each_posted_attendance_card(bot: BotHarness) -> None:
+    soon = utc_now().replace(microsecond=0) + timedelta(days=3)
+    later = soon + timedelta(days=7)
+    posted = await make_session(bot, starts_at=soon)
+    card = await post(bot, posted)  # in the group, a supergroup
+    basic = await make_session(bot, starts_at=later)
+    async with bot.sessionmaker() as db:  # a basic group's messages have no links
+        await db.execute(
+            update(Session).where(Session.id == basic).values(card_chat_id=-555, card_message_id=7)
+        )
+        await db.commit()
+
+    text = await reply(bot, "/upcoming", BOB)
+
+    assert text.splitlines()[1:] == [
+        f"• {fmt_session(soon, soon + timedelta(hours=2))} (2h) — booked by alice · "
+        f'<a href="https://t.me/c/1234567890/{card["message_id"]}">🗳 Attendance</a>',
+        f"• {fmt_session(later, later + timedelta(hours=2))} (2h) — booked by alice",
+    ]
+    assert bot.telegram.last("sendMessage").params["link_preview_options"] == {"is_disabled": True}
